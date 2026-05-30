@@ -57,25 +57,43 @@ def stream_extract_games():
 
                 current_game.append(line)
 
-                if line.strip() == "":
+                stripped = line.strip()
+
+                # =================================================
+                # REAL GAME END DETECTION
+                # =================================================
+
+                if (
+                    stripped.endswith("1-0")
+                    or stripped.endswith("0-1")
+                    or stripped.endswith("1/2-1/2")
+                ):
 
                     game_text = "".join(current_game)
 
-                    if "[Event " in game_text and "1." in game_text:
+                    # basic validation
+                    if (
+                        "[Event " in game_text
+                        and "[Site " in game_text
+                        and "1." in game_text
+                    ):
 
                         out_file.write(game_text)
-                        out_file.write("\n")
+                        out_file.write("\n\n")
 
                         game_count += 1
 
                         if game_count % 100 == 0:
-                            print(f"[INFO] Extracted {game_count} games")
+                            print(
+                                f"[INFO] Extracted "
+                                f"{game_count} games"
+                            )
 
                         if game_count >= MAX_GAMES:
 
                             print(
-                                f"[INFO] Reached target of "
-                                f"{MAX_GAMES} games"
+                                f"[INFO] Reached target "
+                                f"of {MAX_GAMES} games"
                             )
 
                             return

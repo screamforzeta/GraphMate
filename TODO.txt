@@ -1,0 +1,7 @@
+1. Download                  ✅
+2. Parsing                   ✅
+3. Cleaning                  ✅
+4. Feature engineering       ← NEXT
+5. Graph generation
+6. Dataset PyG
+7. GNN
