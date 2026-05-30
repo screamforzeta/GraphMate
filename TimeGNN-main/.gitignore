@@ -1,0 +1,36 @@
+# Python specific
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.env
+*.venv
+*.egg-info/
+*.eggs/
+*.log
+*.pot
+*.mo
+
+#copilot
+.github/
+
+# Test and cache files
+.pytest_cache/
+.vscode/
+
+# Data files
+*.csv
+
+# Build artifacts
+build/
+dist/
+*.egg
+*.manifest
+*.spec
+
+# System files
+.DS_Store
+Thumbs.db
+
+#private files
+_project/
