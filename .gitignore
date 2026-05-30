@@ -1,1 +1,6 @@
 venv/
+
+data/
+*.zst
+*.pgn
+__pycache__/
