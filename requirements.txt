@@ -9,6 +9,8 @@ scikit-learn
 matplotlib
 seaborn
 
+streamlit
+streamlit-agraph
 networkx
 python-chess
 zstandard
