@@ -1,7 +1,30 @@
 1. Download                  ✅
 2. Parsing                   ✅
 3. Cleaning                  ✅
-4. Feature engineering       ← NEXT
-5. Graph generation
-6. Dataset PyG
+4. Feature engineering       ✅
+5. Graph generation          ✅
+6. Dataset PyG               <-- NEXT
 7. GNN
+
+Feature nodi:
+| Feature           | Descrizione                           |
+| ----------------- | ------------------------------------- |
+| piece type        | pawn/knight/bishop/...                |
+| color             | white/black                           |
+| occupied          | 0/1                                   |
+| coordinates       | row/col                               |
+| attacked by white | numero                                |
+| attacked by black | numero                                |
+| legal mobility    | numero mosse legali da quella casella |
+| is pinned         | 0/1                                   |
+| is check          | 0/1                                   |
+| piece value       | 1/3/5/9                               |
+
+Edge labels:
+| Tipo edge  | Significato       |
+| ---------- | ----------------- |
+| legal_move | mossa possibile   |
+| attack     | attacco           |
+| defend     | difesa            |
+| pin        | inchiodatura      |
+| check_line | linea verso il re |
