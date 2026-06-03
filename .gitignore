@@ -4,3 +4,5 @@ data/
 *.zst
 *.pgn
 __pycache__/
+
+artifacts/
