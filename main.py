@@ -26,8 +26,10 @@ from src.graph import graph_builder
 #PyTorch Geometric dataset construction for chess graph data, preparing it for training GNN models.
 from src.graph import pyg_dataset
 
-#Testing and visualization scripts for inspecting graph structures and features.
-from src.graph.debug import streamlit_graph_debugger as visualize_graph
+#DA NON FAR PARTIRE NEL MAIN:
+#si esegue streamlit run src/graph/debug/streamlit_graph_debugger.py  nella cartella src/graph/debug per avviare l'app di debug del grafo
+#Pero' solo dopo aver fatto partire il main per costruire i dataset e i grafi, altrimenti non ci saranno dati da visualizzare e da errore
+#from src.graph.debug import streamlit_graph_debugger as visualize_graph
 
 
 def main():
