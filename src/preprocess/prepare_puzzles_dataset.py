@@ -1,3 +1,18 @@
+"""Prepare final train/validation/test puzzle CSV files.
+
+Purpose:
+    Add the target move, balance mate depths, shuffle rows, and create
+    stratified train/validation/test splits for the puzzle task.
+Input:
+    data/processed/puzzles/mate_puzzles_clean.csv
+Output:
+    data/final/puzzles/train.csv
+    data/final/puzzles/val.csv
+    data/final/puzzles/test.csv
+Run:
+    python3 src/preprocess/prepare_puzzles_dataset.py
+"""
+
 from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -35,9 +50,14 @@ RANDOM_STATE = 42
 # =========================================================
 
 def extract_target_move(moves_str):
+    """Extract the first UCI move from a puzzle solution line.
 
-    """
-    Extract first move from puzzle solution.
+    Parameters:
+        moves_str: Space-separated solution moves from the Lichess puzzle CSV.
+    Returns:
+        First move as a string, or None when the input is empty/invalid.
+    Side effects:
+        None.
     """
 
     try:
@@ -54,6 +74,16 @@ def extract_target_move(moves_str):
 
 
 def print_dataset_stats(df, name):
+    """Print basic split statistics for a puzzle DataFrame.
+
+    Parameters:
+        df: Puzzle split DataFrame.
+        name: Human-readable split name.
+    Returns:
+        None.
+    Side effects:
+        Writes summary statistics to stdout.
+    """
 
     print(f"\n{'=' * 50}")
     print(f"{name.upper()} DATASET STATS")
@@ -91,6 +121,15 @@ def print_dataset_stats(df, name):
 # =========================================================
 
 def prepare_dataset():
+    """Build balanced puzzle splits and save them to final CSV files.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Reads INPUT_CSV and writes TRAIN_FILE, VAL_FILE, and TEST_FILE.
+    """
 
     # =====================================================
     # LOAD
@@ -303,6 +342,15 @@ def prepare_dataset():
 # =========================================================
 
 def main():
+    """Run puzzle dataset preparation as a script entry point.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Delegates to prepare_dataset().
+    """
 
     prepare_dataset()
 

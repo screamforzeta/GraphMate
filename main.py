@@ -1,40 +1,57 @@
-#Data pipeline for downloading, preprocessing, validating, and preparing chess puzzles and games datasets for training a chess engine.
+"""Run the project data and graph generation pipeline.
 
-#Download RAW data
+Purpose:
+    Download Lichess source data, preprocess chess puzzles and games, build
+    move encoders, extract graph features, and serialize PyG datasets.
+Input:
+    Remote Lichess archives and intermediate CSV files under data/.
+Output:
+    Processed CSV datasets, move vocabulary artifacts, and PyG graph files.
+Run:
+    python3 main.py
+"""
+
+# Download raw data.
 from src.download import download_puzzles
 from src.download import download_games
-#Preprocess RAW data
+
+# Preprocess raw puzzle and PGN data.
 from src.preprocess import preprocess_puzzles
 from src.preprocess import parse_games
-#Validate and clean preprocessed data
+
+# Validate and clean preprocessed data.
 from src.preprocess import clean_games
 from src.preprocess import clean_puzzles
-#Partition and prepare final datasets
+
+# Partition and prepare final CSV datasets.
 from src.preprocess import prepare_puzzles_dataset
 from src.preprocess import prepare_games_dataset
 
-#Graph construction and encoding
-
-#Node feature construction for chess positions, used as input to a graph neural network.
+# Graph construction and encoding.
 from src.graph import move_encoder
-#Node feature construction for chess positions, used as input to a graph neural network.
 from src.graph import node_features
-#Edge feature construction for chess positions, used as input to a graph neural network.
 from src.graph import edge_features
-#Graph building utilities to construct graph data structures from chess positions and moves.
 from src.graph import graph_builder
-#PyTorch Geometric dataset construction for chess graph data, preparing it for training GNN models.
 from src.graph import pyg_dataset
 
-#DA NON FAR PARTIRE NEL MAIN:
-#si esegue streamlit run src/graph/debug/streamlit_graph_debugger.py  nella cartella src/graph/debug per avviare l'app di debug del grafo
-#Pero' solo dopo aver fatto partire il main per costruire i dataset e i grafi, altrimenti non ci saranno dati da visualizzare e da errore
-#from src.graph.debug import streamlit_graph_debugger as visualize_graph
+# The Streamlit debugger is a standalone app. Run it separately with:
+# streamlit run src/graph/debug/streamlit_graph_debugger.py
+# Do not import it here, because Streamlit executes UI code at import time.
 
 
 def main():
+    """Execute every pipeline stage in the required order.
 
-    #Data section
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Downloads source data if missing, writes CSV datasets, writes move
+        encoder JSON files, and writes serialized PyG graph datasets.
+    """
+
+    # Data section.
     download_puzzles.main()
     download_games.main()
     preprocess_puzzles.main()
@@ -44,15 +61,14 @@ def main():
     prepare_puzzles_dataset.main()
     prepare_games_dataset.main()
 
-    #Graph section
+    # Graph section.
     move_encoder.main()
     node_features.main()
     edge_features.main()
     graph_builder.main()
     pyg_dataset.main()
 
-    #Testing and visualization section
-    #visualize_graph.main()
+    # Streamlit visualization is intentionally excluded from the pipeline.
 
 
 if __name__ == "__main__":

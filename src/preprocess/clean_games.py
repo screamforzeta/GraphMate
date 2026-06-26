@@ -1,3 +1,16 @@
+"""Validate and clean parsed Lichess game metadata.
+
+Purpose:
+    Filter parsed games by result, Elo range, game type, and legal move
+    sequence before saving the cleaned game dataset.
+Input:
+    data/processed/games/games_metadata.csv
+Output:
+    data/processed/games/games_clean.csv
+Run:
+    python3 src/preprocess/clean_games.py
+"""
+
 from pathlib import Path
 import pandas as pd
 import chess
@@ -35,6 +48,15 @@ VALID_TIME_CONTROLS = {
 # =========================================================
 
 def is_valid_elo(value):
+    """Check whether a value is a plausible chess Elo rating.
+
+    Parameters:
+        value: Raw Elo value from the parsed CSV.
+    Returns:
+        True if value can be parsed as an int in [400, 3500], else False.
+    Side effects:
+        None.
+    """
 
     try:
         elo = int(value)
@@ -46,6 +68,15 @@ def is_valid_elo(value):
 
 
 def is_valid_moves(moves_str):
+    """Validate a UCI move sequence from the initial chess position.
+
+    Parameters:
+        moves_str: Space-separated UCI move string.
+    Returns:
+        True if the sequence has enough moves and every move is legal.
+    Side effects:
+        None.
+    """
 
     if not isinstance(moves_str, str):
         return False
@@ -75,6 +106,15 @@ def is_valid_moves(moves_str):
 
 
 def extract_game_type(event):
+    """Extract the supported Lichess speed category from an event name.
+
+    Parameters:
+        event: PGN Event header value.
+    Returns:
+        "Bullet", "Blitz", "Rapid", or None when no supported type is found.
+    Side effects:
+        None.
+    """
 
     if not isinstance(event, str):
         return None
@@ -92,6 +132,15 @@ def extract_game_type(event):
 # =========================================================
 
 def clean_games():
+    """Clean parsed game metadata and save the validated game CSV.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Reads INPUT_CSV, validates rows with python-chess, and writes OUTPUT_CSV.
+    """
 
     if OUTPUT_CSV.exists():
         print(f"[INFO] Clean dataset already exists: {OUTPUT_CSV}")
@@ -239,6 +288,15 @@ def clean_games():
 # =========================================================
 
 def main():
+    """Run game cleaning as a script entry point.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Delegates to clean_games().
+    """
 
     clean_games()
 

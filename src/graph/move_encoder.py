@@ -1,3 +1,18 @@
+"""Build the target-move vocabulary for puzzle classification.
+
+Purpose:
+    Create a stable mapping between UCI target moves and integer class labels
+    using only the training split.
+Input:
+    data/final/puzzles/train.csv
+Output:
+    artifacts/move_to_idx.json
+    artifacts/idx_to_move.json
+    artifacts/move_encoder_stats.json
+Run:
+    python3 src/graph/move_encoder.py
+"""
+
 from pathlib import Path
 import pandas as pd
 import json
@@ -35,6 +50,16 @@ STATS_FILE = (
 # =========================================================
 
 def build_move_encoder():
+    """Build and save move-to-index and index-to-move dictionaries.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Reads the training puzzle CSV, creates artifacts/, and writes encoder
+        JSON files plus move-frequency statistics.
+    """
 
     print("[INFO] Loading training dataset...")
 
@@ -216,6 +241,15 @@ def build_move_encoder():
 # =========================================================
 
 def main():
+    """Run move encoder generation as a script entry point.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Delegates to build_move_encoder().
+    """
 
     build_move_encoder()
 

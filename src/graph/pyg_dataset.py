@@ -1,13 +1,8 @@
-"""
-=========================================================
-pyg_dataset.py
-=========================================================
+"""Generate serialized PyTorch Geometric datasets from puzzle CSV splits.
 
-DESCRIPTION:
-------------
-This module converts CSV puzzle datasets into
-PyTorch Geometric graph datasets.
-
+Purpose:
+    Convert train/validation/test puzzle CSV rows into lists of PyG Data
+    objects that can be loaded during GNN training.
 It:
     - loads train/val/test CSVs
     - builds graph objects
@@ -17,28 +12,24 @@ The resulting files can later be loaded directly
 during GNN training.
 
 This is the final preprocessing step before training.
-
-INPUT:
-------
-CSV datasets:
+Input:
+    CSV datasets:
     - train.csv
     - val.csv
     - test.csv
 
-Move encoder:
+    Move encoder:
     - move_to_idx.json
-
-OUTPUT:
--------
-Serialized PyTorch datasets:
+Output:
+    Serialized PyTorch datasets:
     - train_graphs.pt
     - val_graphs.pt
     - test_graphs.pt
 
 Each dataset contains:
     List[torch_geometric.data.Data]
-
-=========================================================
+Run:
+    python3 src/graph/pyg_dataset.py
 """
 
 from pathlib import Path
@@ -119,6 +110,10 @@ def load_move_encoder():
     Returns
     -------
     dict
+
+    Side effects
+    ------------
+    Reads MOVE_ENCODER_PATH from disk.
     """
 
     with open(
@@ -148,6 +143,15 @@ def build_pyg_dataset(
     csv_path : Path
     output_path : Path
     move_to_idx : dict
+
+    Returns
+    -------
+    None
+
+    Side effects
+    ------------
+    Reads csv_path, builds graph objects, writes output_path with torch.save,
+    and prints graph generation warnings/statistics.
     """
 
     print("\n" + "=" * 50)
@@ -298,6 +302,18 @@ def build_pyg_dataset(
 def main():
     """
     Main dataset generation pipeline.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+
+    Side effects
+    ------------
+    Reads the move encoder and writes train/val/test PyG dataset files.
     """
 
     print("=" * 50)

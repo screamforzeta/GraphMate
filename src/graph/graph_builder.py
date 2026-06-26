@@ -1,13 +1,7 @@
-"""
-=========================================================
-graph_builder.py
-=========================================================
+"""Build complete PyTorch Geometric graph objects for chess puzzles.
 
-DESCRIPTION:
-------------
-This module converts a chess puzzle into a complete
-PyTorch Geometric graph object.
-
+Purpose:
+    Convert one puzzle position and target move into a PyG Data object.
 It combines:
     - node features
     - edge features
@@ -15,34 +9,24 @@ It combines:
     - target encoding
 
 The resulting graph is represented as:
-
     torch_geometric.data.Data
-
 and will later be used directly by the GNN/GAT model.
 
 This module acts as the bridge between:
     CSV datasets
 and
     Graph Neural Networks.
-
-INPUT:
-------
-- FEN string
-- target move (UCI)
-- move encoder dictionary
-
-OUTPUT:
--------
-torch_geometric.data.Data
-
-Containing:
+Input:
+    FEN string, target UCI move, and move encoder dictionary.
+Output:
+    torch_geometric.data.Data containing:
     x
     edge_index
     edge_attr
     y
     global_features
-
-=========================================================
+Run:
+    python3 src/graph/graph_builder.py
 """
 
 import json
@@ -160,6 +144,10 @@ def encode_target_move(
     Returns
     -------
     torch.LongTensor
+
+    Side effects
+    ------------
+    Raises ValueError when target_move is not in move_to_idx.
     """
 
     if target_move not in move_to_idx:
@@ -200,6 +188,10 @@ def build_graph(
     Returns
     -------
     torch_geometric.data.Data
+
+    Side effects
+    ------------
+    Raises errors from chess parsing, feature extraction, or target encoding.
     """
 
     # =============================================
@@ -282,6 +274,10 @@ def load_move_encoder(
     Returns
     -------
     dict
+
+    Side effects
+    ------------
+    Reads the JSON encoder file from disk.
     """
 
     with open(path, "r") as f:
@@ -297,7 +293,19 @@ def load_move_encoder(
 
 def main():
     """
-    Simple local graph construction test.
+    Run a simple local graph construction test.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+
+    Side effects
+    ------------
+    Loads the move encoder JSON and prints a sample graph summary.
     """
 
     # =============================================
