@@ -1,3 +1,18 @@
+"""Prepare final train/validation/test game metadata CSV files.
+
+Purpose:
+    Add derived timing and strength features, balance supported game types,
+    and create stratified splits for future timing-related experiments.
+Input:
+    data/processed/games/games_clean.csv
+Output:
+    data/final/games/games_train.csv
+    data/final/games/games_val.csv
+    data/final/games/games_test.csv
+Run:
+    python3 src/preprocess/prepare_games_dataset.py
+"""
+
 from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -35,12 +50,16 @@ RANDOM_STATE = 42
 # =========================================================
 
 def parse_time_control(tc):
-
-    """
-    Parse Lichess time control.
+    """Parse a Lichess time-control string into base and increment seconds.
 
     Example:
         180+2
+    Parameters:
+        tc: Time-control string in "base+increment" format.
+    Returns:
+        Tuple (base, increment), or (None, None) when parsing fails.
+    Side effects:
+        None.
     """
 
     try:
@@ -55,6 +74,15 @@ def parse_time_control(tc):
 
 
 def compute_average_elo(row):
+    """Compute the mean Elo of both players for one game row.
+
+    Parameters:
+        row: Pandas row containing WhiteElo and BlackElo.
+    Returns:
+        Average Elo as a float.
+    Side effects:
+        None.
+    """
 
     return (
         row["WhiteElo"]
@@ -63,6 +91,15 @@ def compute_average_elo(row):
 
 
 def classify_game_length(num_moves):
+    """Classify a game by number of plies in the parsed move sequence.
+
+    Parameters:
+        num_moves: Number of UCI moves stored for the game.
+    Returns:
+        "short", "medium", or "long".
+    Side effects:
+        None.
+    """
 
     if num_moves < 20:
         return "short"
@@ -74,6 +111,16 @@ def classify_game_length(num_moves):
 
 
 def print_stats(df, name):
+    """Print summary statistics for a prepared game split.
+
+    Parameters:
+        df: Game split DataFrame.
+        name: Human-readable split name.
+    Returns:
+        None.
+    Side effects:
+        Writes summary statistics to stdout.
+    """
 
     print(f"\n{'=' * 50}")
     print(f"{name.upper()} DATASET")
@@ -110,6 +157,15 @@ def print_stats(df, name):
 # =========================================================
 
 def prepare_games_dataset():
+    """Build balanced game splits and save them to final CSV files.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Reads INPUT_CSV and writes TRAIN_FILE, VAL_FILE, and TEST_FILE.
+    """
 
     print("[INFO] Loading cleaned games...")
 
@@ -301,6 +357,15 @@ def prepare_games_dataset():
 # =========================================================
 
 def main():
+    """Run game dataset preparation as a script entry point.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Delegates to prepare_games_dataset().
+    """
 
     prepare_games_dataset()
 

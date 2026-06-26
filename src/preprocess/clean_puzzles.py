@@ -1,3 +1,16 @@
+"""Validate and clean filtered mate puzzle rows.
+
+Purpose:
+    Remove invalid FENs, ratings, mate depths, empty move sequences, and
+    duplicate puzzle positions from the preprocessed puzzle dataset.
+Input:
+    data/processed/puzzles/mate_puzzles.csv
+Output:
+    data/processed/puzzles/mate_puzzles_clean.csv
+Run:
+    python3 src/preprocess/clean_puzzles.py
+"""
+
 from pathlib import Path
 import pandas as pd
 import chess
@@ -26,6 +39,15 @@ VALID_MATE_DEPTHS = {1, 2, 3, 4, 5}
 # =========================================================
 
 def is_valid_fen(fen):
+    """Check whether a FEN string can be parsed by python-chess.
+
+    Parameters:
+        fen: Candidate FEN string.
+    Returns:
+        True when chess.Board accepts the FEN, else False.
+    Side effects:
+        None.
+    """
 
     try:
         chess.Board(fen)
@@ -36,6 +58,15 @@ def is_valid_fen(fen):
 
 
 def is_valid_rating(rating):
+    """Check whether a puzzle rating is inside the configured range.
+
+    Parameters:
+        rating: Raw rating value from the puzzle CSV.
+    Returns:
+        True if rating is an int in [MIN_RATING, MAX_RATING], else False.
+    Side effects:
+        None.
+    """
 
     try:
 
@@ -52,6 +83,15 @@ def is_valid_rating(rating):
 # =========================================================
 
 def clean_puzzles():
+    """Clean the mate puzzle dataset and save the validated CSV.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Reads INPUT_CSV and writes OUTPUT_CSV unless it already exists.
+    """
 
     if OUTPUT_CSV.exists():
 
@@ -219,6 +259,15 @@ def clean_puzzles():
 # =========================================================
 
 def main():
+    """Run puzzle cleaning as a script entry point.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Delegates to clean_puzzles().
+    """
 
     clean_puzzles()
 

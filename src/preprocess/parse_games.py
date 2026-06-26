@@ -1,3 +1,16 @@
+"""Parse sampled Lichess PGN games into tabular metadata.
+
+Purpose:
+    Read a sampled PGN file, extract game metadata, UCI move sequences, clock
+    values, and derived move-time estimates.
+Input:
+    data/raw/games/sample_1000_games.pgn
+Output:
+    data/processed/games/games_metadata.csv
+Run:
+    python3 src/preprocess/parse_games.py
+"""
+
 from pathlib import Path
 import chess.pgn
 import pandas as pd
@@ -15,15 +28,16 @@ MAX_GAMES = None #Parse all games
 # Helpers
 
 def extract_clock_times(node_comment: str):
-
-    """
-    Extract clock values from PGN comments.
+    """Extract remaining clock time from a PGN node comment.
 
     Example:
-    [%clk 0:04:32]
-
+        [%clk 0:04:32]
+    Parameters:
+        node_comment: PGN comment string attached to a move node.
     Returns:
-        float seconds remaining OR None
+        Remaining seconds as float, or None if no valid clock is present.
+    Side effects:
+        None.
     """
 
     if "[%clk " not in node_comment:
@@ -59,16 +73,16 @@ def extract_clock_times(node_comment: str):
 
 
 def compute_move_times(clock_values):
-
-    """
-    Convert remaining clocks into think times.
+    """Convert remaining clock values into per-move think times.
 
     Example:
-        move_time[i] =
-            clock[i-1] - clock[i]
-
+        move_time[i] = clock[i - 1] - clock[i]
+    Parameters:
+        clock_values: List of remaining clock values in seconds or None.
     Returns:
-        list of think times
+        List of think times in seconds, using None for missing/invalid values.
+    Side effects:
+        None.
     """
 
     move_times = []
@@ -97,6 +111,16 @@ def compute_move_times(clock_values):
 # =========================================================
 
 def parse_single_game(game):
+    """Extract metadata and move-level fields from one PGN game.
+
+    Parameters:
+        game: chess.pgn.Game instance returned by python-chess.
+    Returns:
+        Dictionary with headers, UCI moves, clock values, move times, and
+        average move time.
+    Side effects:
+        None.
+    """
 
     headers = game.headers
 
@@ -121,10 +145,7 @@ def parse_single_game(game):
 
         moves_uci.append(move.uci())
 
-        # =====================================================
-        # CLOCK EXTRACTION
-        # =====================================================
-
+        # Extract optional Lichess clock annotations from the move comment.
         comment = next_node.comment
 
         clock_sec = extract_clock_times(comment)
@@ -171,6 +192,15 @@ def parse_single_game(game):
 # =========================================================
 
 def parse_games():
+    """Parse all sampled PGN games and save the metadata CSV.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Reads INPUT_PGN and writes OUTPUT_CSV unless the output already exists.
+    """
 
     if OUTPUT_CSV.exists():
         print(f"[INFO] Metadata already exists: {OUTPUT_CSV}")
@@ -243,6 +273,15 @@ def parse_games():
 # =========================================================
 
 def main():
+    """Run PGN parsing as a script entry point.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Delegates to parse_games().
+    """
 
     parse_games()
 

@@ -1,0 +1,28 @@
+STRUTTURA DELLA REPO
+
+chess-gnn-project/
+│
+├── data/
+│   ├── raw/
+│   ├── processed/
+│   ├── puzzles/
+│   └── heldout/
+│
+├── notebooks/
+│
+├── src/
+│   ├── data/
+│   ├── graphs/
+│   ├── models/
+│   ├── training/
+│   ├── evaluation/
+│   └── utils/
+│
+├── results/
+│
+├── reports/
+│
+├── requirements.txt
+├── README.md
+└── main.py
+

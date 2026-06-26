@@ -1,16 +1,9 @@
-"""
-=========================================================
-node_features.py
-=========================================================
+"""Extract node features from a chess position.
 
-DESCRIPTION:
-------------
-This module extracts node features from a chess position
-represented in FEN notation.
-
+Purpose:
+    Convert a FEN position into one feature vector per chessboard square.
 Each chessboard position is converted into:
     - 64 nodes (one per square)
-
 For every node/square we compute:
     - piece type
     - piece color
@@ -23,24 +16,15 @@ For every node/square we compute:
     - piece value
 
 The output is a PyTorch tensor:
-
     x.shape = [64, NUM_FEATURES]
-
 This tensor will later be used as:
     Data.x
-
-inside a PyTorch Geometric graph.
-
-INPUT:
-------
-- FEN string
-
-OUTPUT:
--------
-torch.FloatTensor
-    shape = [64, NUM_FEATURES]
-
-=========================================================
+Input:
+    FEN string.
+Output:
+    torch.FloatTensor with shape [64, NODE_FEATURE_DIM].
+Run:
+    python3 src/graph/node_features.py
 """
 
 from pathlib import Path
@@ -145,6 +129,10 @@ def get_piece_color(piece):
     """
     Encode piece color.
 
+    Parameters
+    ----------
+    piece : chess.Piece or None
+
     Returns
     -------
     float
@@ -161,6 +149,10 @@ def get_piece_color(piece):
 def get_piece_value(piece):
     """
     Return material value of piece.
+
+    Parameters
+    ----------
+    piece : chess.Piece or None
 
     Returns
     -------
@@ -390,7 +382,19 @@ def extract_node_features(fen):
 
 def main():
     """
-    Simple local test.
+    Run a simple local node feature extraction test.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+
+    Side effects
+    ------------
+    Prints tensor shape and one sample feature vector.
     """
 
     test_fen = (

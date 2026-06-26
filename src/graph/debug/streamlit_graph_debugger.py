@@ -1,25 +1,18 @@
-"""
-=========================================================
-streamlit_graph_debugger.py
-=========================================================
+"""Interactive Streamlit debugger for chess graph samples.
 
-FINAL ADVANCED CHESS GNN DEBUGGER
+Purpose:
+    Visualize one generated puzzle graph together with its chessboard,
+    edge overlays, node metadata, and raw puzzle fields.
+Input:
+    data/final/puzzles/train.csv and artifacts/move_to_idx.json.
+Output:
+    Streamlit UI with graph/chessboard visualization; no pipeline files are
+    written by this module.
+Run:
+    streamlit run src/graph/debug/streamlit_graph_debugger.py
 
-FIXES:
-------
-✓ Correct black/white pieces
-✓ Correct dark/light rendering
-✓ Softer arrows on chessboard
-✓ Proper graph labels
-✓ Piece symbols + coordinates
-✓ Edge overlays on board
-✓ Graph + board views together
-✓ Better readability
-
-RUN:
-----
-streamlit run src/debug/streamlit_graph_debugger.py
-=========================================================
+Notes:
+    This is a standalone app and must not be imported by main.py.
 """
 
 # =========================================================
@@ -142,12 +135,30 @@ PIECE_IMAGES = {
 
 @st.cache_data
 def load_dataset():
+    """Load the puzzle split used by the debugger.
+
+    Parameters:
+        None.
+    Returns:
+        Pandas DataFrame loaded from DATASET_PATH.
+    Side effects:
+        Reads the CSV file from disk and caches the result in Streamlit.
+    """
 
     return pd.read_csv(DATASET_PATH)
 
 
 @st.cache_data
 def load_move_encoder():
+    """Load the move vocabulary used to encode selected puzzle targets.
+
+    Parameters:
+        None.
+    Returns:
+        Dictionary mapping UCI moves to class indices.
+    Side effects:
+        Reads MOVE_ENCODER_PATH from disk and caches the result in Streamlit.
+    """
 
     with open(
         MOVE_ENCODER_PATH,
@@ -158,6 +169,15 @@ def load_move_encoder():
 
 
 def edge_type_from_features(features):
+    """Return the first active edge type name from an edge feature vector.
+
+    Parameters:
+        features: Edge feature vector ordered like EDGE_FEATURE_NAMES.
+    Returns:
+        Edge type name, or "unknown" when no known feature is active.
+    Side effects:
+        None.
+    """
 
     for idx, name in enumerate(
         EDGE_FEATURE_NAMES
@@ -177,6 +197,20 @@ def build_svg_arrows(
     show_pin,
     show_check,
 ):
+    """Create chess.svg arrows for enabled edge types.
+
+    Parameters:
+        graph: PyG Data object with edge_index and edge_attr.
+        show_legal: Whether legal-move edges are displayed.
+        show_attack: Whether attack edges are displayed.
+        show_defend: Whether defend edges are displayed.
+        show_pin: Whether pin edges are displayed.
+        show_check: Whether check-line edges are displayed.
+    Returns:
+        List of chess.svg.Arrow objects.
+    Side effects:
+        None.
+    """
 
     arrows = []
 

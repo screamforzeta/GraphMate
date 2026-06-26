@@ -1,3 +1,16 @@
+"""Stream a small PGN sample from the Lichess game archive.
+
+Purpose:
+    Read the compressed Lichess monthly PGN archive as a stream and extract a
+    limited number of games without downloading the full archive to disk.
+Input:
+    Remote .pgn.zst file from the Lichess standard rated database.
+Output:
+    data/raw/games/sample_1000_games.pgn
+Run:
+    python3 src/download/download_games.py
+"""
+
 from pathlib import Path
 import requests
 import zstandard as zstd
@@ -26,6 +39,15 @@ CHUNK_SIZE = 1024 * 64
 # =========================================================
 
 def stream_extract_games():
+    """Download, decompress, and save the configured PGN sample.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Opens a streaming HTTP response, writes OUTPUT_PGN, and logs progress.
+    """
 
     if OUTPUT_PGN.exists():
         print(f"[INFO] Sample already exists: {OUTPUT_PGN}")
@@ -59,10 +81,7 @@ def stream_extract_games():
 
                 stripped = line.strip()
 
-                # =================================================
-                # REAL GAME END DETECTION
-                # =================================================
-
+                # Detect real game boundaries from terminal PGN result tokens.
                 if (
                     stripped.endswith("1-0")
                     or stripped.endswith("0-1")
@@ -71,7 +90,7 @@ def stream_extract_games():
 
                     game_text = "".join(current_game)
 
-                    # basic validation
+                    # Keep only chunks that look like complete PGN games.
                     if (
                         "[Event " in game_text
                         and "[Site " in game_text
@@ -106,6 +125,15 @@ def stream_extract_games():
 # =========================================================
 
 def main():
+    """Run the PGN streaming extraction step.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Creates data/raw/games/ and writes the sampled PGN file if missing.
+    """
 
     stream_extract_games()
 

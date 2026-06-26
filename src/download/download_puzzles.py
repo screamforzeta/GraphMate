@@ -1,3 +1,16 @@
+"""Download the Lichess puzzle database archive.
+
+Purpose:
+    Fetch the compressed Lichess puzzle CSV archive used by the puzzle
+    preprocessing pipeline.
+Input:
+    Remote .csv.zst file from the Lichess database endpoint.
+Output:
+    data/raw/puzzles/lichess_puzzles.csv.zst
+Run:
+    python3 src/download/download_puzzles.py
+"""
+
 from pathlib import Path
 import requests
 from tqdm import tqdm
@@ -11,6 +24,17 @@ OUTPUT_FILE = OUTPUT_DIR / "lichess_puzzles.csv.zst"
 
 
 def download_file(url: str, output_path: Path):
+    """Stream a remote file to disk with a tqdm progress bar.
+
+    Parameters:
+        url: Source URL to download.
+        output_path: Destination file path.
+    Returns:
+        None.
+    Side effects:
+        Performs an HTTP GET request and writes bytes to output_path.
+    """
+
     response = requests.get(url, stream=True)
     response.raise_for_status()
 
@@ -31,6 +55,16 @@ def download_file(url: str, output_path: Path):
 
 
 def main():
+    """Download the puzzle archive unless it already exists.
+
+    Parameters:
+        None.
+    Returns:
+        None.
+    Side effects:
+        Creates data/raw/puzzles/ and writes the compressed puzzle archive.
+    """
+
     if OUTPUT_FILE.exists():
         print(f"[INFO] File already exists: {OUTPUT_FILE}")
         return

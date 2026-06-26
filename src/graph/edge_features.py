@@ -1,13 +1,8 @@
-"""
-=========================================================
-edge_features.py
-=========================================================
+"""Extract sparse graph edges and edge features from a chess position.
 
-DESCRIPTION:
-------------
-This module extracts graph edges and edge features from
-a chess position represented in FEN notation.
-
+Purpose:
+    Convert chess relationships in a FEN position into PyTorch Geometric
+    edge_index and edge_attr tensors.
 The graph representation uses:
     - 64 nodes (board squares)
     - directed edges between squares
@@ -24,20 +19,13 @@ Each edge has a feature vector describing its type.
 The output is compatible with PyTorch Geometric:
     - edge_index
     - edge_attr
-
-INPUT:
-------
-- FEN string
-
-OUTPUT:
--------
-edge_index : torch.LongTensor
-    shape = [2, num_edges]
-
-edge_attr : torch.FloatTensor
-    shape = [num_edges, EDGE_FEATURE_DIM]
-
-=========================================================
+Input:
+    FEN string.
+Output:
+    edge_index as torch.LongTensor [2, num_edges] and edge_attr as
+    torch.FloatTensor [num_edges, EDGE_FEATURE_DIM].
+Run:
+    python3 src/graph/edge_features.py
 """
 
 import chess
@@ -76,6 +64,14 @@ def create_edge_feature(
     """
     Create edge feature vector.
 
+    Parameters
+    ----------
+    legal_move : float
+    attack : float
+    defend : float
+    pin : float
+    check_line : float
+
     Returns
     -------
     list[float]
@@ -108,6 +104,14 @@ def add_edge(
     from_square : int
     to_square : int
     features : list
+
+    Returns
+    -------
+    None
+
+    Side effects
+    ------------
+    Appends one edge and one feature vector to the provided lists.
     """
 
     edge_index.append(
@@ -134,6 +138,20 @@ def extract_legal_move_edges(
 
     Feature:
         legal_move = 1
+
+    Parameters
+    ----------
+    board : chess.Board
+    edge_index : list
+    edge_attr : list
+
+    Returns
+    -------
+    None
+
+    Side effects
+    ------------
+    Appends legal-move edges to edge_index and edge_attr.
     """
 
     for move in board.legal_moves:
@@ -171,6 +189,20 @@ def extract_attack_defend_edges(
 
     Defend:
         piece attacks friendly piece
+
+    Parameters
+    ----------
+    board : chess.Board
+    edge_index : list
+    edge_attr : list
+
+    Returns
+    -------
+    None
+
+    Side effects
+    ------------
+    Appends attack and defend edges to edge_index and edge_attr.
     """
 
     for from_square in chess.SQUARES:
@@ -246,6 +278,20 @@ def extract_pin_edges(
 
     Feature:
         pin = 1
+
+    Parameters
+    ----------
+    board : chess.Board
+    edge_index : list
+    edge_attr : list
+
+    Returns
+    -------
+    None
+
+    Side effects
+    ------------
+    Appends pin edges to edge_index and edge_attr.
     """
 
     for square in chess.SQUARES:
@@ -322,6 +368,20 @@ def extract_check_line_edges(
 
     Feature:
         check_line = 1
+
+    Parameters
+    ----------
+    board : chess.Board
+    edge_index : list
+    edge_attr : list
+
+    Returns
+    -------
+    None
+
+    Side effects
+    ------------
+    Appends check-line edges when the side to move is in check.
     """
 
     if not board.is_check():
@@ -425,7 +485,19 @@ def extract_edge_features(fen):
 
 def main():
     """
-    Simple local test.
+    Run a simple local edge feature extraction test.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+
+    Side effects
+    ------------
+    Prints edge tensor shapes and a small edge sample.
     """
 
     test_fen = (
