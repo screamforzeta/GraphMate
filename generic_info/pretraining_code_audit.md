@@ -462,3 +462,19 @@ La pipeline e una buona base per arrivare al training, ma non e ancora pronta pe
 2. decidere come gestire la vocabulary delle mosse e gli OOV in validation/test.
 
 Subito dopo vanno testati shape/batching PyG, `global_features`, mobility e edge duplicati. La compatibilita con `TimeGNN-main/` e realistica ma richiede wrapper: i nostri grafi sono PyG, pero i modelli TimeGNN non consumano direttamente il nostro formato graph-level con `global_features` e `edge_attr` multilabel.
+
+## Fix status
+
+| Finding principale | Stato | Motivazione |
+| --- | --- | --- |
+| Semantica `TargetMove = Moves[0]` | FIXED | `prepare_puzzles_dataset.py` ora applica `Moves[0]` alla FEN originale, conserva `OriginalFEN`, salva `FEN` trasformata e usa `Moves[1]` come `TargetMove` solo se setup e target sono legali. |
+| OOV val/test rispetto a train vocabulary | FIXED | `move_encoder.py` misura OOV su validation/test; `pyg_dataset.py` conta e logga OOV esplicitamente senza espandere la vocabulary train. |
+| Edge paralleli invece di multilabel per `(src,dst)` | FIXED | `edge_features.py` aggrega deterministicamente le feature con un solo edge per coppia. |
+| `legal_mobility` solo lato al tratto | FIXED | `node_features.py` calcola una mappa mobility per White e Black usando copie della board e la riusa per tutti i nodi. |
+| Pin pinner non robusto | FIXED | `edge_features.py` identifica pin assoluti con scansione geometrica king -> pinned piece -> slider enemy. |
+| `check_line` ambiguo | VERIFIED | Il nome resta invariato per compatibilita; la semantica e documentata come edge checker -> king, non come enumerazione di tutta la linea. |
+| `global_features` non batch-safe | FIXED | `graph_builder.py` ora salva `global_features` con shape `[1, 4]`, cosi PyG batch produce `[batch_size, 4]`. |
+| Demo/manual tests in `main.py` | FIXED | `main.py` orchestra solo download/preprocess/encoder/dataset PyG; test manuali restano eseguibili dai singoli moduli. |
+| File parziali nei download | DEFERRED | Non corretto in questa fase per evitare cambi I/O piu ampi; resta consigliato `.part` + rename atomico + retry. |
+| Dataset PyG tutto in RAM | DEFERRED | Mantenuto formato `.pt` corrente come richiesto; sharding/on-disk dataset rimandato a dataset su scala maggiore. |
+| Compatibilita TimeGNN diretta | VERIFIED | Resta compatibilita parziale: i grafi sono PyG, ma serviranno wrapper per `event_ids`, timing separato, pooling graph-level e `global_features`. |

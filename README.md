@@ -66,6 +66,8 @@ python3 main.py
 
 La pipeline scarica i dati raw, crea i CSV processati/finali, costruisce la vocabulary delle mosse, genera le feature di nodi e archi, costruisce oggetti `torch_geometric.data.Data` e salva i dataset PyG in `data/pyg/`.
 
+Per i puzzle Lichess, la colonna `Moves` viene interpretata così: `Moves[0]` è la mossa che porta dalla FEN originale alla posizione effettivamente mostrata al solver/modello; `Moves[1]` è la prima mossa della soluzione e diventa `TargetMove`. Il dataset finale conserva `OriginalFEN` per debug e usa `FEN` come posizione trasformata dopo `Moves[0]`.
+
 ## Debugger Streamlit
 
 Il debugger è un'applicazione standalone:
@@ -82,8 +84,10 @@ Ogni posizione è rappresentata come grafo PyTorch Geometric:
 
 - 64 nodi, uno per ogni casella della scacchiera;
 - `edge_index` sparso PyG, non una matrice di adiacenza;
-- `edge_attr` multilabel per descrivere le relazioni tra caselle;
+- `edge_attr` multilabel per descrivere le relazioni tra caselle, con un solo edge aggregato per coppia `(src, dst)`;
 - oggetto finale: `Data(x, edge_index, edge_attr, y, global_features)`.
+
+`global_features` è salvato con shape `[1, 4]` per ogni grafo, così il batching PyG produce un tensore `[batch_size, 4]`.
 
 ## Feature Nodi
 
@@ -96,7 +100,7 @@ Ogni nodo/casella contiene:
 - normalized column;
 - attacked_by_white;
 - attacked_by_black;
-- legal_mobility;
+- legal_mobility, calcolata per entrambi i colori senza modificare permanentemente la board;
 - is_pinned;
 - piece_value.
 
@@ -112,9 +116,11 @@ Ogni arco può codificare:
 
 ## Target
 
-`TargetMove` è la prima mossa UCI della soluzione del puzzle Lichess.
+`TargetMove` è la prima mossa UCI della soluzione del puzzle Lichess, cioè `Moves[1]` dopo aver applicato `Moves[0]` alla FEN originale.
 
 `move_to_idx` viene costruito esclusivamente sul training set, così la vocabulary delle classi dipende solo dai dati di train. Se `artifacts/move_to_idx.json` e `artifacts/idx_to_move.json` vengono versionati, servono a fissare una vocabulary stabile delle mosse tra generazioni del dataset, training e valutazione.
+
+I target di validation/test non presenti nella vocabulary del training set vengono conteggiati come OOV durante la generazione PyG e non vengono aggiunti alla vocabulary, per evitare leakage.
 
 ## Dipendenze Principali
 

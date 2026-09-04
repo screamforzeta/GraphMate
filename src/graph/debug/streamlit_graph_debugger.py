@@ -168,25 +168,78 @@ def load_move_encoder():
         return json.load(f)
 
 
-def edge_type_from_features(features):
-    """Return the first active edge type name from an edge feature vector.
+def edge_types_from_features(features):
+    """Return all active edge type names from an edge feature vector.
 
     Parameters:
         features: Edge feature vector ordered like EDGE_FEATURE_NAMES.
     Returns:
-        Edge type name, or "unknown" when no known feature is active.
+        Active edge type names, or ["unknown"] when no known feature is active.
     Side effects:
         None.
     """
+
+    edge_types = []
 
     for idx, name in enumerate(
         EDGE_FEATURE_NAMES
     ):
 
         if features[idx] == 1:
-            return name
+            edge_types.append(name)
 
-    return "unknown"
+    return edge_types or ["unknown"]
+
+
+def edge_type_from_features(features):
+    """Return the first active edge type for color compatibility.
+
+    Parameters:
+        features: Edge feature vector ordered like EDGE_FEATURE_NAMES.
+    Returns:
+        First active edge type name, or "unknown".
+    Side effects:
+        None.
+    """
+
+    return edge_types_from_features(features)[0]
+
+
+def should_show_edge(
+    edge_types,
+    show_legal,
+    show_attack,
+    show_defend,
+    show_pin,
+    show_check,
+):
+    """Check whether any active edge type is enabled in the UI filters.
+
+    Parameters:
+        edge_types: Active edge type names for one graph edge.
+        show_legal: Whether legal-move edges are displayed.
+        show_attack: Whether attack edges are displayed.
+        show_defend: Whether defend edges are displayed.
+        show_pin: Whether pin edges are displayed.
+        show_check: Whether check-line edges are displayed.
+    Returns:
+        True when at least one active edge type is enabled.
+    Side effects:
+        None.
+    """
+
+    enabled = {
+        "legal_move": show_legal,
+        "attack": show_attack,
+        "defend": show_defend,
+        "pin": show_pin,
+        "check_line": show_check,
+    }
+
+    return any(
+        enabled.get(edge_type, False)
+        for edge_type in edge_types
+    )
 
 
 def build_svg_arrows(
@@ -235,43 +288,21 @@ def build_svg_arrows(
             .tolist()
         )
 
-        edge_type = edge_type_from_features(
+        edge_types = edge_types_from_features(
             features
         )
 
-        # =================================================
-        # FILTERS
-        # =================================================
-
-        if (
-            edge_type == "legal_move"
-            and not show_legal
+        if not should_show_edge(
+            edge_types,
+            show_legal,
+            show_attack,
+            show_defend,
+            show_pin,
+            show_check,
         ):
             continue
 
-        if (
-            edge_type == "attack"
-            and not show_attack
-        ):
-            continue
-
-        if (
-            edge_type == "defend"
-            and not show_defend
-        ):
-            continue
-
-        if (
-            edge_type == "pin"
-            and not show_pin
-        ):
-            continue
-
-        if (
-            edge_type == "check_line"
-            and not show_check
-        ):
-            continue
+        edge_type = edge_types[0]
 
         arrows.append(
 
@@ -607,43 +638,21 @@ if view_mode in ["Graph", "Both"]:
             .tolist()
         )
 
-        edge_type = edge_type_from_features(
+        edge_types = edge_types_from_features(
             features
         )
 
-        # =================================================
-        # FILTERS
-        # =================================================
-
-        if (
-            edge_type == "legal_move"
-            and not show_legal
+        if not should_show_edge(
+            edge_types,
+            show_legal,
+            show_attack,
+            show_defend,
+            show_pin,
+            show_check,
         ):
             continue
 
-        if (
-            edge_type == "attack"
-            and not show_attack
-        ):
-            continue
-
-        if (
-            edge_type == "defend"
-            and not show_defend
-        ):
-            continue
-
-        if (
-            edge_type == "pin"
-            and not show_pin
-        ):
-            continue
-
-        if (
-            edge_type == "check_line"
-            and not show_check
-        ):
-            continue
+        edge_type = edge_types[0]
 
         edges.append(
 
@@ -655,7 +664,7 @@ if view_mode in ["Graph", "Both"]:
                     edge_type
                 ],
 
-                title=edge_type,
+                title=", ".join(edge_types),
 
                 width=1.5,
 
