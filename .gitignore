@@ -4,6 +4,7 @@ data/
 *.zst
 *.pgn
 __pycache__/
+.pytest_cache
 
 artifacts/
 __MACOSX/
