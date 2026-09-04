@@ -77,7 +77,7 @@ def extract_global_features(board):
     Returns
     -------
     torch.FloatTensor
-        shape = [GLOBAL_FEATURE_DIM]
+        shape = [1, GLOBAL_FEATURE_DIM]
     """
 
     # =============================================
@@ -113,12 +113,12 @@ def extract_global_features(board):
     )
 
     features = torch.tensor(
-        [
+        [[
             side_to_move,
             is_check,
             fullmove_number,
             halfmove_clock,
-        ],
+        ]],
         dtype=torch.float
     )
 
@@ -204,14 +204,20 @@ def build_graph(
     # NODE FEATURES
     # =============================================
 
-    x = extract_node_features(fen)
+    x = extract_node_features(
+        fen,
+        board=board,
+    )
 
     # =============================================
     # EDGE FEATURES
     # =============================================
 
     edge_index, edge_attr = (
-        extract_edge_features(fen)
+        extract_edge_features(
+            fen,
+            board=board,
+        )
     )
 
     # =============================================

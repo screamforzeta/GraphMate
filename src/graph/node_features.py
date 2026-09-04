@@ -213,7 +213,41 @@ def count_attackers(board, square, color):
     return float(len(attackers))
 
 
-def compute_legal_mobility(board, square):
+def compute_legal_mobility_map(board):
+    """
+    Count legal moves by origin square for both colors.
+
+    Parameters
+    ----------
+    board : chess.Board
+
+    Returns
+    -------
+    dict[int, float]
+
+    Notes
+    -----
+    The input board is copied before changing the turn, so the original
+    position is not mutated.
+    """
+
+    mobility_by_square = {
+        square: 0.0
+        for square in chess.SQUARES
+    }
+
+    for color in (chess.WHITE, chess.BLACK):
+
+        board_copy = board.copy(stack=False)
+        board_copy.turn = color
+
+        for move in board_copy.legal_moves:
+            mobility_by_square[move.from_square] += 1.0
+
+    return mobility_by_square
+
+
+def compute_legal_mobility(board, square, mobility_by_square=None):
     """
     Count legal moves originating from square.
 
@@ -221,20 +255,24 @@ def compute_legal_mobility(board, square):
     ----------
     board : chess.Board
     square : int
+    mobility_by_square : dict[int, float] or None
 
     Returns
     -------
     float
     """
 
-    mobility = 0
+    if mobility_by_square is None:
+        mobility_by_square = compute_legal_mobility_map(
+            board
+        )
 
-    for move in board.legal_moves:
-
-        if move.from_square == square:
-            mobility += 1
-
-    return float(mobility)
+    return float(
+        mobility_by_square.get(
+            square,
+            0.0
+        )
+    )
 
 
 def is_piece_pinned(board, square):
@@ -270,13 +308,14 @@ def is_piece_pinned(board, square):
 # FEATURE EXTRACTION
 # =========================================================
 
-def extract_node_features(fen):
+def extract_node_features(fen, board=None):
     """
     Extract node feature tensor from FEN.
 
     Parameters
     ----------
     fen : str
+    board : chess.Board or None
 
     Returns
     -------
@@ -284,9 +323,14 @@ def extract_node_features(fen):
         shape = [64, NODE_FEATURE_DIM]
     """
 
-    board = chess.Board(fen)
+    if board is None:
+        board = chess.Board(fen)
 
     node_features = []
+
+    mobility_by_square = compute_legal_mobility_map(
+        board
+    )
 
     # =====================================================
     # ITERATE OVER ALL 64 SQUARES
@@ -333,7 +377,8 @@ def extract_node_features(fen):
 
         legal_mobility = compute_legal_mobility(
             board,
-            square
+            square,
+            mobility_by_square,
         )
 
         pinned = is_piece_pinned(

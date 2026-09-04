@@ -35,6 +35,7 @@ Run:
 from pathlib import Path
 import json
 
+import chess
 import pandas as pd
 import torch
 from tqdm import tqdm
@@ -98,6 +99,10 @@ For full dataset:
 
 MAX_SAMPLES = 5000
 
+# OOV targets are counted explicitly and excluded from current class-index
+# datasets, because the move vocabulary is intentionally train-only.
+SKIP_OOV_TARGETS = True
+
 
 # =========================================================
 # LOAD MOVE ENCODER
@@ -146,7 +151,8 @@ def build_pyg_dataset(
 
     Returns
     -------
-    None
+    dict
+        Summary counts for generated graphs and skipped/error rows.
 
     Side effects
     ------------
@@ -188,7 +194,12 @@ def build_pyg_dataset(
 
     graphs = []
 
-    failed_graphs = 0
+    error_counts = {
+        "invalid_fen": 0,
+        "invalid_lichess_sequence": 0,
+        "oov_targets": 0,
+        "other_errors": 0,
+    }
 
     # =============================================
     # BUILD GRAPHS
@@ -202,6 +213,25 @@ def build_pyg_dataset(
     ):
 
         try:
+            if row.TargetMove not in move_to_idx:
+                error_counts["oov_targets"] += 1
+                print(
+                    f"[WARNING] OOV target for "
+                    f"{row.PuzzleId}: {row.TargetMove}"
+                )
+
+                if SKIP_OOV_TARGETS:
+                    continue
+
+            try:
+                chess.Board(row.FEN)
+            except Exception:
+                error_counts["invalid_fen"] += 1
+                print(
+                    f"[WARNING] Invalid FEN for "
+                    f"{row.PuzzleId}"
+                )
+                continue
 
             graph = build_graph(
                 fen=row.FEN,
@@ -229,7 +259,14 @@ def build_pyg_dataset(
 
         except Exception as e:
 
-            failed_graphs += 1
+            message = str(e)
+
+            if "Unknown target move" in message:
+                error_counts["oov_targets"] += 1
+            elif "illegal" in message.lower():
+                error_counts["invalid_lichess_sequence"] += 1
+            else:
+                error_counts["other_errors"] += 1
 
             print(
                 f"[WARNING] Failed graph: "
@@ -257,14 +294,42 @@ def build_pyg_dataset(
     print("DATASET SUMMARY")
     print("=" * 50)
 
+    input_samples = len(df)
+    total_errors = sum(error_counts.values())
+
     print(
-        f"[INFO] Successful graphs: "
+        f"[INFO] Input samples: "
+        f"{input_samples}"
+    )
+
+    print(
+        f"[INFO] Graphs generated: "
         f"{len(graphs)}"
     )
 
     print(
-        f"[INFO] Failed graphs: "
-        f"{failed_graphs}"
+        f"[INFO] Invalid Lichess sequences: "
+        f"{error_counts['invalid_lichess_sequence']}"
+    )
+
+    print(
+        f"[INFO] Invalid FEN: "
+        f"{error_counts['invalid_fen']}"
+    )
+
+    print(
+        f"[INFO] OOV targets: "
+        f"{error_counts['oov_targets']}"
+    )
+
+    print(
+        f"[INFO] Other errors: "
+        f"{error_counts['other_errors']}"
+    )
+
+    print(
+        f"[INFO] Total skipped/errors: "
+        f"{total_errors}"
     )
 
     if len(graphs) > 0:
@@ -293,6 +358,17 @@ def build_pyg_dataset(
 
     print(f"\n[INFO] Saved to:")
     print(f"[INFO] {output_path}")
+
+    return {
+        "input_samples": input_samples,
+        "graphs_generated": len(graphs),
+        "invalid_lichess_sequences": error_counts[
+            "invalid_lichess_sequence"
+        ],
+        "invalid_fen": error_counts["invalid_fen"],
+        "oov_targets": error_counts["oov_targets"],
+        "other_errors": error_counts["other_errors"],
+    }
 
 
 # =========================================================

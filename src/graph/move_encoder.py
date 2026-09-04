@@ -26,6 +26,14 @@ INPUT_CSV = Path(
     "data/final/puzzles/train.csv"
 )
 
+VAL_CSV = Path(
+    "data/final/puzzles/val.csv"
+)
+
+TEST_CSV = Path(
+    "data/final/puzzles/test.csv"
+)
+
 OUTPUT_DIR = Path("artifacts")
 OUTPUT_DIR.mkdir(
     parents=True,
@@ -48,6 +56,48 @@ STATS_FILE = (
 # =========================================================
 # BUILD ENCODER
 # =========================================================
+
+def compute_oov_stats(csv_path, move_to_idx):
+    """Compute target moves missing from the training vocabulary.
+
+    Parameters:
+        csv_path: Puzzle split CSV path.
+        move_to_idx: Training-only move vocabulary.
+    Returns:
+        Dictionary with input count, OOV count, OOV percentage, and examples.
+    Side effects:
+        Reads csv_path from disk.
+    """
+
+    df = pd.read_csv(csv_path)
+
+    targets = (
+        df["TargetMove"]
+        .dropna()
+        .astype(str)
+    )
+
+    oov_targets = targets[
+        ~targets.isin(move_to_idx)
+    ]
+
+    total = len(targets)
+    oov_count = len(oov_targets)
+
+    return {
+        "split": csv_path.stem,
+        "input_targets": total,
+        "oov_targets": oov_count,
+        "oov_percentage": (
+            oov_count / total * 100
+            if total
+            else 0.0
+        ),
+        "examples": sorted(
+            oov_targets.unique().tolist()
+        )[:20],
+    }
+
 
 def build_move_encoder():
     """Build and save move-to-index and index-to-move dictionaries.
@@ -178,6 +228,23 @@ def build_move_encoder():
         ]
     }
 
+    # =====================================================
+    # LOGS
+    # =====================================================
+
+    split_oov_stats = []
+
+    for split_path in (VAL_CSV, TEST_CSV):
+        if split_path.exists():
+            split_oov_stats.append(
+                compute_oov_stats(
+                    split_path,
+                    move_to_idx,
+                )
+            )
+
+    stats["oov_stats"] = split_oov_stats
+
     with open(
         STATS_FILE,
         "w"
@@ -188,10 +255,6 @@ def build_move_encoder():
             f,
             indent=4
         )
-
-    # =====================================================
-    # LOGS
-    # =====================================================
 
     print("\n" + "=" * 50)
     print("MOVE ENCODER SUMMARY")
@@ -220,6 +283,17 @@ def build_move_encoder():
             f"{count:<8} "
             f"({percentage:.2f}%)"
         )
+
+    if split_oov_stats:
+        print("\n[INFO] OOV targets against train vocabulary:")
+
+        for split_stats in split_oov_stats:
+            print(
+                f"[INFO] {split_stats['split']}: "
+                f"{split_stats['oov_targets']}/"
+                f"{split_stats['input_targets']} "
+                f"({split_stats['oov_percentage']:.2f}%)"
+            )
 
     print("\n[INFO] Files saved:")
 

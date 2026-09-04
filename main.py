@@ -63,12 +63,9 @@ def main():
 
     # Graph section.
     move_encoder.main()
-    node_features.main()
-    edge_features.main()
-    graph_builder.main()
     pyg_dataset.main()
 
-    # Streamlit visualization is intentionally excluded from the pipeline.
+    # Manual feature/debug tests and Streamlit visualization are excluded.
 
 
 if __name__ == "__main__":

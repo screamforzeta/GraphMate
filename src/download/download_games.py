@@ -22,7 +22,7 @@ import io
 
 INPUT_URL = (
     "https://database.lichess.org/standard/"
-    "lichess_db_standard_rated_2025-01.pgn.zst"
+    "lichess_db_standard_rated_2026-07.pgn.zst"
 )
 
 OUTPUT_DIR = Path("data/raw/games")
