@@ -3,7 +3,7 @@
 Purpose:
     Check post-preprocessing invariants before model training.
 Input:
-    data/final/puzzles/*.csv, artifacts/move_*.json, and data/pyg/*.pt.
+    data/final/puzzles/*.csv, artifacts/move_*.json, and data/pyg shards.
 Output:
     Readable validation report printed to stdout.
 Run:
@@ -21,6 +21,10 @@ import pandas as pd
 import torch
 from torch_geometric.loader import DataLoader
 
+from src.graph.pyg_dataset import (
+    OUTPUT_DIR,
+    load_pyg_dataset,
+)
 
 PUZZLE_SPLITS = {
     "train": Path("data/final/puzzles/train.csv"),
@@ -28,11 +32,8 @@ PUZZLE_SPLITS = {
     "test": Path("data/final/puzzles/test.csv"),
 }
 
-PYG_SPLITS = {
-    "train": Path("data/pyg/train_graphs.pt"),
-    "val": Path("data/pyg/val_graphs.pt"),
-    "test": Path("data/pyg/test_graphs.pt"),
-}
+PYG_ROOT = OUTPUT_DIR
+PYG_SPLITS = ("train", "val", "test")
 
 MOVE_TO_IDX_PATH = Path("artifacts/move_to_idx.json")
 IDX_TO_MOVE_PATH = Path("artifacts/idx_to_move.json")
@@ -448,20 +449,21 @@ def validate_move_encoder():
     return result
 
 
-def load_graphs(path):
-    """Load a serialized PyG graph list.
+def load_graphs(split, root=PYG_ROOT):
+    """Load a PyG split from sharded or legacy storage.
 
     Parameters:
-        path: Torch .pt path.
+        split: Split name.
+        root: PyG dataset root.
     Returns:
-        Loaded graph list.
+        Dataset-like object for one split.
     Side effects:
-        Reads path from disk.
+        Reads manifest metadata or legacy graph data from disk.
     """
 
-    return torch.load(
-        path,
-        weights_only=False
+    return load_pyg_dataset(
+        root=root,
+        split=split,
     )
 
 
@@ -588,23 +590,22 @@ def merge_counts(target, source):
         target[key] += value
 
 
-def validate_pyg_split(name, path, sample_size, seed):
+def validate_pyg_split(name, sample_size, seed):
     """Validate a sampled PyG split.
 
     Parameters:
         name: Split name.
-        path: Serialized graph path.
         sample_size: Maximum graphs to validate.
         seed: Sampling seed.
     Returns:
         Dict with status, failures, and multilabel counts.
     Side effects:
-        Reads path from disk.
+        Reads graph samples from disk through the dataset loader.
     """
 
     result = {
         "name": name,
-        "path": path,
+        "path": PYG_ROOT,
         "passed": True,
         "total_graphs": 0,
         "checked_graphs": 0,
@@ -617,12 +618,13 @@ def validate_pyg_split(name, path, sample_size, seed):
         "graphs": [],
     }
 
-    if not path.exists():
+    try:
+        graphs = load_graphs(name)
+    except (FileNotFoundError, ValueError) as error:
         result["passed"] = False
-        result["failures"]["missing file"] = 1
+        result["failures"][str(error)] = 1
         return result
 
-    graphs = load_graphs(path)
     result["total_graphs"] = len(graphs)
     result["graphs"] = graphs
 
@@ -689,12 +691,9 @@ def validate_csv_pyg_consistency(split, csv_path, graphs, sample_size, seed):
 
     if len(graphs) != len(df):
         result["note"] = (
-            "Graph count differs from CSV rows; checking only graph order "
-            "against non-OOV CSV rows because OOV rows are skipped."
+            "Graph count differs from CSV rows; checking source_row_index "
+            "metadata when available because OOV/invalid rows may be skipped."
         )
-        df = df[
-            df["TargetMove"].astype(str).isin(move_to_idx)
-        ].reset_index(drop=True)
 
     limit = min(
         len(graphs),
@@ -710,7 +709,17 @@ def validate_csv_pyg_consistency(split, csv_path, graphs, sample_size, seed):
 
     for index in indices:
         graph = graphs[index]
-        row = df.iloc[index]
+        source_row_index = index
+        if hasattr(graph, "source_row_index"):
+            source_row_index = int(graph.source_row_index.item())
+
+        if source_row_index < 0 or source_row_index >= len(df):
+            result["failures"]["source_row_index out of range"] = (
+                result["failures"].get("source_row_index out of range", 0) + 1
+            )
+            continue
+
+        row = df.iloc[source_row_index]
         target_move = str(row.TargetMove)
 
         if target_move not in move_to_idx:
@@ -763,7 +772,10 @@ def validate_batching(graphs_by_split):
 
     graphs = []
     for split_graphs in graphs_by_split.values():
-        graphs.extend(split_graphs[:8])
+        for index in range(min(8, len(split_graphs))):
+            graphs.append(split_graphs[index])
+            if len(graphs) >= 8:
+                break
         if len(graphs) >= 8:
             break
 
@@ -967,11 +979,10 @@ def run_validation(csv_sample=1000, graph_sample=500, seed=42):
     pyg_results = {
         split: validate_pyg_split(
             split,
-            path,
             graph_sample,
             seed
         )
-        for split, path in PYG_SPLITS.items()
+        for split in PYG_SPLITS
     }
 
     graphs_by_split = {

@@ -4,7 +4,7 @@ Purpose:
     Verify that generated PyG chess graphs can flow through the no-timing GAT
     model, produce graph-level logits, compute loss, and run one backward pass.
 Input:
-    data/pyg/train_graphs.pt and artifacts/move_to_idx.json.
+    data/pyg sharded train split and artifacts/move_to_idx.json.
 Output:
     Printed tensor shapes, parameter count, loss, and pass/fail checks.
 Role:
@@ -17,6 +17,7 @@ import json
 import torch
 from torch_geometric.loader import DataLoader
 
+from src.graph.pyg_dataset import load_pyg_dataset
 from src.models import (
     ChessGATNoTiming,
     count_trainable_parameters,
@@ -24,7 +25,6 @@ from src.models import (
 
 
 MOVE_ENCODER_PATH = Path("artifacts/move_to_idx.json")
-TRAIN_GRAPHS_PATH = Path("data/pyg/train_graphs.pt")
 SMOKE_BATCH_SIZE = 8
 
 
@@ -66,11 +66,11 @@ def run_smoke_test():
     print(f"device: {device}")
 
     num_classes = load_num_classes()
-    graphs = torch.load(
-        TRAIN_GRAPHS_PATH,
-        weights_only=False,
-    )
-    graphs = graphs[:SMOKE_BATCH_SIZE]
+    dataset = load_pyg_dataset(split="train")
+    graphs = [
+        dataset[index]
+        for index in range(min(SMOKE_BATCH_SIZE, len(dataset)))
+    ]
 
     loader = DataLoader(
         graphs,

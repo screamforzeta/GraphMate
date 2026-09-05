@@ -4,7 +4,7 @@ Purpose:
     Run deterministic trial-based adaptive training for the no-timing chess GAT
     baseline without using the test split for trial selection.
 Input:
-    data/pyg train/validation/test graph files and artifacts/move_to_idx.json.
+    data/pyg sharded train/validation/test splits and artifacts/move_to_idx.json.
 Output:
     Adaptive training artifacts under artifacts/adaptive_training/.
 Role:
@@ -16,9 +16,6 @@ import argparse
 import torch
 
 from src.train_chess_gat import (
-    TEST_GRAPHS_PATH,
-    TRAIN_GRAPHS_PATH,
-    VAL_GRAPHS_PATH,
     limit_graphs,
     load_graphs,
     load_move_vocab_size,
@@ -63,15 +60,15 @@ def main():
 
     num_classes = load_move_vocab_size()
     train_graphs = limit_graphs(
-        load_graphs(TRAIN_GRAPHS_PATH),
+        load_graphs("train"),
         args.limit_train_graphs,
     )
     val_graphs = limit_graphs(
-        load_graphs(VAL_GRAPHS_PATH),
+        load_graphs("val"),
         args.limit_val_graphs,
     )
     test_graphs = limit_graphs(
-        load_graphs(TEST_GRAPHS_PATH),
+        load_graphs("test"),
         args.limit_test_graphs,
     )
 

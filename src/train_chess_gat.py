@@ -2,10 +2,9 @@
 
 Purpose:
     Train the CURRENT_PYG_BASELINE no-timing chess GAT on generated PyG graph
-    files, save the best validation checkpoint, reload it, and test once.
+    shards, save the best validation checkpoint, reload it, and test once.
 Input:
-    data/pyg/train_graphs.pt, val_graphs.pt, test_graphs.pt, and
-    artifacts/move_to_idx.json.
+    data/pyg/manifest.json, split shards, and artifacts/move_to_idx.json.
 Output:
     artifacts/checkpoints/chess_gat_no_timing_best.pt and
     artifacts/training/chess_gat_no_timing_history.json.
@@ -18,16 +17,19 @@ import argparse
 import json
 
 import torch
+from torch.utils.data import Subset
 
+from src.graph.pyg_dataset import (
+    OUTPUT_DIR,
+    load_pyg_dataset,
+)
 from src.training import (
     ChessGATTrainingConfig,
     train_model,
 )
 
 
-TRAIN_GRAPHS_PATH = Path("data/pyg/train_graphs.pt")
-VAL_GRAPHS_PATH = Path("data/pyg/val_graphs.pt")
-TEST_GRAPHS_PATH = Path("data/pyg/test_graphs.pt")
+PYG_DATASET_ROOT = OUTPUT_DIR
 MOVE_ENCODER_PATH = Path("artifacts/move_to_idx.json")
 
 
@@ -114,25 +116,21 @@ def load_move_vocab_size(path=MOVE_ENCODER_PATH):
     return len(move_to_idx)
 
 
-def load_graphs(path):
-    """Load a PyG graph list from disk.
+def load_graphs(split, root=PYG_DATASET_ROOT):
+    """Load a PyG graph dataset split from sharded storage.
 
     Parameters:
-        path: Torch .pt graph dataset path.
+        split: Dataset split name.
+        root: PyG dataset root.
     Returns:
-        List of PyG Data graphs.
+        ShardedPyGDataset, or a legacy graph list when no manifest exists.
     Side effects:
-        Reads path from disk.
+        Reads manifest metadata or a legacy .pt graph file.
     """
 
-    if not path.exists():
-        raise FileNotFoundError(
-            f"PyG dataset not found: {path}"
-        )
-
-    return torch.load(
-        path,
-        weights_only=False,
+    return load_pyg_dataset(
+        root=root,
+        split=split,
     )
 
 
@@ -143,7 +141,7 @@ def limit_graphs(graphs, limit):
         graphs: Loaded graph list.
         limit: Optional maximum graph count.
     Returns:
-        Original list or first limit graphs.
+        Original dataset or a Subset over the first limit graphs.
     Side effects:
         None.
     """
@@ -151,7 +149,10 @@ def limit_graphs(graphs, limit):
     if limit is None:
         return graphs
 
-    return graphs[:limit]
+    return Subset(
+        graphs,
+        range(min(limit, len(graphs))),
+    )
 
 
 def main():
@@ -177,15 +178,15 @@ def main():
     num_classes = load_move_vocab_size()
 
     train_graphs = limit_graphs(
-        load_graphs(TRAIN_GRAPHS_PATH),
+        load_graphs("train"),
         args.limit_train_graphs,
     )
     val_graphs = limit_graphs(
-        load_graphs(VAL_GRAPHS_PATH),
+        load_graphs("val"),
         args.limit_val_graphs,
     )
     test_graphs = limit_graphs(
-        load_graphs(TEST_GRAPHS_PATH),
+        load_graphs("test"),
         args.limit_test_graphs,
     )
 
