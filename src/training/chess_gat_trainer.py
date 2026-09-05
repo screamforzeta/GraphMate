@@ -3,8 +3,7 @@
 Purpose:
     Train, validate, checkpoint, reload, and test the no-timing chess GAT
     baseline on generated PyTorch Geometric graph datasets.
-Input:
-    Lists of PyG Data graphs, move vocabulary size, and training config.
+    PyG datasets, move vocabulary size, and training config.
 Output:
     Best checkpoint, JSON training history, and final test metrics.
 Role:
@@ -22,6 +21,10 @@ import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
 
+from src.graph.pyg_dataset import (
+    ShardAwareShuffleSampler,
+    is_sharded_dataset,
+)
 from src.models import (
     ChessGATNoTiming,
     count_trainable_parameters,
@@ -346,7 +349,7 @@ def validate_graph_splits(splits, num_classes, sample_size=8):
     """Run lightweight checks on loaded PyG graph splits.
 
     Parameters:
-        splits: Dict mapping split name to graph lists.
+        splits: Dict mapping split name to graph datasets.
         num_classes: Move vocabulary size.
         sample_size: Number of initial graphs checked per split.
     Returns:
@@ -356,12 +359,17 @@ def validate_graph_splits(splits, num_classes, sample_size=8):
     """
 
     for split_name, graphs in splits.items():
-        if not graphs:
+        if len(graphs) == 0:
             raise ValueError(
                 f"{split_name} split is empty."
             )
 
-        for graph_index, graph in enumerate(graphs[:sample_size]):
+        checked = min(
+            len(graphs),
+            sample_size,
+        )
+        for graph_index in range(checked):
+            graph = graphs[graph_index]
             prefix = f"{split_name}[{graph_index}]"
 
             for attribute in ("x", "edge_index", "edge_attr", "global_features", "y"):
@@ -523,9 +531,9 @@ def make_loaders(train_graphs, val_graphs, test_graphs, config):
     """Create PyG DataLoaders for train, validation, and test splits.
 
     Parameters:
-        train_graphs: Training graph list.
-        val_graphs: Validation graph list.
-        test_graphs: Test graph list.
+        train_graphs: Training graph dataset.
+        val_graphs: Validation graph dataset.
+        test_graphs: Test graph dataset.
         config: Training config.
     Returns:
         Tuple of train, validation, and test DataLoaders.
@@ -533,10 +541,16 @@ def make_loaders(train_graphs, val_graphs, test_graphs, config):
         None.
     """
 
+    train_sampler = (
+        ShardAwareShuffleSampler(train_graphs)
+        if is_sharded_dataset(train_graphs)
+        else None
+    )
     train_loader = DataLoader(
         train_graphs,
         batch_size=config.batch_size,
-        shuffle=True,
+        shuffle=train_sampler is None,
+        sampler=train_sampler,
         num_workers=config.num_workers,
     )
     val_loader = DataLoader(
@@ -584,9 +598,9 @@ def train_model(train_graphs, val_graphs, test_graphs, num_classes, config, devi
     """Train ChessGATNoTiming and evaluate the best checkpoint on test.
 
     Parameters:
-        train_graphs: Training PyG graph list.
-        val_graphs: Validation PyG graph list. Used for early stopping only.
-        test_graphs: Test PyG graph list. Used once after best checkpoint reload.
+        train_graphs: Training PyG graph dataset.
+        val_graphs: Validation PyG graph dataset. Used for early stopping only.
+        test_graphs: Test PyG graph dataset. Used once after best checkpoint reload.
         num_classes: Move vocabulary size.
         config: Training configuration.
         device: Torch device.

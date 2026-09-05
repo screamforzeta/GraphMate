@@ -22,6 +22,10 @@ import time
 import torch
 from torch_geometric.loader import DataLoader
 
+from src.graph.pyg_dataset import (
+    ShardAwareShuffleSampler,
+    is_sharded_dataset,
+)
 from src.training.chess_gat_trainer import (
     ChessGATTrainingConfig,
     EarlyStoppingState,
@@ -124,10 +128,16 @@ def _trial_dir(output_root, trial_id):
 def _make_loader(graphs, batch_size, shuffle, num_workers):
     """Create a PyG DataLoader for adaptive trials."""
 
+    sampler = (
+        ShardAwareShuffleSampler(graphs)
+        if shuffle and is_sharded_dataset(graphs)
+        else None
+    )
     return DataLoader(
         graphs,
         batch_size=batch_size,
-        shuffle=shuffle,
+        shuffle=shuffle and sampler is None,
+        sampler=sampler,
         num_workers=num_workers,
     )
 

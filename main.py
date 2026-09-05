@@ -63,7 +63,9 @@ def main():
 
     # Graph section.
     move_encoder.main()
-    pyg_dataset.main()
+    pyg_dataset.generate_sharded_datasets(
+        overwrite=True,
+    )
 
     # Manual feature/debug tests and Streamlit visualization are excluded.
 
