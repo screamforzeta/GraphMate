@@ -21,6 +21,17 @@ from src.training.chess_gat_trainer import (
     train_one_epoch,
     validate_graph_splits,
 )
+from src.training.adaptive_controller import (
+    AdaptiveTrainingConfig,
+    TrialConfig,
+    TrialResult,
+    choose_next_trial,
+    run_adaptive_training,
+    select_best_trial,
+)
+from src.training.convergence import (
+    analyze_convergence,
+)
 from src.training.metrics import (
     compute_topk_accuracies,
 )
@@ -28,13 +39,20 @@ from src.training.metrics import (
 
 __all__ = [
     "ChessGATTrainingConfig",
+    "AdaptiveTrainingConfig",
     "EarlyStoppingState",
+    "TrialConfig",
+    "TrialResult",
+    "analyze_convergence",
     "compute_topk_accuracies",
+    "choose_next_trial",
     "evaluate",
     "load_checkpoint",
     "save_checkpoint",
     "set_seed",
     "train_model",
     "train_one_epoch",
+    "run_adaptive_training",
+    "select_best_trial",
     "validate_graph_splits",
 ]
