@@ -56,6 +56,7 @@ class ChessGATTrainingConfig:
         limit_train_graphs: Optional deterministic train subset size.
         limit_val_graphs: Optional deterministic validation subset size.
         limit_test_graphs: Optional deterministic test subset size.
+        model_dropout: Dropout used by ChessGATNoTiming.
         checkpoint_path: Best checkpoint path.
         history_path: JSON history path.
     Returns:
@@ -76,6 +77,7 @@ class ChessGATTrainingConfig:
     limit_train_graphs: int | None = None
     limit_val_graphs: int | None = None
     limit_test_graphs: int | None = None
+    model_dropout: float = 0.10
     checkpoint_path: str = str(CHECKPOINT_PATH)
     history_path: str = str(HISTORY_PATH)
 
@@ -553,11 +555,12 @@ def make_loaders(train_graphs, val_graphs, test_graphs, config):
     return train_loader, val_loader, test_loader
 
 
-def build_model(num_classes):
+def build_model(num_classes, dropout=0.10):
     """Instantiate the approved no-timing chess GAT architecture.
 
     Parameters:
         num_classes: Number of target move classes.
+        dropout: Dropout probability for the approved architecture.
     Returns:
         ChessGATNoTiming instance.
     Side effects:
@@ -573,7 +576,7 @@ def build_model(num_classes):
         global_feature_dim=4,
         classifier_hidden_dim=128,
         num_classes=num_classes,
-        dropout=0.10,
+        dropout=dropout,
     )
 
 
@@ -611,7 +614,10 @@ def train_model(train_graphs, val_graphs, test_graphs, num_classes, config, devi
         config,
     )
 
-    model = build_model(num_classes).to(device)
+    model = build_model(
+        num_classes,
+        dropout=config.model_dropout,
+    ).to(device)
     optimizer = torch.optim.Adam(
         model.parameters(),
         lr=config.learning_rate,
@@ -713,7 +719,10 @@ def train_model(train_graphs, val_graphs, test_graphs, num_classes, config, devi
         )
 
     # Final test uses the selected validation checkpoint, not last in-memory weights.
-    best_model = build_model(num_classes).to(device)
+    best_model = build_model(
+        num_classes,
+        dropout=config.model_dropout,
+    ).to(device)
     checkpoint = load_checkpoint(
         config.checkpoint_path,
         best_model,
