@@ -60,6 +60,12 @@ def parse_args():
     parser.add_argument("--limit-train-graphs", type=int, default=None)
     parser.add_argument("--limit-val-graphs", type=int, default=None)
     parser.add_argument("--limit-test-graphs", type=int, default=None)
+    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--pin-memory", action="store_true")
+    parser.add_argument("--persistent-workers", action="store_true")
+    parser.add_argument("--prefetch-factor", type=int, default=None)
+    parser.add_argument("--non-blocking", action="store_true")
+    parser.add_argument("--amp", action="store_true")
 
     return parser.parse_args()
 
@@ -196,6 +202,12 @@ def main():
         max_epochs=args.max_epochs,
         patience=args.patience,
         seed=args.seed,
+        num_workers=args.num_workers,
+        pin_memory=args.pin_memory,
+        persistent_workers=args.persistent_workers,
+        prefetch_factor=args.prefetch_factor,
+        non_blocking=args.non_blocking,
+        amp=args.amp,
         limit_train_graphs=args.limit_train_graphs,
         limit_val_graphs=args.limit_val_graphs,
         limit_test_graphs=args.limit_test_graphs,
