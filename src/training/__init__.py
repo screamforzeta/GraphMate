@@ -36,6 +36,10 @@ from src.training.convergence import (
 from src.training.metrics import (
     compute_topk_accuracies,
 )
+from src.training.progressive_controller import (
+    ProgressiveTrainingConfig,
+    run_progressive_training,
+)
 
 
 __all__ = [
@@ -44,6 +48,7 @@ __all__ = [
     "EarlyStoppingState",
     "TrialConfig",
     "TrialResult",
+    "ProgressiveTrainingConfig",
     "analyze_convergence",
     "compute_topk_accuracies",
     "choose_next_trial",
@@ -55,6 +60,7 @@ __all__ = [
     "train_model",
     "train_one_epoch",
     "run_adaptive_training",
+    "run_progressive_training",
     "select_best_trial",
     "validate_graph_splits",
 ]
