@@ -1,161 +1,39 @@
 # Progetto Damiani - Chess GNN
 
-Questo repository costruisce una pipeline Python per trasformare puzzle e partite Lichess in grafi utilizzabili da modelli Graph Neural Network.
+Pipeline Python per trasformare puzzle e partite Lichess in grafi PyTorch Geometric e addestrare modelli Graph Neural Network / Graph Attention Network su puzzle mate-in-n.
 
-L'obiettivo finale è addestrare e valutare modelli GNN/GAT su puzzle Lichess mate-in-n, usando come target la prima mossa corretta della soluzione. In una fase successiva il progetto integrerà timing sintetici, farà ablation timing vs no timing e confronterà le prestazioni con modelli LLM.
+L'obiettivo scientifico attuale è `ChessGATNoTiming`: un GAT graph-level che predice la prima mossa corretta della soluzione di un puzzle. In seguito verrà progettata una variante timing-aware, con confronto timing/no timing, valutazione per MateDepth e confronto con modelli LLM.
 
 ## Stato Attuale
 
-La pipeline implementata copre:
+Implementato:
 
-- download del database puzzle Lichess in formato `.csv.zst`;
-- download streaming di PGN Lichess con campionamento diretto, senza scaricare l'intero archivio mensile da circa 30GB;
-- preprocessing dei puzzle mate-in-1 fino a mate-in-5;
-- parsing delle partite PGN;
-- cleaning delle partite;
-- cleaning dei puzzle;
+- download puzzle Lichess `.csv.zst`;
+- download streaming PGN Lichess con campionamento senza scaricare tutto l'archivio mensile;
+- preprocessing puzzle mate-in-1 fino a mate-in-5;
+- parsing e cleaning partite;
+- cleaning puzzle;
 - split train/validation/test;
-- encoding delle mosse;
-- estrazione delle feature dei nodi;
-- estrazione delle feature degli archi;
-- costruzione dei grafi PyTorch Geometric;
-- generazione dei dataset PyG serializzati;
-- debugger Streamlit con visualizzazione del grafo e della scacchiera.
+- vocabulary mosse train-only;
+- feature nodi e archi;
+- graph builder PyG;
+- dataset PyG sharded completo;
+- validator rappresentazione;
+- modello `ChessGATNoTiming`;
+- trainer standard, adaptive storico, benchmark runtime e progressive training;
+- debugger Streamlit standalone per grafo/scacchiera.
 
-## Struttura Cartelle
+Non implementato: Model B timing-aware, legal move masking, nuove feature temporali, valutazione MateDepth dedicata e confronto LLM.
 
-```text
-.
-├── main.py
-├── README.md
-├── artifacts/
-│   ├── move_to_idx.json
-│   ├── idx_to_move.json
-│   └── move_encoder_stats.json
-├── src/
-│   ├── download/
-│   │   ├── download_games.py
-│   │   └── download_puzzles.py
-│   ├── preprocess/
-│   │   ├── preprocess_puzzles.py
-│   │   ├── parse_games.py
-│   │   ├── clean_games.py
-│   │   ├── clean_puzzles.py
-│   │   ├── prepare_games_dataset.py
-│   │   └── prepare_puzzles_dataset.py
-│   └── graph/
-│       ├── move_encoder.py
-│       ├── node_features.py
-│       ├── edge_features.py
-│       ├── graph_builder.py
-│       ├── pyg_dataset.py
-│       └── debug/
-│           └── streamlit_graph_debugger.py
-└── TimeGNN-main/
-```
+## Documentazione
 
-`TimeGNN-main/` è trattata come libreria esterna/vendor e non fa parte del codice sviluppato direttamente in questa pipeline.
+- [Architettura del progetto](generic_info/project_architecture.md): come sono organizzati moduli, pipeline, dati, training e artifact.
+- [Scelte architetturali](generic_info/architectural_choices.md): perché sono state prese le principali decisioni progettuali.
+- [Analisi TimeGNN](generic_info/timegnn_info.md): audit della libreria esterna `TimeGNN-main/`.
+- [Guida training TimeGNN/GNN](generic_info/timegnn_gnn_training_guide.md): note di integrazione future.
+- [Piano architettura Chess GAT](generic_info/chess_gat_architecture_plan.md): piano tecnico del modello chess-specific.
 
-## Pipeline Completa
-
-Il comando principale esegue gli step in sequenza:
-
-```bash
-python3 main.py
-```
-
-La pipeline scarica i dati raw, crea i CSV processati/finali, costruisce la vocabulary delle mosse, genera le feature di nodi e archi, costruisce oggetti `torch_geometric.data.Data` e salva i dataset PyG in `data/pyg/`.
-
-Per i puzzle Lichess, la colonna `Moves` viene interpretata così: `Moves[0]` è la mossa che porta dalla FEN originale alla posizione effettivamente mostrata al solver/modello; `Moves[1]` è la prima mossa della soluzione e diventa `TargetMove`. Il dataset finale conserva `OriginalFEN` per debug e usa `FEN` come posizione trasformata dopo `Moves[0]`.
-
-## Debugger Streamlit
-
-Il debugger è un'applicazione standalone:
-
-```bash
-streamlit run src/graph/debug/streamlit_graph_debugger.py
-```
-
-Non deve essere importato in `main.py`, perché Streamlit esegue codice UI già in fase di import.
-
-## Rappresentazione del Grafo
-
-Ogni posizione è rappresentata come grafo PyTorch Geometric:
-
-- 64 nodi, uno per ogni casella della scacchiera;
-- `edge_index` sparso PyG, non una matrice di adiacenza;
-- `edge_attr` multilabel per descrivere le relazioni tra caselle, con un solo edge aggregato per coppia `(src, dst)`;
-- oggetto finale: `Data(x, edge_index, edge_attr, y, global_features)`.
-
-`global_features` è salvato con shape `[1, 4]` per ogni grafo, così il batching PyG produce un tensore `[batch_size, 4]`.
-
-## Feature Nodi
-
-Ogni nodo/casella contiene:
-
-- piece one-hot: pawn, knight, bishop, rook, queen, king;
-- color;
-- occupied;
-- normalized row;
-- normalized column;
-- attacked_by_white;
-- attacked_by_black;
-- legal_mobility, calcolata per entrambi i colori senza modificare permanentemente la board;
-- is_pinned;
-- piece_value.
-
-## Feature Archi
-
-Ogni arco può codificare:
-
-- legal_move;
-- attack;
-- defend;
-- pin;
-- check_line.
-
-## Target
-
-`TargetMove` è la prima mossa UCI della soluzione del puzzle Lichess, cioè `Moves[1]` dopo aver applicato `Moves[0]` alla FEN originale.
-
-`move_to_idx` viene costruito esclusivamente sul training set, così la vocabulary delle classi dipende solo dai dati di train. Se `artifacts/move_to_idx.json` e `artifacts/idx_to_move.json` vengono versionati, servono a fissare una vocabulary stabile delle mosse tra generazioni del dataset, training e valutazione.
-
-I target di validation/test non presenti nella vocabulary del training set vengono conteggiati come OOV durante la generazione PyG e non vengono aggiunti alla vocabulary, per evitare leakage.
-
-## Dipendenze Principali
-
-Le librerie principali usate dal progetto sono:
-
-- Python 3;
-- pandas;
-- requests;
-- tqdm;
-- zstandard;
-- python-chess;
-- scikit-learn;
-- torch;
-- torch-geometric;
-- streamlit;
-- streamlit-agraph.
-
-## Installazione
-
-Creare e attivare un ambiente virtuale:
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-Installare le dipendenze principali:
-
-```bash
-pip install pandas requests tqdm zstandard python-chess scikit-learn torch torch-geometric streamlit streamlit-agraph
-```
-
-Nota: l'installazione di `torch` e `torch-geometric` può dipendere dalla versione di Python, dal sistema operativo e dall'eventuale supporto CUDA.
-
-## Esecuzione
+## Comandi Principali
 
 Pipeline completa:
 
@@ -163,40 +41,104 @@ Pipeline completa:
 python3 main.py
 ```
 
-Debugger grafico:
+Generazione dataset PyG sharded:
+
+```bash
+./venv/bin/python -m src.graph.pyg_dataset --graphs-per-shard 1000 --overwrite
+```
+
+Validazione rappresentazioni:
+
+```bash
+./venv/bin/python -m src.validate_representations --csv-sample 1000 --graph-sample 500 --seed 42
+```
+
+Training standard:
+
+```bash
+./venv/bin/python -m src.train_chess_gat
+```
+
+Training progressivo full consigliato:
+
+```bash
+./venv/bin/python -m src.train_chess_gat_progressive \
+  --device cuda \
+  --batch-size 128 \
+  --num-workers 0 \
+  --pin-memory \
+  --non-blocking \
+  --amp \
+  --max-runtime-hours 10 \
+  --seed 42
+```
+
+Resume progressivo:
+
+```bash
+./venv/bin/python -m src.train_chess_gat_progressive --resume --device cuda
+```
+
+Benchmark runtime:
+
+```bash
+./venv/bin/python -m src.benchmark_chess_gat_training \
+  --batch-sizes 32,64,128,256 \
+  --num-workers 0,2,4 \
+  --warmup-batches 10 \
+  --benchmark-batches 100 \
+  --device cuda
+```
+
+Debugger Streamlit:
 
 ```bash
 streamlit run src/graph/debug/streamlit_graph_debugger.py
 ```
 
-Il debugger richiede che siano già stati generati almeno i dataset finali e il move encoder.
+Il debugger Streamlit è standalone e non deve essere importato in `main.py`.
 
-## File Generati e Gitignore
+## Setup
 
-I dati e gli artifact temporanei possono diventare grandi e dovrebbero essere ignorati in git quando non servono esplicitamente al versionamento:
-
-```text
-data/
-data/pyg/
-lib/
-__pycache__/
-*.pyc
-.streamlit/
-graph_visualization.html
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-Aggiungere inoltre eventuali file temporanei prodotti durante esperimenti, training o debug.
+Se `torch` o `torch-geometric` richiedono wheel specifiche CUDA, seguire le istruzioni ufficiali per la piattaforma usata.
 
-## Lavori Futuri
+## Dati e Artifact
 
-- validazione approfondita dei grafi;
-- generazione dataset PyG completo;
-- baseline MLP;
-- baseline GCN;
-- implementazione GAT;
-- integrazione della libreria TimeGNN;
-- generazione timing sintetici;
-- studio timing vs no timing;
-- valutazione per MateDepth;
-- confronto con modelli LLM;
-- stesura report finale.
+I dati generati sono sotto `data/`. I dataset PyG sono sharded:
+
+```text
+data/pyg/
+  manifest.json
+  train/shard_00000.pt ...
+  val/shard_00000.pt ...
+  test/shard_00000.pt ...
+```
+
+Conteggi attuali:
+
+- train: 68.958 grafi;
+- validation: 8.612 grafi;
+- test: 8.610 grafi.
+
+`artifacts/move_to_idx.json` e `artifacts/idx_to_move.json`, se versionati, fissano la vocabulary delle mosse. La vocabulary è costruita solo sul train set per evitare leakage; target OOV di validation/test vengono esclusi dalla rappresentazione PyG e conteggiati.
+
+## Test
+
+```bash
+./venv/bin/python -m pytest -q
+./venv/bin/python -m compileall -q main.py src tests
+```
+
+Stato dell'audit corrente: `89 passed, 2 skipped`; `compileall` passa.
+
+## Note Repository
+
+`TimeGNN-main/` è codice esterno/vendor/reference. Non viene modificato dalla pipeline del progetto.
+
+`data/`, `artifacts/`, cache Python, `.pytest_cache`, build temporanee e file `.pt.tmp` sono ignorati in `.gitignore` perché generati o potenzialmente pesanti.
