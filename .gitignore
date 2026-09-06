@@ -3,8 +3,14 @@ venv/
 data/
 *.zst
 *.pgn
+*.pyc
 __pycache__/
 .pytest_cache
+.streamlit/
+graph_visualization.html
+*.pt.tmp
+data/pyg_building/
+lib/
 
 artifacts/
 __MACOSX/
