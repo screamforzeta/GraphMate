@@ -55,6 +55,11 @@ class ChessGATTrainingConfig:
         weight_decay: Adam weight decay.
         seed: Random seed for reproducibility.
         num_workers: DataLoader worker count.
+        pin_memory: Whether DataLoader should allocate pinned host memory.
+        persistent_workers: Keep DataLoader workers alive across epochs.
+        prefetch_factor: Number of batches prefetched by each worker.
+        non_blocking: Use non-blocking device transfers when possible.
+        amp: Enable CUDA automatic mixed precision.
         top_k: Top-k accuracy values.
         limit_train_graphs: Optional deterministic train subset size.
         limit_val_graphs: Optional deterministic validation subset size.
@@ -76,6 +81,11 @@ class ChessGATTrainingConfig:
     weight_decay: float = 0.0
     seed: int = 42
     num_workers: int = 0
+    pin_memory: bool = False
+    persistent_workers: bool = False
+    prefetch_factor: int | None = None
+    non_blocking: bool = False
+    amp: bool = False
     top_k: tuple[int, ...] = (1, 3, 5)
     limit_train_graphs: int | None = None
     limit_val_graphs: int | None = None
@@ -248,7 +258,47 @@ def _finalize_metrics(totals, top_k):
     return metrics
 
 
-def train_one_epoch(model, loader, criterion, optimizer, device, top_k=(1,)):
+def _effective_non_blocking(device, non_blocking):
+    """Return True only when async transfer can be useful."""
+
+    return bool(non_blocking and torch.device(device).type == "cuda")
+
+
+def _amp_enabled(device, amp):
+    """Return True only for requested CUDA AMP."""
+
+    return bool(amp and torch.device(device).type == "cuda")
+
+
+def _move_batch_to_device(batch, device, non_blocking=False):
+    """Move a PyG batch to device with optional non-blocking transfer."""
+
+    return batch.to(
+        device,
+        non_blocking=_effective_non_blocking(device, non_blocking),
+    )
+
+
+def make_grad_scaler(device, amp=False):
+    """Create a GradScaler enabled only for CUDA AMP."""
+
+    return torch.amp.GradScaler(
+        "cuda",
+        enabled=_amp_enabled(device, amp),
+    )
+
+
+def train_one_epoch(
+    model,
+    loader,
+    criterion,
+    optimizer,
+    device,
+    top_k=(1,),
+    non_blocking=False,
+    amp=False,
+    scaler=None,
+):
     """Run one training epoch.
 
     Parameters:
@@ -258,6 +308,9 @@ def train_one_epoch(model, loader, criterion, optimizer, device, top_k=(1,)):
         optimizer: Adam optimizer.
         device: Torch device.
         top_k: Top-k values to accumulate.
+        non_blocking: Use non-blocking transfer when CUDA pinned memory exists.
+        amp: Enable CUDA autocast for forward/loss.
+        scaler: Optional GradScaler used for AMP backward/update.
     Returns:
         Dict with loss, top-k accuracies, and example count.
     Side effects:
@@ -266,24 +319,43 @@ def train_one_epoch(model, loader, criterion, optimizer, device, top_k=(1,)):
 
     model.train()
     totals = _empty_metric_totals(top_k)
+    use_amp = _amp_enabled(device, amp)
+    if scaler is None:
+        scaler = make_grad_scaler(
+            device,
+            amp=use_amp,
+        )
 
     for batch in loader:
-        batch = batch.to(device)
+        batch = _move_batch_to_device(
+            batch,
+            device,
+            non_blocking=non_blocking,
+        )
 
         optimizer.zero_grad()
-        logits = model(batch)
-        loss = criterion(
-            logits,
-            batch.y,
-        )
+        with torch.amp.autocast(
+            device_type=torch.device(device).type,
+            enabled=use_amp,
+        ):
+            logits = model(batch)
+            loss = criterion(
+                logits,
+                batch.y,
+            )
 
         if not torch.isfinite(loss):
             raise RuntimeError(
                 "Non-finite training loss encountered."
             )
 
-        loss.backward()
-        optimizer.step()
+        if use_amp:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
 
         _update_metric_totals(
             totals,
@@ -299,7 +371,15 @@ def train_one_epoch(model, loader, criterion, optimizer, device, top_k=(1,)):
     )
 
 
-def evaluate(model, loader, criterion, device, top_k=(1, 3, 5)):
+def evaluate(
+    model,
+    loader,
+    criterion,
+    device,
+    top_k=(1, 3, 5),
+    non_blocking=False,
+    amp=False,
+):
     """Evaluate a model without updating parameters.
 
     Parameters:
@@ -308,6 +388,8 @@ def evaluate(model, loader, criterion, device, top_k=(1, 3, 5)):
         criterion: CrossEntropyLoss.
         device: Torch device.
         top_k: Top-k values to report.
+        non_blocking: Use non-blocking transfer when CUDA pinned memory exists.
+        amp: Enable CUDA autocast for forward/loss.
     Returns:
         Dict with loss, top-k accuracies, and example count.
     Side effects:
@@ -316,15 +398,24 @@ def evaluate(model, loader, criterion, device, top_k=(1, 3, 5)):
 
     model.eval()
     totals = _empty_metric_totals(top_k)
+    use_amp = _amp_enabled(device, amp)
 
     with torch.no_grad():
         for batch in loader:
-            batch = batch.to(device)
-            logits = model(batch)
-            loss = criterion(
-                logits,
-                batch.y,
+            batch = _move_batch_to_device(
+                batch,
+                device,
+                non_blocking=non_blocking,
             )
+            with torch.amp.autocast(
+                device_type=torch.device(device).type,
+                enabled=use_amp,
+            ):
+                logits = model(batch)
+                loss = criterion(
+                    logits,
+                    batch.y,
+                )
 
             if not torch.isfinite(loss):
                 raise RuntimeError(
@@ -541,6 +632,27 @@ def make_loaders(train_graphs, val_graphs, test_graphs, config):
         None.
     """
 
+    if config.persistent_workers and config.num_workers <= 0:
+        raise ValueError(
+            "persistent_workers=True requires num_workers > 0."
+        )
+    if config.prefetch_factor is not None and config.num_workers <= 0:
+        raise ValueError(
+            "prefetch_factor requires num_workers > 0."
+        )
+
+    loader_kwargs = {
+        "num_workers": config.num_workers,
+        "pin_memory": config.pin_memory,
+        "persistent_workers": (
+            config.persistent_workers
+            if config.num_workers > 0
+            else False
+        ),
+    }
+    if config.num_workers > 0:
+        loader_kwargs["prefetch_factor"] = config.prefetch_factor
+
     train_sampler = (
         ShardAwareShuffleSampler(train_graphs)
         if is_sharded_dataset(train_graphs)
@@ -551,19 +663,19 @@ def make_loaders(train_graphs, val_graphs, test_graphs, config):
         batch_size=config.batch_size,
         shuffle=train_sampler is None,
         sampler=train_sampler,
-        num_workers=config.num_workers,
+        **loader_kwargs,
     )
     val_loader = DataLoader(
         val_graphs,
         batch_size=config.batch_size,
         shuffle=False,
-        num_workers=config.num_workers,
+        **loader_kwargs,
     )
     test_loader = DataLoader(
         test_graphs,
         batch_size=config.batch_size,
         shuffle=False,
-        num_workers=config.num_workers,
+        **loader_kwargs,
     )
 
     return train_loader, val_loader, test_loader
@@ -638,6 +750,10 @@ def train_model(train_graphs, val_graphs, test_graphs, num_classes, config, devi
         weight_decay=config.weight_decay,
     )
     criterion = torch.nn.CrossEntropyLoss()
+    scaler = make_grad_scaler(
+        device,
+        amp=config.amp,
+    )
 
     print("ChessGATNoTiming training")
     print("baseline: CURRENT_PYG_BASELINE")
@@ -647,6 +763,12 @@ def train_model(train_graphs, val_graphs, test_graphs, num_classes, config, devi
     print(f"test graphs: {len(test_graphs):,}")
     print(f"num_classes: {num_classes:,}")
     print(f"trainable_parameters: {count_trainable_parameters(model):,}")
+    print(f"num_workers: {config.num_workers}")
+    print(f"pin_memory: {config.pin_memory}")
+    print(f"persistent_workers: {config.persistent_workers}")
+    print(f"prefetch_factor: {config.prefetch_factor}")
+    print(f"non_blocking: {config.non_blocking}")
+    print(f"amp: {config.amp} (enabled={_amp_enabled(device, config.amp)})")
     print(f"random_top1 ~= {1 / num_classes:.6f}")
     print("test set discipline: test is used only after best checkpoint reload")
 
@@ -668,6 +790,9 @@ def train_model(train_graphs, val_graphs, test_graphs, num_classes, config, devi
             optimizer,
             device,
             top_k=(1,),
+            non_blocking=config.non_blocking,
+            amp=config.amp,
+            scaler=scaler,
         )
         val_metrics = evaluate(
             model,
@@ -675,6 +800,8 @@ def train_model(train_graphs, val_graphs, test_graphs, num_classes, config, devi
             criterion,
             device,
             top_k=config.top_k,
+            non_blocking=config.non_blocking,
+            amp=config.amp,
         )
 
         epoch_duration = time.perf_counter() - epoch_start
@@ -748,6 +875,8 @@ def train_model(train_graphs, val_graphs, test_graphs, num_classes, config, devi
         criterion,
         device,
         top_k=config.top_k,
+        non_blocking=config.non_blocking,
+        amp=config.amp,
     )
 
     total_training_time = time.perf_counter() - total_start

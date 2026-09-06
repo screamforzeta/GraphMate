@@ -135,6 +135,9 @@ class ShardedPyGDataset(Dataset):
             )
 
         self._cache = OrderedDict()
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.shard_load_count = 0
 
     def __len__(self):
         """Return the number of graphs in this split."""
@@ -170,11 +173,14 @@ class ShardedPyGDataset(Dataset):
         """Load one shard using the small per-process LRU cache."""
 
         if shard_index in self._cache:
+            self.cache_hits += 1
             self._cache.move_to_end(shard_index)
             return self._cache[shard_index]
 
+        self.cache_misses += 1
         shard_path = self.root / self.shards[shard_index]["file"]
         graphs = torch.load(shard_path, weights_only=False)
+        self.shard_load_count += 1
         self._cache[shard_index] = graphs
         self._cache.move_to_end(shard_index)
 
@@ -182,6 +188,24 @@ class ShardedPyGDataset(Dataset):
             self._cache.popitem(last=False)
 
         return graphs
+
+    def cache_stats(self):
+        """Return current shard-cache counters for benchmark/debug use."""
+
+        total = self.cache_hits + self.cache_misses
+        return {
+            "cache_hits": self.cache_hits,
+            "cache_misses": self.cache_misses,
+            "shard_load_count": self.shard_load_count,
+            "cache_hit_rate": self.cache_hits / total if total else None,
+        }
+
+    def reset_cache_stats(self):
+        """Reset shard-cache counters without clearing cached shard objects."""
+
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.shard_load_count = 0
 
 
 class ShardAwareShuffleSampler(Sampler):

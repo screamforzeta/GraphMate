@@ -31,6 +31,7 @@ from src.training.chess_gat_trainer import (
     EarlyStoppingState,
     build_model,
     evaluate,
+    make_grad_scaler,
     save_checkpoint,
     set_seed,
     train_one_epoch,
@@ -83,6 +84,11 @@ class AdaptiveTrainingConfig:
     max_total_epochs: int = 120
     batch_size: int = 32
     num_workers: int = 0
+    pin_memory: bool = False
+    persistent_workers: bool = False
+    prefetch_factor: int | None = None
+    non_blocking: bool = False
+    amp: bool = False
     limit_train_graphs: int | None = None
     limit_val_graphs: int | None = None
     limit_test_graphs: int | None = None
@@ -125,20 +131,41 @@ def _trial_dir(output_root, trial_id):
     return Path(output_root) / f"trial_{trial_id:03d}"
 
 
-def _make_loader(graphs, batch_size, shuffle, num_workers):
+def _make_loader(
+    graphs,
+    batch_size,
+    shuffle,
+    num_workers,
+    pin_memory=False,
+    persistent_workers=False,
+    prefetch_factor=None,
+):
     """Create a PyG DataLoader for adaptive trials."""
+
+    if persistent_workers and num_workers <= 0:
+        raise ValueError("persistent_workers=True requires num_workers > 0.")
+    if prefetch_factor is not None and num_workers <= 0:
+        raise ValueError("prefetch_factor requires num_workers > 0.")
 
     sampler = (
         ShardAwareShuffleSampler(graphs)
         if shuffle and is_sharded_dataset(graphs)
         else None
     )
+    kwargs = {
+        "num_workers": num_workers,
+        "pin_memory": pin_memory,
+        "persistent_workers": persistent_workers if num_workers > 0 else False,
+    }
+    if num_workers > 0:
+        kwargs["prefetch_factor"] = prefetch_factor
+
     return DataLoader(
         graphs,
         batch_size=batch_size,
         shuffle=shuffle and sampler is None,
         sampler=sampler,
-        num_workers=num_workers,
+        **kwargs,
     )
 
 
@@ -309,6 +336,11 @@ def run_trial(
         weight_decay=trial_config.weight_decay,
         seed=adaptive_config.seed,
         num_workers=adaptive_config.num_workers,
+        pin_memory=adaptive_config.pin_memory,
+        persistent_workers=adaptive_config.persistent_workers,
+        prefetch_factor=adaptive_config.prefetch_factor,
+        non_blocking=adaptive_config.non_blocking,
+        amp=adaptive_config.amp,
         model_dropout=trial_config.dropout,
         checkpoint_path=str(checkpoint_path),
         history_path=str(trial_path / "history.json"),
@@ -321,12 +353,18 @@ def run_trial(
         trial_config.batch_size,
         True,
         adaptive_config.num_workers,
+        adaptive_config.pin_memory,
+        adaptive_config.persistent_workers,
+        adaptive_config.prefetch_factor,
     )
     val_loader = _make_loader(
         val_graphs,
         trial_config.batch_size,
         False,
         adaptive_config.num_workers,
+        adaptive_config.pin_memory,
+        adaptive_config.persistent_workers,
+        adaptive_config.prefetch_factor,
     )
 
     model = build_model(
@@ -339,6 +377,10 @@ def run_trial(
         weight_decay=trial_config.weight_decay,
     )
     criterion = torch.nn.CrossEntropyLoss()
+    scaler = make_grad_scaler(
+        device,
+        amp=adaptive_config.amp,
+    )
     early_stopping = EarlyStoppingState(
         patience=adaptive_config.patience,
         min_delta=adaptive_config.min_delta,
@@ -356,6 +398,9 @@ def run_trial(
             optimizer,
             device,
             top_k=(1,),
+            non_blocking=adaptive_config.non_blocking,
+            amp=adaptive_config.amp,
+            scaler=scaler,
         )
         val_metrics = evaluate(
             model,
@@ -363,6 +408,8 @@ def run_trial(
             criterion,
             device,
             top_k=(1, 3, 5),
+            non_blocking=adaptive_config.non_blocking,
+            amp=adaptive_config.amp,
         )
         improved = early_stopping.update(val_metrics["loss"])
         row = {
@@ -445,7 +492,7 @@ def run_trial(
     return result, diagnosis
 
 
-def evaluate_best_trial_on_test(best_trial, test_graphs, num_classes, device):
+def evaluate_best_trial_on_test(best_trial, test_graphs, num_classes, device, adaptive_config=None):
     """Evaluate the selected validation trial on test exactly once."""
 
     model = build_model(
@@ -462,7 +509,10 @@ def evaluate_best_trial_on_test(best_trial, test_graphs, num_classes, device):
         test_graphs,
         best_trial.config.batch_size,
         False,
-        0,
+        adaptive_config.num_workers if adaptive_config else 0,
+        adaptive_config.pin_memory if adaptive_config else False,
+        adaptive_config.persistent_workers if adaptive_config else False,
+        adaptive_config.prefetch_factor if adaptive_config else None,
     )
     return evaluate(
         model,
@@ -470,6 +520,8 @@ def evaluate_best_trial_on_test(best_trial, test_graphs, num_classes, device):
         torch.nn.CrossEntropyLoss(),
         device,
         top_k=(1, 3, 5),
+        non_blocking=adaptive_config.non_blocking if adaptive_config else False,
+        amp=adaptive_config.amp if adaptive_config else False,
     )
 
 
@@ -649,7 +701,7 @@ def run_adaptive_training(train_graphs, val_graphs, test_graphs, num_classes, co
     best_trial = select_best_trial(trial_results)
     best_overall = output_root / "best_overall.pt"
     shutil.copyfile(best_trial.checkpoint_path, best_overall)
-    test_metrics = evaluate_best_trial_on_test(best_trial, test_graphs, num_classes, device)
+    test_metrics = evaluate_best_trial_on_test(best_trial, test_graphs, num_classes, device, config)
 
     optimization_converged = controller_state["termination_reason"] not in {
         "TRAINING_BUDGET_EXHAUSTED",
