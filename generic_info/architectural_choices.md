@@ -619,7 +619,133 @@ Serve poter ripulire dati senza rischiare source, docs o vendor library.
 **Current Status**  
 Implemented. Non eseguito durante questo audit.
 
-## 34. Future Work
+## 34. Model A Full Baseline V1
+
+**Decision**  
+Documentare il primo run full completato come `MODEL_A_FULL_BASELINE_V1`.
+
+**Dataset**
+
+| Split | Graphs |
+|---|---:|
+| Train | 68,958 |
+| Validation | 8,612 |
+| Test | 8,610 |
+
+**Model**  
+`ChessGATNoTiming`.
+
+**Selected Config**
+
+| Hyperparameter | Value |
+|---|---:|
+| learning_rate | 5e-4 |
+| weight_decay | 1e-4 |
+| dropout | 0.30 |
+| batch_size | 128 |
+
+**Runtime**  
+CUDA, AMP `true`, `num_workers=0`, `pin_memory=true`, `non_blocking=true`, shard-aware sampler.
+
+**Full Stage**
+
+| Field | Value |
+|---|---:|
+| epochs_completed | 60 |
+| best_epoch | 60 |
+| stop_reason | MAX_EPOCHS_REACHED |
+
+**Best Validation**
+
+| Metric | Value |
+|---|---:|
+| loss | 3.621614 |
+| Top1 | 31.86% |
+| Top3 | 46.96% |
+| Top5 | 53.69% |
+
+**Final Test**
+
+| Metric | Value |
+|---|---:|
+| loss | 3.590105 |
+| Top1 | 31.87% |
+| Top3 | 47.72% |
+| Top5 | 54.29% |
+
+**Interpretation**  
+Validation e test sono molto vicini, quindi non emerge un grande generalization gap. Il test non e stato usato per tuning, ranking, scheduler o early stopping. Il run ha esaurito il budget configurato di 60 epoch con il miglior risultato validation all'ultima epoch; quindi la vera convergenza non e dimostrata.
+
+**Old 5k Comparison**  
+Il vecchio baseline su circa 5k train graphs aveva test Top1 circa `5.27%`, Top3 circa `10.19%`, Top5 circa `13.78%`, best val loss circa `6.245944`. Il full V1 e molto migliore, ma il confronto non e una ablation isolata del dataset size: sono cambiati anche batch size, runtime config e training orchestration.
+
+**Next Step**  
+`MODEL_A_CONVERGENCE_RUN`: stessa architettura, stessa config selezionata, budget epoch maggiore, scheduler, early stopping e training fino a plateau/convergenza empirica.
+
+## 35. Progressive Subset Access-Pattern Issue
+
+**Observation**  
+Sul server reale il progressive training ha mostrato tempi anomali:
+
+| Stage | Train graphs | Epochs | Runtime osservato |
+|---|---:|---:|---:|
+| Pilot | 12,000 | 10 | circa 200 s/epoch |
+| Confirmation | 30,000 | 15 | circa 379-382 s/epoch |
+| Full | 68,958 | 60 | circa 17.4 s/epoch |
+
+Un subset non dovrebbe essere molto piu lento del dataset completo.
+
+**Initial Hypothesis**  
+La membership Pilot/Confirmation era random deterministica, ma l'ordine di lettura dei subset poteva perdere locality sugli shard, causando molti reload con LRU cache piccola.
+
+**Confirmed Root Cause**  
+Nel codice la membership dei subset viene creata con `deterministic_indices()`. Pilot usa il prefisso del subset Confirmation, preservando `Pilot subset of Confirmation`. Prima del fix, i subset di validation/test venivano letti dal DataLoader in ordine di membership random, senza sampler shard-local; inoltre il sampler train shard-aware non esponeva controllo deterministico `set_epoch`. Questo separava correttamente la membership scientifica, ma non ottimizzava sempre l'ordine di accesso agli shard.
+
+La diagnostica locale pattern-only sul dataset sharded presente in VM ha confermato la causa strutturale:
+
+| Case | Old transitions | New transitions | Old simulated shard loads | New simulated shard loads | Old cache hit rate | New cache hit rate |
+|---|---:|---:|---:|---:|---:|---:|
+| Pilot-like 12k | 11,829 | 68 | 11,642 | 69 | 2.98% | 99.43% |
+| Confirmation-like 30k | 29,573 | 68 | 29,141 | 69 | 2.86% | 99.77% |
+| Full 68,958 | 68 | 68 | 69 | 69 | 99.90% | 99.90% |
+
+Questi numeri sono `LOCAL_VM_DIAGNOSTIC_ONLY` e non validano il wall-clock del server.
+
+**Implemented Fix**  
+Usare sampling gerarchico shard-aware deterministico:
+
+1. la membership del subset resta invariata;
+2. gli indici selezionati vengono raggruppati per shard sorgente;
+3. nel train, a ogni epoch viene shufflato deterministicamente l'ordine degli shard e l'ordine degli esempi nello shard;
+4. in validation/test, l'ordine e deterministico, shard-local e stabile.
+
+**Alternatives Considered**
+
+- naive random subset traversal: preserva randomness ma distrugge locality;
+- indici globalmente ordinati fissi: massima locality ma nessuno shuffle tra epoch;
+- cache piu grande: maschera il problema caricando piu shard in RAM.
+
+**Trade-offs**  
+Gli esempi dello stesso shard sono temporalmente clusterizzati. La mitigazione e shuffle deterministico per epoch dell'ordine shard e intra-shard nel training.
+
+**Validation Status**  
+Functional tests passano su VM. Server performance validation: `SERVER PERFORMANCE VALIDATION PENDING`.
+
+## 36. Progressive Subset Sampler
+
+**Decision**  
+Generalizzare il sampler in `ShardAwareSampler` con opzioni `shuffle`, `seed` e `set_epoch(epoch)`.
+
+**Rationale**  
+Serve preservare la membership scientifica dei subset e cambiare solo l'ordine di lettura per ridurre cache thrashing. Lo stesso concetto copre full dataset, subset train e subset validation.
+
+**Resume Compatibility**  
+Il training loop chiama `set_epoch(epoch)` all'inizio di ogni epoch. Se il resume riparte da epoch `N+1`, il sampler usa deterministicamente l'ordine associato a `N+1`. Non viene introdotto resume a meta-epoch.
+
+**Validation Status**  
+Unit test coprono membership invariata, determinismo same seed/same epoch, ordine diverso per epoch diverse, locality migliorata senza timing wall-clock e integrazione PyG DataLoader.
+
+## 37. Future Work
 
 **Planned / Not Implemented**
 

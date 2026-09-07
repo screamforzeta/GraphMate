@@ -38,6 +38,7 @@ from src.training.chess_gat_trainer import (
     make_loaders,
     save_checkpoint,
     set_seed,
+    set_loader_epoch,
     train_one_epoch,
     validate_graph_splits,
 )
@@ -431,6 +432,7 @@ def run_training_run(
                 stop_reason = "TIME_LIMIT_REACHED"
                 break
 
+            set_loader_epoch(train_loader, epoch)
             epoch_start = time.perf_counter()
             train_start = time.perf_counter()
             train_metrics = train_one_epoch(

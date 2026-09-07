@@ -21,9 +21,19 @@ Implementato:
 - validator rappresentazione;
 - modello `ChessGATNoTiming`;
 - trainer standard, adaptive storico, benchmark runtime e progressive training;
+- diagnosi/fix shard-aware per subset progressivi Pilot/Confirmation;
 - debugger Streamlit standalone per grafo/scacchiera.
 
 Non implementato: Model B timing-aware, legal move masking, nuove feature temporali, valutazione MateDepth dedicata e confronto LLM.
+
+Baseline full completato: `MODEL_A_FULL_BASELINE_V1`.
+
+- dataset: train `68.958`, validation `8.612`, test `8.610`;
+- modello: `ChessGATNoTiming`;
+- config selezionata: lr `5e-4`, weight decay `1e-4`, dropout `0.30`, batch `128`;
+- final test: Top1 circa `31,87%`, Top3 circa `47,72%`, Top5 circa `54,29%`.
+
+Il run ha esaurito il budget configurato di `60` epoch con il miglior risultato di validation all'ultima epoch; una run `MODEL_A_CONVERGENCE_RUN` piu lunga e pianificata prima di considerare Model A empiricamente convergente.
 
 ## Documentazione
 
@@ -88,6 +98,16 @@ Benchmark runtime:
   --warmup-batches 10 \
   --benchmark-batches 100 \
   --device cuda
+```
+
+Diagnostica access pattern subset progressivi, da eseguire sul server prima della prossima run lunga:
+
+```bash
+./venv/bin/python -m src.benchmark_progressive_subset_loading \
+  --device cuda \
+  --batch-size 128 \
+  --num-workers 0 \
+  --pin-memory
 ```
 
 Debugger Streamlit:
