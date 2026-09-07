@@ -13,6 +13,7 @@ from src.benchmark_chess_gat_training import (
 from src.training.chess_gat_trainer import (
     ChessGATTrainingConfig,
     make_loaders,
+    set_loader_epoch,
 )
 
 
@@ -82,6 +83,25 @@ def test_make_loaders_accepts_runtime_options_with_workers_zero():
     assert train_loader.num_workers == 0
     assert val_loader.num_workers == 0
     assert test_loader.num_workers == 0
+
+
+def test_set_loader_epoch_updates_sampler_when_supported():
+    class _Sampler:
+        def __init__(self):
+            self.epoch = None
+
+        def set_epoch(self, epoch):
+            self.epoch = epoch
+
+    class _Loader:
+        def __init__(self):
+            self.sampler = _Sampler()
+
+    loader = _Loader()
+
+    set_loader_epoch(loader, 7)
+
+    assert loader.sampler.epoch == 7
 
 
 def test_benchmark_loader_rejects_invalid_prefetch_factor():

@@ -1,14 +1,20 @@
 import json
 
 import pandas as pd
+import torch
 import pytest
+from torch.utils.data import Subset
+from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
 from src.graph.pyg_dataset import (
     MANIFEST_NAME,
+    ShardAwareSampler,
     ShardedPyGDataset,
+    access_pattern_stats,
     build_manifest,
     build_pyg_split,
+    make_shard_aware_sampler,
 )
 
 
@@ -64,6 +70,52 @@ def _build_dataset(tmp_path, split="train"):
         encoding="utf-8",
     )
     return root, stats
+
+
+def _tiny_graph(index):
+    return Data(
+        x=torch.zeros((64, 15), dtype=torch.float),
+        edge_index=torch.tensor([[0], [1]], dtype=torch.long),
+        edge_attr=torch.zeros((1, 5), dtype=torch.float),
+        global_features=torch.zeros((1, 4), dtype=torch.float),
+        y=torch.tensor(index % 3, dtype=torch.long),
+        source_row_index=torch.tensor(index, dtype=torch.long),
+        graph_marker=torch.tensor(index, dtype=torch.long),
+    )
+
+
+def _build_synthetic_sharded_dataset(tmp_path, split="train", shards=6, per_shard=4):
+    root = tmp_path / "synthetic_pyg"
+    split_dir = root / split
+    split_dir.mkdir(parents=True)
+    manifest_shards = []
+    for shard_id in range(shards):
+        graphs = [
+            _tiny_graph(shard_id * per_shard + local_index)
+            for local_index in range(per_shard)
+        ]
+        file_name = f"{split}/shard_{shard_id:05d}.pt"
+        torch.save(graphs, root / file_name)
+        manifest_shards.append(
+            {
+                "file": file_name,
+                "num_graphs": per_shard,
+                "start_index": shard_id * per_shard,
+                "end_index": (shard_id + 1) * per_shard,
+            }
+        )
+    manifest = build_manifest(
+        graphs_per_shard=per_shard,
+        splits={
+            split: {
+                "num_graphs": shards * per_shard,
+                "num_shards": shards,
+                "shards": manifest_shards,
+            }
+        },
+    )
+    (root / MANIFEST_NAME).write_text(json.dumps(manifest), encoding="utf-8")
+    return root
 
 
 def test_sharded_generation_writes_manifest_and_partial_last_shard(tmp_path):
@@ -141,3 +193,60 @@ def test_sharded_dataset_keeps_split_isolation(tmp_path):
 
     with pytest.raises(ValueError):
         ShardedPyGDataset(root=train_root, split="val")
+
+
+def test_shard_aware_subset_sampler_preserves_membership_and_determinism(tmp_path):
+    root = _build_synthetic_sharded_dataset(tmp_path)
+    dataset = ShardedPyGDataset(root=root, split="train", cache_size=2)
+    selected = [0, 8, 1, 9, 16, 17, 4, 12, 5, 13]
+    subset = Subset(dataset, selected)
+
+    sampler_a = make_shard_aware_sampler(subset, shuffle=True, seed=123)
+    sampler_b = make_shard_aware_sampler(subset, shuffle=True, seed=123)
+    sampler_c = make_shard_aware_sampler(subset, shuffle=True, seed=123)
+    sampler_a.set_epoch(1)
+    sampler_b.set_epoch(1)
+    sampler_c.set_epoch(2)
+
+    order_a = list(iter(sampler_a))
+    order_b = list(iter(sampler_b))
+    order_c = list(iter(sampler_c))
+
+    assert order_a == order_b
+    assert order_a != order_c
+    assert sorted(order_a) == list(range(len(subset)))
+    assert sorted(order_c) == list(range(len(subset)))
+    assert [selected[index] for index in order_a]
+
+
+def test_shard_aware_subset_sampler_improves_locality_without_timing(tmp_path):
+    root = _build_synthetic_sharded_dataset(tmp_path)
+    dataset = ShardedPyGDataset(root=root, split="train", cache_size=1)
+    selected = [0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14]
+    subset = Subset(dataset, selected)
+    naive_order = list(range(len(subset)))
+    sampler = ShardAwareSampler(subset, shuffle=False)
+    shard_order = list(iter(sampler))
+
+    naive = access_pattern_stats(subset, naive_order, cache_size=1)
+    fixed = access_pattern_stats(subset, shard_order, cache_size=1)
+
+    assert set(naive_order) == set(shard_order)
+    assert fixed["shard_transitions"] < naive["shard_transitions"]
+    assert fixed["simulated_shard_loads"] < naive["simulated_shard_loads"]
+    assert fixed["simulated_cache_hit_rate"] > naive["simulated_cache_hit_rate"]
+
+
+def test_shard_aware_subset_sampler_integrates_with_pyg_dataloader(tmp_path):
+    root = _build_synthetic_sharded_dataset(tmp_path)
+    dataset = ShardedPyGDataset(root=root, split="train", cache_size=2)
+    selected = [0, 8, 1, 9, 16, 17, 4, 12, 5, 13]
+    subset = Subset(dataset, selected)
+    sampler = make_shard_aware_sampler(subset, shuffle=False)
+
+    visited = []
+    for batch in DataLoader(subset, batch_size=3, sampler=sampler):
+        visited.extend(int(value) for value in batch.graph_marker.tolist())
+
+    assert sorted(visited) == sorted(selected)
+    assert len(visited) == len(set(visited)) == len(selected)

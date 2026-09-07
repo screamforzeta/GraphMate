@@ -207,22 +207,32 @@ class ShardedPyGDataset(Dataset):
         self.cache_misses = 0
         self.shard_load_count = 0
 
+    def clear_cache(self, reset_stats=True):
+        """Drop cached shard objects and optionally reset cache counters."""
 
-class ShardAwareShuffleSampler(Sampler):
-    """Shuffle a sharded dataset while keeping shard-local access batches.
+        self._cache.clear()
+        if reset_stats:
+            self.reset_cache_stats()
+
+
+class ShardAwareSampler(Sampler):
+    """Iterate a sharded dataset with deterministic shard-local ordering.
 
     Parameters:
         dataset: ShardedPyGDataset or a Subset backed by ShardedPyGDataset.
-        generator: Optional torch.Generator used by DataLoader.
+        shuffle: Shuffle shard order and indices inside each shard.
+        seed: Base seed used with epoch to build deterministic orders.
     Returns:
         Iterator over dataset indices.
     Side effects:
         None.
     """
 
-    def __init__(self, dataset, generator=None):
+    def __init__(self, dataset, shuffle=True, seed=0):
         self.dataset = dataset
-        self.generator = generator
+        self.shuffle = shuffle
+        self.seed = int(seed)
+        self.epoch = 0
         self._groups = self._build_groups(dataset)
 
     def __len__(self):
@@ -230,21 +240,35 @@ class ShardAwareShuffleSampler(Sampler):
 
         return len(self.dataset)
 
+    def set_epoch(self, epoch):
+        """Set the deterministic epoch used by shuffled iteration."""
+
+        self.epoch = int(epoch)
+
     def __iter__(self):
-        """Yield shuffled indices grouped by shuffled shard order."""
+        """Yield indices while clustering accesses from the same shard."""
 
         shard_ids = list(self._groups)
-        shard_order = torch.randperm(
-            len(shard_ids),
-            generator=self.generator,
-        ).tolist()
+        if self.shuffle:
+            generator = torch.Generator()
+            generator.manual_seed(self.seed + self.epoch)
+            shard_order = torch.randperm(
+                len(shard_ids),
+                generator=generator,
+            ).tolist()
+        else:
+            generator = None
+            shard_order = list(range(len(shard_ids)))
 
         for order_index in shard_order:
             indices = self._groups[shard_ids[order_index]]
-            local_order = torch.randperm(
-                len(indices),
-                generator=self.generator,
-            ).tolist()
+            if self.shuffle:
+                local_order = torch.randperm(
+                    len(indices),
+                    generator=generator,
+                ).tolist()
+            else:
+                local_order = list(range(len(indices)))
             for local_index in local_order:
                 yield indices[local_index]
 
@@ -272,9 +296,87 @@ class ShardAwareShuffleSampler(Sampler):
             return groups
 
         raise TypeError(
-            "ShardAwareShuffleSampler requires ShardedPyGDataset or a Subset "
+            "ShardAwareSampler requires ShardedPyGDataset or a Subset "
             "backed by ShardedPyGDataset."
         )
+
+
+class ShardAwareShuffleSampler(ShardAwareSampler):
+    """Backward-compatible shuffled shard-aware sampler."""
+
+    def __init__(self, dataset, generator=None, seed=0):
+        if generator is not None:
+            seed = int(generator.initial_seed())
+        super().__init__(dataset, shuffle=True, seed=seed)
+
+
+def make_shard_aware_sampler(dataset, shuffle=True, seed=0):
+    """Return a shard-aware sampler for full or subset sharded datasets."""
+
+    return ShardAwareSampler(
+        dataset,
+        shuffle=shuffle,
+        seed=seed,
+    )
+
+
+def shard_id_for_visible_index(dataset, visible_index):
+    """Return the underlying shard id for a visible dataset index."""
+
+    if isinstance(dataset, ShardedPyGDataset):
+        return dataset.shard_index_for_global_index(int(visible_index))
+    if (
+        isinstance(dataset, Subset)
+        and isinstance(dataset.dataset, ShardedPyGDataset)
+    ):
+        source_index = int(dataset.indices[int(visible_index)])
+        return dataset.dataset.shard_index_for_global_index(source_index)
+    raise TypeError(
+        "shard_id_for_visible_index requires ShardedPyGDataset or a Subset "
+        "backed by ShardedPyGDataset."
+    )
+
+
+def access_pattern_stats(dataset, visible_indices, cache_size=DEFAULT_CACHE_SIZE):
+    """Summarize shard locality for a sequence of visible dataset indices."""
+
+    shard_ids = [
+        shard_id_for_visible_index(dataset, index)
+        for index in visible_indices
+    ]
+    transitions = sum(
+        previous != current
+        for previous, current in zip(shard_ids, shard_ids[1:])
+    )
+    cache = OrderedDict()
+    cache_hits = 0
+    cache_misses = 0
+    for shard_id in shard_ids:
+        if shard_id in cache:
+            cache_hits += 1
+            cache.move_to_end(shard_id)
+        else:
+            cache_misses += 1
+            cache[shard_id] = True
+            cache.move_to_end(shard_id)
+            while len(cache) > cache_size:
+                cache.popitem(last=False)
+
+    runs = transitions + 1 if shard_ids else 0
+    return {
+        "samples": len(shard_ids),
+        "unique_shards": len(set(shard_ids)),
+        "shard_transitions": transitions,
+        "average_consecutive_samples_per_shard": (
+            len(shard_ids) / runs if runs else None
+        ),
+        "simulated_cache_hits": cache_hits,
+        "simulated_cache_misses": cache_misses,
+        "simulated_shard_loads": cache_misses,
+        "simulated_cache_hit_rate": (
+            cache_hits / len(shard_ids) if shard_ids else None
+        ),
+    }
 
 
 def is_sharded_dataset(dataset):

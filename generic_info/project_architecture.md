@@ -256,6 +256,40 @@ Stato corrente:
 
 La generazione usa una directory temporanea `data/pyg_building/` e sostituisce `data/pyg/` solo a build completa. Ogni shard è scritto con file `.tmp` e rename finale.
 
+### Data Access Samplers
+
+FULL TRAINING DATA ACCESS:
+
+- il dataset completo viene percorso con sampler shard-aware in train;
+- gli indici vengono raggruppati per shard;
+- a ogni epoch cambiano in modo deterministico sia l'ordine degli shard sia l'ordine degli esempi dentro lo shard;
+- la membership e il contenuto del dataset non cambiano.
+
+PILOT/CONFIRMATION TRAIN DATA ACCESS:
+
+- i subset restano definiti da una membership random deterministica seed-controlled;
+- Pilot usa il prefisso del subset Confirmation, quindi `Pilot subset of Confirmation`;
+- il sampler converte gli indici visibili del `Subset` negli shard sorgente e legge gli stessi esempi in ordine shard-local;
+- `set_epoch(epoch)` cambia l'ordine di lettura tra epoch senza usare randomness globale non controllata.
+
+PILOT/CONFIRMATION VALIDATION DATA ACCESS:
+
+- la membership validation resta deterministica e separata dal train;
+- non c'e shuffle per la validation;
+- l'ordine e shard-local e stabile tra epoch, cosi la valutazione resta riproducibile e cache-friendly.
+
+Il benchmark diagnostico dedicato e:
+
+```bash
+./venv/bin/python -m src.benchmark_progressive_subset_loading \
+  --device cuda \
+  --batch-size 128 \
+  --num-workers 0 \
+  --pin-memory
+```
+
+Su VM si puo usare `--pattern-only` per verificare solo transizioni/cache simulate; la validazione prestazionale finale resta server-side.
+
 ## Model Layer
 
 `src/models/chess_gat.py` contiene `ChessGATNoTiming`, il modello attuale.
@@ -337,6 +371,16 @@ Runtime progressivo scelto:
 - `non_blocking=True`;
 - `amp=True`;
 - `sampler=shard_aware`.
+
+Baseline full reale su RTX A2000 documentato come `MODEL_A_FULL_BASELINE_V1`:
+
+- dataset: train `68,958`, validation `8,612`, test `8,610`;
+- config: lr `5e-4`, weight decay `1e-4`, dropout `0.30`, batch `128`;
+- Full: `60` epoch, best epoch `60`, stop reason `MAX_EPOCHS_REACHED`;
+- best validation: loss `3.621614`, Top1 `31.86%`, Top3 `46.96%`, Top5 `53.69%`;
+- final test: loss `3.590105`, Top1 `31.87%`, Top3 `47.72%`, Top5 `54.29%`.
+
+Il run ha raggiunto il budget epoch configurato mentre il miglior risultato validation era all'ultima epoch. Questo motiva una futura `MODEL_A_CONVERGENCE_RUN` con stessa architettura e stessa config selezionata, budget maggiore, scheduler ed early stopping fino a plateau empirico.
 
 ## Progressive Training
 

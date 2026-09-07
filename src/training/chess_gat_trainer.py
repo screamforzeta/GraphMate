@@ -22,8 +22,8 @@ import torch
 from torch_geometric.loader import DataLoader
 
 from src.graph.pyg_dataset import (
-    ShardAwareShuffleSampler,
     is_sharded_dataset,
+    make_shard_aware_sampler,
 )
 from src.models import (
     ChessGATNoTiming,
@@ -436,6 +436,23 @@ def evaluate(
     )
 
 
+def set_loader_epoch(loader, epoch):
+    """Forward the current epoch to a sampler when it supports epoch seeding.
+
+    Parameters:
+        loader: DataLoader whose sampler may implement set_epoch().
+        epoch: One-based epoch number.
+    Returns:
+        None.
+    Side effects:
+        Updates sampler epoch state for deterministic per-epoch shuffling.
+    """
+
+    sampler = getattr(loader, "sampler", None)
+    if hasattr(sampler, "set_epoch"):
+        sampler.set_epoch(epoch)
+
+
 def validate_graph_splits(splits, num_classes, sample_size=8):
     """Run lightweight checks on loaded PyG graph splits.
 
@@ -654,8 +671,30 @@ def make_loaders(train_graphs, val_graphs, test_graphs, config):
         loader_kwargs["prefetch_factor"] = config.prefetch_factor
 
     train_sampler = (
-        ShardAwareShuffleSampler(train_graphs)
+        make_shard_aware_sampler(
+            train_graphs,
+            shuffle=True,
+            seed=config.seed,
+        )
         if is_sharded_dataset(train_graphs)
+        else None
+    )
+    val_sampler = (
+        make_shard_aware_sampler(
+            val_graphs,
+            shuffle=False,
+            seed=config.seed,
+        )
+        if is_sharded_dataset(val_graphs)
+        else None
+    )
+    test_sampler = (
+        make_shard_aware_sampler(
+            test_graphs,
+            shuffle=False,
+            seed=config.seed,
+        )
+        if is_sharded_dataset(test_graphs)
         else None
     )
     train_loader = DataLoader(
@@ -669,12 +708,14 @@ def make_loaders(train_graphs, val_graphs, test_graphs, config):
         val_graphs,
         batch_size=config.batch_size,
         shuffle=False,
+        sampler=val_sampler,
         **loader_kwargs,
     )
     test_loader = DataLoader(
         test_graphs,
         batch_size=config.batch_size,
         shuffle=False,
+        sampler=test_sampler,
         **loader_kwargs,
     )
 
@@ -781,6 +822,7 @@ def train_model(train_graphs, val_graphs, test_graphs, num_classes, config, devi
     total_start = time.perf_counter()
 
     for epoch in range(1, config.max_epochs + 1):
+        set_loader_epoch(train_loader, epoch)
         epoch_start = time.perf_counter()
 
         train_metrics = train_one_epoch(
