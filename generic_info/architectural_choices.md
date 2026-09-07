@@ -768,4 +768,39 @@ Possibili alternative target future:
 - promotion head;
 - legal move masking.
 
+## 38. Model A Convergence Run
+
+**Decision**  
+Eseguire un nuovo full training da zero con la configurazione gia congelata e un budget aumentato.
+
+**Rationale**  
+`MODEL_A_FULL_BASELINE_V1` si e fermato con `best_epoch=60`, `max_epochs=60` e `stop_reason=MAX_EPOCHS_REACHED`. Il miglior risultato validation era all'ultima epoch, quindi il baseline V1 non dimostra convergenza empirica.
+
+**Fixed Config**  
+La convergence run usa `FIXED_FROM_MODEL_A_FULL_BASELINE_V1`:
+
+- learning rate `5e-4`;
+- weight decay `1e-4`;
+- dropout `0.30`;
+- batch size `128`.
+
+**Training Protocol**  
+La pipeline usa tutto train e tutto validation, `ReduceLROnPlateau` su validation loss, early stopping con patience `12`, checkpoint `best.pt` su miglior validation loss e `last.pt` a ogni epoch completata.
+
+**Controls**
+
+- nessuna hyperparameter search;
+- modello inizializzato da zero con seed controllato;
+- test isolato fino alla valutazione finale;
+- final test one-shot;
+- artifact separati da `MODEL_A_FULL_BASELINE_V1`;
+- resume da `last.pt`;
+- config critica bloccata su resume.
+
+**Trade-off**  
+Richiede ulteriore compute sul server, ma risponde alla domanda scientifica corretta: quanto migliora lo stesso Model A quando non viene troncato a 60 epoch.
+
+**Status**  
+IMPLEMENTED / READY_TO_RUN. Nessun risultato futuro e stato ancora prodotto.
+
 Queste opzioni non sono implementate nello stato corrente.

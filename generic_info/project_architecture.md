@@ -61,7 +61,9 @@ Progetto-Damiani/
 │   ├── train_chess_gat.py
 │   ├── train_chess_gat_auto.py
 │   ├── train_chess_gat_progressive.py
+│   ├── train_chess_gat_convergence.py
 │   ├── benchmark_chess_gat_training.py
+│   ├── benchmark_progressive_subset_loading.py
 │   ├── validate_representations.py
 │   ├── smoke_test_chess_gat.py
 │   └── reset_data.py
@@ -381,6 +383,70 @@ Baseline full reale su RTX A2000 documentato come `MODEL_A_FULL_BASELINE_V1`:
 - final test: loss `3.590105`, Top1 `31.87%`, Top3 `47.72%`, Top5 `54.29%`.
 
 Il run ha raggiunto il budget epoch configurato mentre il miglior risultato validation era all'ultima epoch. Questo motiva una futura `MODEL_A_CONVERGENCE_RUN` con stessa architettura e stessa config selezionata, budget maggiore, scheduler ed early stopping fino a plateau empirico.
+
+## Model A Convergence Run
+
+`src/train_chess_gat_convergence.py` e l'entry point dedicato a `MODEL_A_CONVERGENCE_RUN_V1`.
+
+Scopo:
+
+- inizializzare `ChessGATNoTiming` da zero con seed controllato;
+- usare tutto train e tutto validation;
+- non ripetere Pilot, Confirmation o hyperparameter search;
+- usare la config `FIXED_FROM_MODEL_A_FULL_BASELINE_V1`;
+- salvare `best.pt` e `last.pt`;
+- supportare `--resume`;
+- eseguire test una sola volta dopo training terminale e reload del best checkpoint.
+
+Artifact separati:
+
+```text
+artifacts/convergence_training/chess_gat_no_timing/
+  experiment_config.json
+  controller_state.json
+  history.json
+  best.pt
+  last.pt
+  final_report.json
+  final_report.md
+```
+
+Default principali:
+
+- lr `5e-4`;
+- weight decay `1e-4`;
+- dropout `0.30`;
+- batch `128`;
+- max epochs `150`;
+- early stopping patience `12`;
+- `ReduceLROnPlateau(factor=0.5, patience=3, min_lr=1e-6)`;
+- runtime server: CUDA, AMP, `num_workers=0`, `pin_memory=true`, `non_blocking=true`.
+
+Comando server:
+
+```bash
+./venv/bin/python -m src.train_chess_gat_convergence \
+  --device cuda \
+  --batch-size 128 \
+  --num-workers 0 \
+  --pin-memory \
+  --non-blocking \
+  --amp \
+  --max-epochs 150 \
+  --early-stopping-patience 12 \
+  --lr-scheduler-factor 0.5 \
+  --lr-scheduler-patience 3 \
+  --min-learning-rate 1e-6 \
+  --seed 42
+```
+
+Resume:
+
+```bash
+./venv/bin/python -m src.train_chess_gat_convergence --resume --device cuda
+```
+
+Stato: implemented / ready to run. Non contiene risultati futuri.
 
 ## Progressive Training
 
