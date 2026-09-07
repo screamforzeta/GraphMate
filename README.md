@@ -21,10 +21,11 @@ Implementato:
 - validator rappresentazione;
 - modello `ChessGATNoTiming`;
 - trainer standard, adaptive storico, benchmark runtime e progressive training;
-- diagnosi/fix shard-aware per subset progressivi Pilot/Confirmation;
+- diagnosi/fix shard-aware per subset progressivi Pilot/Confirmation, validato sul server;
+- pipeline dedicata `MODEL_A_CONVERGENCE_RUN_V1` pronta;
 - debugger Streamlit standalone per grafo/scacchiera.
 
-Non implementato: Model B timing-aware, legal move masking, nuove feature temporali, valutazione MateDepth dedicata e confronto LLM.
+Non implementato: run di convergenza finale, Model B timing-aware, legal move masking, nuove feature temporali, valutazione MateDepth dedicata e confronto LLM.
 
 Baseline full completato: `MODEL_A_FULL_BASELINE_V1`.
 
@@ -33,7 +34,7 @@ Baseline full completato: `MODEL_A_FULL_BASELINE_V1`.
 - config selezionata: lr `5e-4`, weight decay `1e-4`, dropout `0.30`, batch `128`;
 - final test: Top1 circa `31,87%`, Top3 circa `47,72%`, Top5 circa `54,29%`.
 
-Il run ha esaurito il budget configurato di `60` epoch con il miglior risultato di validation all'ultima epoch; una run `MODEL_A_CONVERGENCE_RUN` piu lunga e pianificata prima di considerare Model A empiricamente convergente.
+Il run ha esaurito il budget configurato di `60` epoch con il miglior risultato di validation all'ultima epoch. La pipeline `MODEL_A_CONVERGENCE_RUN_V1` e pronta per una run piu lunga da zero, con stessa architettura/config, scheduler ed early stopping.
 
 ## Documentazione
 
@@ -87,6 +88,30 @@ Resume progressivo:
 
 ```bash
 ./venv/bin/python -m src.train_chess_gat_progressive --resume --device cuda
+```
+
+Convergence run Model A:
+
+```bash
+./venv/bin/python -m src.train_chess_gat_convergence \
+  --device cuda \
+  --batch-size 128 \
+  --num-workers 0 \
+  --pin-memory \
+  --non-blocking \
+  --amp \
+  --max-epochs 150 \
+  --early-stopping-patience 12 \
+  --lr-scheduler-factor 0.5 \
+  --lr-scheduler-patience 3 \
+  --min-learning-rate 1e-6 \
+  --seed 42
+```
+
+Resume convergence run:
+
+```bash
+./venv/bin/python -m src.train_chess_gat_convergence --resume --device cuda
 ```
 
 Benchmark runtime:
