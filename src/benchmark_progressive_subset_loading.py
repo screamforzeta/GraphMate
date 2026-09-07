@@ -1,8 +1,8 @@
 """Diagnose progressive subset shard locality without scientific training.
 
 Purpose:
-    Compare naive subset traversal with deterministic shard-aware traversal for
-    pilot-like, confirmation-like, and full train access patterns.
+    Simulate the naive pathological access pattern analytically, then measure
+    the fixed shard-aware pattern with a real DataLoader traversal.
 Input:
     data/pyg sharded train split and its manifest.
 Output:
@@ -66,6 +66,12 @@ def parse_args():
     parser.add_argument("--epoch", type=int, default=1)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--pin-memory", action="store_true")
+    parser.add_argument("--non-blocking", action="store_true")
+    parser.add_argument(
+        "--amp",
+        action="store_true",
+        help="Record AMP runtime intent; no forward/backward is run.",
+    )
     parser.add_argument("--device", choices=("cpu", "cuda", "auto"), default="auto")
     parser.add_argument(
         "--pattern-only",
@@ -152,14 +158,33 @@ def sampler_order(dataset, seed, epoch, shuffle):
     return list(iter(sampler))
 
 
-def traverse(dataset, order, args, device):
-    """Iterate a dataset order and collect actual cache counters."""
+def analytical_before(dataset, naive_order, cache_size):
+    """Simulate the old traversal without loading any graph objects."""
+
+    stats = access_pattern_stats(dataset, naive_order, cache_size)
+    return {
+        "mode": "ANALYTICAL_PATTERN_SIMULATION",
+        "number_of_samples": stats["samples"],
+        "unique_shards": stats["unique_shards"],
+        "shard_transitions": stats["shard_transitions"],
+        "estimated_shard_loads": stats["simulated_shard_loads"],
+        "average_consecutive_samples_per_shard": (
+            stats["average_consecutive_samples_per_shard"]
+        ),
+        "simulated_cache_hits": stats["simulated_cache_hits"],
+        "simulated_cache_misses": stats["simulated_cache_misses"],
+        "simulated_cache_hit_rate": stats["simulated_cache_hit_rate"],
+    }
+
+
+def traverse_after(dataset, sampler, order, args, device):
+    """Measure the shard-aware traversal and collect actual cache counters."""
 
     clear_dataset_cache(dataset)
     loader = DataLoader(
         dataset,
         batch_size=args.batch_size,
-        sampler=order,
+        sampler=sampler,
         shuffle=False,
         num_workers=args.num_workers,
         pin_memory=args.pin_memory,
@@ -169,18 +194,26 @@ def traverse(dataset, order, args, device):
     batches = 0
     for batch in loader:
         if device.type == "cuda":
-            batch = batch.to(device, non_blocking=args.pin_memory)
+            batch = batch.to(device, non_blocking=args.non_blocking)
             torch.cuda.synchronize(device)
         graphs += int(batch.y.numel())
         batches += 1
     seconds = time.perf_counter() - start
     stats = dataset_cache_stats(dataset)
+    pattern = access_pattern_stats(dataset, order, args.cache_size)
     return {
+        "mode": "REAL_SERVER_TRAVERSAL",
+        "note": "Data-loading traversal only; no forward/backward or AMP compute.",
         "graphs": graphs,
         "batches": batches,
-        "seconds": seconds,
+        "elapsed_seconds": seconds,
         "graphs_per_second": graphs / seconds if seconds > 0 else None,
         "batches_per_second": batches / seconds if seconds > 0 else None,
+        "shard_transitions": pattern["shard_transitions"],
+        "unique_shards": pattern["unique_shards"],
+        "average_consecutive_samples_per_shard": (
+            pattern["average_consecutive_samples_per_shard"]
+        ),
         **stats,
     }
 
@@ -189,31 +222,27 @@ def compare_case(case, args, device):
     """Compare naive and shard-aware access for one traversal case."""
 
     naive_order = case.naive_order
-    fixed_order = sampler_order(
+    after_sampler = make_shard_aware_sampler(
         case.dataset,
+        shuffle=True,
         seed=args.seed,
-        epoch=args.epoch,
-        shuffle=case.name != "full",
     )
-    old_pattern = access_pattern_stats(case.dataset, naive_order, args.cache_size)
-    new_pattern = access_pattern_stats(case.dataset, fixed_order, args.cache_size)
+    after_sampler.set_epoch(args.epoch)
+    fixed_order = list(iter(after_sampler))
+    before = analytical_before(case.dataset, naive_order, args.cache_size)
     if args.pattern_only:
-        old_access = old_pattern
-        new_access = new_pattern
+        after_preview = analytical_before(case.dataset, fixed_order, args.cache_size)
+        after = {
+            **after_preview,
+            "mode": "PATTERN_ONLY_PREVIEW",
+        }
     else:
-        old_access = {
-            **old_pattern,
-            **traverse(case.dataset, naive_order, args, device),
-        }
-        new_access = {
-            **new_pattern,
-            **traverse(case.dataset, fixed_order, args, device),
-        }
+        after = traverse_after(case.dataset, after_sampler, fixed_order, args, device)
     return {
         "name": case.name,
         "graphs": len(case.dataset),
-        "old_access_pattern": old_access,
-        "new_access_pattern": new_access,
+        "before": before,
+        "after": after,
         "membership_preserved": set(naive_order) == set(fixed_order),
         "order_changed": naive_order != fixed_order,
     }
@@ -234,20 +263,24 @@ def write_reports(payload):
         "",
     ]
     for result in payload["results"]:
-        old = result["old_access_pattern"]
-        new = result["new_access_pattern"]
+        before = result["before"]
+        after = result["after"]
         lines.extend(
             [
                 f"## {result['name']}",
                 "",
                 f"- Graphs: `{result['graphs']}`",
                 f"- Membership preserved: `{result['membership_preserved']}`",
-                f"- Old transitions: `{old['shard_transitions']}`",
-                f"- New transitions: `{new['shard_transitions']}`",
-                f"- Old shard loads: `{old.get('shard_load_count', old.get('simulated_shard_loads'))}`",
-                f"- New shard loads: `{new.get('shard_load_count', new.get('simulated_shard_loads'))}`",
-                f"- Old cache hit rate: `{old.get('cache_hit_rate', old.get('simulated_cache_hit_rate'))}`",
-                f"- New cache hit rate: `{new.get('cache_hit_rate', new.get('simulated_cache_hit_rate'))}`",
+                f"- BEFORE mode: `{before['mode']}`",
+                f"- BEFORE shard transitions: `{before['shard_transitions']}`",
+                f"- BEFORE estimated shard loads: `{before['estimated_shard_loads']}`",
+                f"- BEFORE simulated cache hit rate: `{before['simulated_cache_hit_rate']}`",
+                f"- AFTER mode: `{after['mode']}`",
+                f"- AFTER elapsed seconds: `{after.get('elapsed_seconds')}`",
+                f"- AFTER graphs/sec: `{after.get('graphs_per_second')}`",
+                f"- AFTER shard transitions: `{after['shard_transitions']}`",
+                f"- AFTER shard load count: `{after.get('shard_load_count', after.get('estimated_shard_loads'))}`",
+                f"- AFTER cache hit rate: `{after.get('cache_hit_rate', after.get('simulated_cache_hit_rate'))}`",
                 "",
             ]
         )
@@ -264,16 +297,33 @@ def main():
         split=args.split,
         cache_size=args.cache_size,
     )
-    results = [
-        compare_case(case, args, device)
-        for case in make_cases(dataset, args)
-    ]
+    results = []
+    cases = make_cases(dataset, args)
+    labels = {
+        "pilot_subset": "PILOT",
+        "confirmation_subset": "CONFIRMATION",
+        "full": "FULL",
+    }
+    for index, case in enumerate(cases, start=1):
+        print(f"[{index}/{len(cases)}] {labels.get(case.name, case.name.upper())}", flush=True)
+        result = compare_case(case, args, device)
+        results.append(result)
+        before = result["before"]
+        after = result["after"]
+        print(
+            f"{case.name}: before_loads={before['estimated_shard_loads']} "
+            f"before_transitions={before['shard_transitions']} "
+            f"after_loads={after.get('shard_load_count', after.get('estimated_shard_loads'))} "
+            f"after_seconds={after.get('elapsed_seconds')}",
+            flush=True,
+        )
     payload = {
         "device": str(device),
         "settings": vars(args),
         "note": (
-            "This benchmark diagnoses data access order. It is not a scientific "
-            "training run and VM wall-clock numbers are not server validation."
+            "This benchmark diagnoses data access order and is not a scientific "
+            "training run. BEFORE is analytical only. AFTER is a real DataLoader "
+            "traversal unless --pattern-only is set."
         ),
         "results": results,
     }
