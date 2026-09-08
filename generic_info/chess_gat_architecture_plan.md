@@ -1,5 +1,7 @@
 # Chess GAT Architecture Plan
 
+> Nota di stato: questo documento è un piano storico. `ChessGATNoTiming` è stato implementato, addestrato, portato a convergenza empirica e congelato come `MODEL_A_NO_TIMING_FROZEN_BASELINE`. Il riferimento definitivo aggiornato è [`model_a_no_timing.md`](model_a_no_timing.md).
+
 ## Obiettivo
 
 Questa relazione progetta due architetture GAT future per il progetto chess, senza implementarle:
@@ -675,7 +677,7 @@ Spiegazione:
 Quindi:
 
 ```text
-READY_TO_IMPLEMENT_MODEL_A = YES
+MODEL_A_IMPLEMENTATION_STATUS = HISTORICAL_READY_MARKER_SUPERSEDED_BY_FROZEN_BASELINE
 READY_TO_IMPLEMENT_MODEL_B = NO, finche non fissiamo la semantica di edge_time
 TIMING_SEMANTICS_BLOCKER = YES
 ```
@@ -751,7 +753,7 @@ ONLY_MAIN_DIFFERENCE_IS_TIMING = YES, after edge_time semantics are fixed
 ### IMPLEMENTATION DECISION
 
 ```text
-READY_TO_IMPLEMENT_MODEL_A = YES
+MODEL_A_IMPLEMENTATION_STATUS = HISTORICAL_READY_MARKER_SUPERSEDED_BY_FROZEN_BASELINE
 READY_TO_IMPLEMENT_MODEL_B = NO
 TIMING_SEMANTICS_BLOCKER = YES
 ```

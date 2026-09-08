@@ -729,7 +729,7 @@ Usare sampling gerarchico shard-aware deterministico:
 Gli esempi dello stesso shard sono temporalmente clusterizzati. La mitigazione e shuffle deterministico per epoch dell'ordine shard e intra-shard nel training.
 
 **Validation Status**  
-Functional tests passano su VM. Server performance validation: `SERVER PERFORMANCE VALIDATION PENDING`.
+Functional tests passano su VM. Server validation data-loading only confermata: Pilot-like `8.7386s` e `1373.21` graphs/s, Confirmation-like `9.2540s` e `3241.83` graphs/s, Full-like `10.6042s` e `6502.88` graphs/s. In tutti i casi reali after-fix: `shard_load_count=69` e cache hit rate circa `99.43%`, `99.77%`, `99.90%`.
 
 ## 36. Progressive Subset Sampler
 
@@ -801,7 +801,7 @@ La pipeline usa tutto train e tutto validation, `ReduceLROnPlateau` su validatio
 Richiede ulteriore compute sul server, ma risponde alla domanda scientifica corretta: quanto migliora lo stesso Model A quando non viene troncato a 60 epoch.
 
 **Status**  
-IMPLEMENTED / READY_TO_RUN. Nessun risultato futuro e stato ancora prodotto.
+COMPLETED. La run è stata successivamente continuata e il risultato finale è congelato come `MODEL_A_NO_TIMING_FROZEN_BASELINE`.
 
 ## 39. Model A Convergence Continuation
 
@@ -828,7 +828,7 @@ Prima di mutare lo stato terminale vengono copiati metadata leggeri in `snapshot
 La storia della run contiene piu fasi e piu osservazioni test. Questo e metodologicamente esplicito nel report invece di essere nascosto.
 
 **Status**  
-IMPLEMENTED / READY_TO_RUN. Per il caso server atteso il comando e:
+COMPLETED. Il comando storico usato per la continuation server è:
 
 ```bash
 ./venv/bin/python -m src.train_chess_gat_convergence \
@@ -837,4 +837,31 @@ IMPLEMENTED / READY_TO_RUN. Per il caso server atteso il comando e:
   --device cuda
 ```
 
-Queste opzioni non sono implementate nello stato corrente.
+## 40. Freeze Model A No-Timing Baseline
+
+**Context**  
+Il baseline 60 epoch (`MODEL_A_FULL_BASELINE_V1`) era budget-limited: `best_epoch=60`, `stop_reason=MAX_EPOCHS_REACHED`. La convergence run a 150 epoch era ancora budget-limited: `best_epoch=150`, `early_stopping_counter=0`, scheduler sopra `min_lr`. La continuation controllata ha proseguito la stessa optimizer trajectory fino a stop per early stopping.
+
+**Decision**  
+Congelare l'attuale `ChessGATNoTiming` come:
+
+```text
+MODEL_A_NO_TIMING_FROZEN_BASELINE
+```
+
+**Rationale**  
+La convergence finale soddisfa il protocollo definito: best validation loss a epoch `162`, training continuato fino a epoch `174`, nessun miglioramento per `12` epoch, riduzioni LR successive, stop reason `EARLY_STOPPING`, convergence status `CONVERGED_BY_EARLY_STOPPING`.
+
+**Frozen Result**  
+Final test dopo reload del best checkpoint:
+
+- loss `3.078363185864846`;
+- Top1 `39.6167%`;
+- Top3 `55.8072%`;
+- Top5 `62.7526%`.
+
+**Consequences**  
+Da questo punto modifiche a architecture, feature, target, vocabulary, masking, optimizer protocol o hyperparameter non sono lo stesso Model A baseline. Devono essere trattate come variante, ablation o nuovo esperimento.
+
+**Methodology Note**  
+Il test è stato osservato più volte nella storia. La continuation fu decisa usando solo stato training/validation, non il risultato test epoch 150. Il documento principale è [model_a_no_timing.md](model_a_no_timing.md).

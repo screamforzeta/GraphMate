@@ -14,6 +14,7 @@ Stato implementato:
 - graph representation PyG;
 - dataset PyG sharded;
 - `ChessGATNoTiming`;
+- `MODEL_A_NO_TIMING_FROZEN_BASELINE`;
 - training standard, adaptive storico, benchmark runtime e progressive training;
 - validator e test suite.
 
@@ -294,7 +295,15 @@ Su VM si puo usare `--pattern-only` per verificare solo transizioni/cache simula
 
 ## Model Layer
 
-`src/models/chess_gat.py` contiene `ChessGATNoTiming`, il modello attuale.
+`src/models/chess_gat.py` contiene `ChessGATNoTiming`, il baseline no-timing congelato.
+
+Stato Model A:
+
+```text
+IMPLEMENTED -> TRAINED -> CONVERGED -> FROZEN
+```
+
+Documento principale: [model_a_no_timing.md](model_a_no_timing.md).
 
 Forma logica:
 
@@ -382,7 +391,7 @@ Baseline full reale su RTX A2000 documentato come `MODEL_A_FULL_BASELINE_V1`:
 - best validation: loss `3.621614`, Top1 `31.86%`, Top3 `46.96%`, Top5 `53.69%`;
 - final test: loss `3.590105`, Top1 `31.87%`, Top3 `47.72%`, Top5 `54.29%`.
 
-Il run ha raggiunto il budget epoch configurato mentre il miglior risultato validation era all'ultima epoch. Questo motiva una futura `MODEL_A_CONVERGENCE_RUN` con stessa architettura e stessa config selezionata, budget maggiore, scheduler ed early stopping fino a plateau empirico.
+Il run a 60 epoch ha raggiunto il budget configurato mentre il miglior risultato validation era all'ultima epoch. La successiva `MODEL_A_CONVERGENCE_RUN_V1`, con continuation controllata, ha raggiunto stop per `EARLY_STOPPING` a epoch 174 con best checkpoint a epoch 162.
 
 ## Model A Convergence Run
 
@@ -469,7 +478,7 @@ artifacts/convergence_training/chess_gat_no_timing/snapshots/epoch_<N>_terminal/
 
 Se il test era gia stato osservato al terminal state precedente, la metrica viene archiviata in `intermediate_test_evaluations`. La continuation non usa quel test per scheduler, early stopping, selection o stop decision. Il test successivo, al nuovo terminal state, e registrato come ulteriore osservazione.
 
-Stato: implemented / ready to run. Non contiene risultati futuri.
+Stato: completed. Il risultato ufficiale è `MODEL_A_NO_TIMING_FROZEN_BASELINE`; dettagli e limiti metodologici sono nel documento dedicato.
 
 ## Progressive Training
 

@@ -2,7 +2,7 @@
 
 Pipeline Python per trasformare puzzle e partite Lichess in grafi PyTorch Geometric e addestrare modelli Graph Neural Network / Graph Attention Network su puzzle mate-in-n.
 
-L'obiettivo scientifico attuale è `ChessGATNoTiming`: un GAT graph-level che predice la prima mossa corretta della soluzione di un puzzle. In seguito verrà progettata una variante timing-aware, con confronto timing/no timing, valutazione per MateDepth e confronto con modelli LLM.
+Il baseline scientifico no-timing è `ChessGATNoTiming`: un GAT graph-level che predice la prima mossa corretta della soluzione di un puzzle. Model A è ora completato, convergente secondo il protocollo definito e congelato come riferimento no-timing per confronti futuri.
 
 ## Stato Attuale
 
@@ -22,10 +22,10 @@ Implementato:
 - modello `ChessGATNoTiming`;
 - trainer standard, adaptive storico, benchmark runtime e progressive training;
 - diagnosi/fix shard-aware per subset progressivi Pilot/Confirmation, validato sul server;
-- pipeline dedicata `MODEL_A_CONVERGENCE_RUN_V1` pronta;
+- `MODEL_A_CONVERGENCE_RUN_V1` completata e congelata come baseline no-timing;
 - debugger Streamlit standalone per grafo/scacchiera.
 
-Non implementato: run di convergenza finale, Model B timing-aware, legal move masking, nuove feature temporali, valutazione MateDepth dedicata e confronto LLM.
+Non implementato: Model B timing-aware, legal move masking, nuove feature temporali, valutazione MateDepth dedicata e confronto LLM.
 
 Baseline full completato: `MODEL_A_FULL_BASELINE_V1`.
 
@@ -34,12 +34,20 @@ Baseline full completato: `MODEL_A_FULL_BASELINE_V1`.
 - config selezionata: lr `5e-4`, weight decay `1e-4`, dropout `0.30`, batch `128`;
 - final test: Top1 circa `31,87%`, Top3 circa `47,72%`, Top5 circa `54,29%`.
 
-Il run ha esaurito il budget configurato di `60` epoch con il miglior risultato di validation all'ultima epoch. La pipeline `MODEL_A_CONVERGENCE_RUN_V1` e pronta per una run piu lunga da zero, con stessa architettura/config, scheduler ed early stopping. Se una convergence run terminale finisce ancora per `MAX_EPOCHS_REACHED` con best all'ultima epoch, puo essere estesa esplicitamente con `--resume --extend-max-epochs`.
+Il run a 60 epoch ha esaurito il budget con il miglior risultato validation all'ultima epoch. La successiva `MODEL_A_CONVERGENCE_RUN_V1`, inclusa continuation controllata, ha raggiunto `CONVERGED_BY_EARLY_STOPPING`.
+
+Baseline ufficiale congelato: `MODEL_A_NO_TIMING_FROZEN_BASELINE`.
+
+- best epoch: `162`;
+- stop epoch: `174`;
+- stop reason: `EARLY_STOPPING`;
+- final test: Top1 circa `39,62%`, Top3 circa `55,81%`, Top5 circa `62,75%`.
 
 ## Documentazione
 
 - [Architettura del progetto](generic_info/project_architecture.md): come sono organizzati moduli, pipeline, dati, training e artifact.
 - [Scelte architetturali](generic_info/architectural_choices.md): perché sono state prese le principali decisioni progettuali.
+- [Model A no-timing](generic_info/model_a_no_timing.md): report completo del baseline congelato `ChessGATNoTiming`.
 - [Analisi TimeGNN](generic_info/timegnn_info.md): audit della libreria esterna `TimeGNN-main/`.
 - [Guida training TimeGNN/GNN](generic_info/timegnn_gnn_training_guide.md): note di integrazione future.
 - [Piano architettura Chess GAT](generic_info/chess_gat_architecture_plan.md): piano tecnico del modello chess-specific.
@@ -90,7 +98,7 @@ Resume progressivo:
 ./venv/bin/python -m src.train_chess_gat_progressive --resume --device cuda
 ```
 
-Convergence run Model A:
+Historical convergence run Model A:
 
 ```bash
 ./venv/bin/python -m src.train_chess_gat_convergence \
@@ -108,13 +116,13 @@ Convergence run Model A:
   --seed 42
 ```
 
-Resume convergence run:
+Historical resume convergence run:
 
 ```bash
 ./venv/bin/python -m src.train_chess_gat_convergence --resume --device cuda
 ```
 
-Continuation convergence run:
+Historical continuation convergence run:
 
 ```bash
 ./venv/bin/python -m src.train_chess_gat_convergence \

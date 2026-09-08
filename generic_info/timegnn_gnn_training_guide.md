@@ -1,5 +1,7 @@
 # TimeGNN GNN/GAT Training Guide per il Progetto Chess
 
+> Nota di stato: questa guida rimane utile per l'integrazione futura di TimeGNN e del modello timing-aware. Il baseline no-timing definitivo è ora documentato in [`model_a_no_timing.md`](model_a_no_timing.md).
+
 ## Scopo
 
 Questa relazione tecnica analizza `TimeGNN-main/` con focus esclusivo su modelli GNN/GAT, layer, forward pass e training. Non sostituisce `generic_info/timegnn_info.md`: qui l'obiettivo e operativo, cioe capire cosa possiamo riusare per due futuri modelli chess:
