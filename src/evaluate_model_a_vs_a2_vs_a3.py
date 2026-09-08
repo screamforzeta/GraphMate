@@ -67,6 +67,13 @@ def main():
     print(f"MODEL_A_PARITY: {summary['model_a_parity']['status']}")
     print(f"MODEL_A2_PARITY: {summary['model_a2_parity']['status']}")
     print(f"MODEL_A3_PARITY: {summary['model_a3_parity']['status']}")
+    print("A3 parity diagnostics:")
+    for item in summary["model_a3_parity"].get("diagnostics", []):
+        print(
+            f"- {item['metric']}: expected={item['expected']} "
+            f"actual={item['actual']} diff={item['abs_diff']} "
+            f"tolerance={item['tolerance']} result={item['result']}"
+        )
     if summary["model_a3_parity"]["status"] == "FAIL":
         print("A3 parity failed; subgroup interpretation is blocked.")
         return 2

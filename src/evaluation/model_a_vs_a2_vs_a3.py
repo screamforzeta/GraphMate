@@ -67,6 +67,7 @@ MODEL_A3_REFERENCE = {
     "a3_median_legal_rank": 1.0,
     "a3_illegal_top1_rate": 0.0,
 }
+A3_PARITY_TOLERANCE = 1e-12
 
 
 @dataclass
@@ -216,20 +217,61 @@ def finalize_bucket(bucket):
     return result
 
 
+def a3_parity_diagnostics(actual, reference=MODEL_A3_REFERENCE, tolerance=A3_PARITY_TOLERANCE):
+    """Return per-field A3 parity diagnostics.
+
+    Parameters:
+        actual: Dict with A3 metrics produced by the evaluator.
+        reference: Frozen canonical A3 metric values.
+        tolerance: Maximum absolute float difference allowed for metrics.
+    Returns:
+        List of per-field diagnostic dictionaries.
+    Side effects:
+        None.
+    """
+
+    diagnostics = []
+    for key, expected in reference.items():
+        actual_value = actual.get(key)
+        if actual_value is None:
+            diff = None
+            passed = False
+        elif key == "n":
+            diff = abs(int(actual_value) - int(expected))
+            passed = diff == 0
+        else:
+            diff = abs(float(actual_value) - float(expected))
+            passed = diff <= tolerance
+        diagnostics.append(
+            {
+                "metric": key,
+                "expected": expected,
+                "actual": actual_value,
+                "abs_diff": diff,
+                "tolerance": 0 if key == "n" else tolerance,
+                "result": "PASS" if passed else "FAIL",
+            }
+        )
+    return diagnostics
+
+
 def parity_status_a3(actual):
     """Compare A3 native metrics to frozen shared-test references."""
 
-    keys = [key for key in MODEL_A3_REFERENCE if key != "n"]
-    deltas = {key: actual.get(key) - MODEL_A3_REFERENCE[key] for key in keys}
-    passed = actual.get("n") == MODEL_A3_REFERENCE["n"] and all(
-        abs(delta) < 1e-12 for delta in deltas.values()
-    )
+    diagnostics = a3_parity_diagnostics(actual)
+    passed = all(item["result"] == "PASS" for item in diagnostics)
+    deltas = {
+        item["metric"]: item["abs_diff"]
+        for item in diagnostics
+        if item["metric"] != "n"
+    }
     return {
         "model": "MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING",
         "status": "PASS" if passed else "FAIL",
         "actual": {key: actual.get(key) for key in MODEL_A3_REFERENCE},
         "reference": dict(MODEL_A3_REFERENCE),
         "deltas": deltas,
+        "diagnostics": diagnostics,
     }
 
 
@@ -457,12 +499,25 @@ def render_report(summary):
         "",
         "| Metric | A Raw | A Best-Legal | A2 Masked | A3 |",
         "|---|---:|---:|---:|---:|",
+        f"| Candidate CE / NLL loss | N/A | N/A | N/A | {metrics['a3_loss']:.12f} |",
         _metric_row("Top1", metrics, "raw_top1", "best_legal_top1", "a2_masked_top1", "a3_top1"),
         _metric_row("Top3", metrics, "raw_top3", "best_legal_top3", "a2_masked_top3", "a3_top3"),
         _metric_row("Top5", metrics, "raw_top5", "best_legal_top5", "a2_masked_top5", "a3_top5"),
         f"| Mean legal rank | {metrics['model_a_mean_legal_rank']:.6f} | {metrics['model_a_mean_legal_rank']:.6f} | {metrics['model_a2_mean_legal_rank']:.6f} | {metrics['model_a3_mean_legal_rank']:.6f} |",
         f"| Median legal rank | {metrics['model_a_median_legal_rank']:.6f} | {metrics['model_a_median_legal_rank']:.6f} | {metrics['model_a2_median_legal_rank']:.6f} | {metrics['model_a3_median_legal_rank']:.6f} |",
         f"| Illegal Top1 rate | {metrics['raw_illegal_top1_rate']:.6f} | 0.000000 | {metrics['a2_masked_illegal_top1_rate']:.6f} | {metrics['a3_illegal_top1_rate']:.6f} |",
+        "",
+        "## A3 Parity Diagnostics",
+        "",
+        "| Metric | Expected | Actual | Abs Diff | Tolerance | Result |",
+        "|---|---:|---:|---:|---:|---|",
+        *[
+            (
+                f"| {item['metric']} | {item['expected']} | {item['actual']} | "
+                f"{item['abs_diff']} | {item['tolerance']} | {item['result']} |"
+            )
+            for item in summary["model_a3_parity"].get("diagnostics", [])
+        ],
         "",
         "## Global Deltas",
         "",
