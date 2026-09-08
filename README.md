@@ -51,6 +51,7 @@ Baseline ufficiale congelato: `MODEL_A_NO_TIMING_FROZEN_BASELINE`.
 - [Model A no-timing](generic_info/model_a_no_timing.md): report completo del baseline congelato `ChessGATNoTiming`.
 - [Streamlit Model A verification](generic_info/streamlit_model_a_verification.md): sezione UI per training umano sui puzzle, inference read-only e diagnostica Mate-in-1.
 - [Model A2 legal mask no-timing](generic_info/model_a2_legal_mask_no_timing.md): piano/protocollo della variante legal-masked senza timing.
+- [Model A vs A2 evaluator](generic_info/model_a_vs_a2_evaluation.md): valutazione post-hoc raw/best-legal/masked tra i due baseline.
 - [Analisi TimeGNN](generic_info/timegnn_info.md): audit della libreria esterna `TimeGNN-main/`.
 - [Guida training TimeGNN/GNN](generic_info/timegnn_gnn_training_guide.md): note di integrazione future.
 - [Piano architettura Chess GAT](generic_info/chess_gat_architecture_plan.md): piano tecnico del modello chess-specific.
@@ -150,6 +151,18 @@ Resume Model A2:
 
 ```bash
 ./venv/bin/python -m src.train_chess_gat_legal_mask --resume --device cuda
+```
+
+Post-hoc Model A vs A2 evaluation:
+
+```bash
+./venv/bin/python -m src.evaluate_model_a_vs_a2 \
+  --device cuda \
+  --batch-size 128 \
+  --num-workers 0 \
+  --pin-memory \
+  --non-blocking \
+  --amp
 ```
 
 Benchmark runtime:
