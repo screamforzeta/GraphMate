@@ -6,6 +6,7 @@ import torch
 from src.evaluation.model_a_vs_a2_vs_a3 import (
     MODEL_A3_REFERENCE,
     SHARED_TEST_N,
+    a3_parity_diagnostics,
     a3_topk_and_ranks,
     compute_a3_deltas_pp,
     finalize_bucket,
@@ -58,6 +59,18 @@ def test_a3_parity_passes_for_reference_metrics():
     parity = parity_status_a3(actual)
 
     assert parity["status"] == "PASS"
+    assert all(
+        item["result"] == "PASS"
+        for item in parity["diagnostics"]
+    )
+
+
+def test_a3_parity_diagnostics_report_each_official_field():
+    diagnostics = a3_parity_diagnostics(dict(MODEL_A3_REFERENCE))
+
+    assert [item["metric"] for item in diagnostics] == list(MODEL_A3_REFERENCE)
+    assert all(item["abs_diff"] == 0 for item in diagnostics)
+    assert all(item["result"] == "PASS" for item in diagnostics)
 
 
 def test_a3_parity_fails_on_metric_drift():
@@ -67,6 +80,28 @@ def test_a3_parity_fails_on_metric_drift():
     parity = parity_status_a3(actual)
 
     assert parity["status"] == "FAIL"
+    failed = [
+        item
+        for item in parity["diagnostics"]
+        if item["result"] == "FAIL"
+    ]
+    assert [item["metric"] for item in failed] == ["a3_top1"]
+
+
+def test_a3_parity_aggregate_boolean_fails_on_missing_metric():
+    actual = dict(MODEL_A3_REFERENCE)
+    actual.pop("a3_loss")
+
+    parity = parity_status_a3(actual)
+
+    assert parity["status"] == "FAIL"
+    failed = [
+        item
+        for item in parity["diagnostics"]
+        if item["result"] == "FAIL"
+    ]
+    assert failed[0]["metric"] == "a3_loss"
+    assert failed[0]["actual"] is None
 
 
 def test_update_bucket_accumulates_all_four_systems():
@@ -139,6 +174,7 @@ def test_report_generation_contains_required_sections(tmp_path):
         "a3_top1": 0.65,
         "a3_top3": 0.86,
         "a3_top5": 0.91,
+        "a3_loss": 1.2,
         "model_a_mean_legal_rank": 4.0,
         "model_a_median_legal_rank": 2.0,
         "model_a2_mean_legal_rank": 3.0,
@@ -170,6 +206,8 @@ def test_report_generation_contains_required_sections(tmp_path):
     paths = write_outputs(summary, tmp_path)
 
     assert "# Model A vs A2 vs A3 Evaluation" in report
+    assert "Candidate CE / NLL loss" in report
+    assert "## A3 Parity Diagnostics" in report
     assert "## MateIn1 Focus" in report
     assert "## Rating Buckets" in report
     assert json.loads((tmp_path / "summary.json").read_text())["shared_test_n"] == 8610
