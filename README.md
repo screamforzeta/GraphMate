@@ -23,6 +23,7 @@ Implementato:
 - trainer standard, adaptive storico, benchmark runtime e progressive training;
 - diagnosi/fix shard-aware per subset progressivi Pilot/Confirmation, validato sul server;
 - `MODEL_A_CONVERGENCE_RUN_V1` completata e congelata come baseline no-timing;
+- variante `MODEL_A2_LEGAL_MASK_NO_TIMING` implementata e pronta per training come ablation no-timing legal-masked;
 - debugger Streamlit standalone per grafo/scacchiera.
 
 Non implementato: Model B timing-aware, legal move masking, nuove feature temporali, valutazione MateDepth dedicata e confronto LLM.
@@ -49,6 +50,7 @@ Baseline ufficiale congelato: `MODEL_A_NO_TIMING_FROZEN_BASELINE`.
 - [Scelte architetturali](generic_info/architectural_choices.md): perché sono state prese le principali decisioni progettuali.
 - [Model A no-timing](generic_info/model_a_no_timing.md): report completo del baseline congelato `ChessGATNoTiming`.
 - [Streamlit Model A verification](generic_info/streamlit_model_a_verification.md): sezione UI per training umano sui puzzle, inference read-only e diagnostica Mate-in-1.
+- [Model A2 legal mask no-timing](generic_info/model_a2_legal_mask_no_timing.md): piano/protocollo della variante legal-masked senza timing.
 - [Analisi TimeGNN](generic_info/timegnn_info.md): audit della libreria esterna `TimeGNN-main/`.
 - [Guida training TimeGNN/GNN](generic_info/timegnn_gnn_training_guide.md): note di integrazione future.
 - [Piano architettura Chess GAT](generic_info/chess_gat_architecture_plan.md): piano tecnico del modello chess-specific.
@@ -130,6 +132,24 @@ Historical continuation convergence run:
   --resume \
   --extend-max-epochs 300 \
   --device cuda
+```
+
+Training Model A2 legal-masked no-timing:
+
+```bash
+./venv/bin/python -m src.train_chess_gat_legal_mask \
+  --device cuda \
+  --batch-size 128 \
+  --num-workers 0 \
+  --pin-memory \
+  --non-blocking \
+  --amp
+```
+
+Resume Model A2:
+
+```bash
+./venv/bin/python -m src.train_chess_gat_legal_mask --resume --device cuda
 ```
 
 Benchmark runtime:
