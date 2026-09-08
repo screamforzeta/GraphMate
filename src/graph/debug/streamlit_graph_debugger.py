@@ -56,6 +56,10 @@ from src.inference.chess_gat_inference import (
     MODEL_A_NAME,
     check_user_move,
     evaluate_mate_in_one_dataframe,
+    run_error_analysis,
+    target_rank_explanation,
+    target_row_from_logits,
+    write_error_analysis_report,
     is_legal_uci,
     is_mate_in_one_row,
     load_model_bundle,
@@ -924,7 +928,7 @@ status_cols[1].metric(
 )
 status_cols[2].metric(
     "Checkpoint",
-    "loaded" if bundle else "unavailable",
+    str(bundle.checkpoint_path) if bundle else "unavailable",
 )
 status_cols[3].metric(
     "Vocabulary",
@@ -938,11 +942,15 @@ if model_error:
         f"Loader message: {model_error}"
     )
 elif bundle and bundle.checkpoint_path != EXPECTED_CHECKPOINT_PATH:
-    st.info(
-        "Loaded fallback checkpoint for local verification: "
+    st.warning(
+        "FALLBACK / NON-OFFICIAL CHECKPOINT loaded for local single-puzzle "
+        "debug only: "
         f"`{bundle.checkpoint_path}`. The frozen convergence checkpoint is "
-        f"expected at `{EXPECTED_CHECKPOINT_PATH}` on the server."
+        f"expected at `{EXPECTED_CHECKPOINT_PATH}`. Official Model A Error "
+        "Analysis is disabled until the frozen checkpoint is available."
     )
+elif bundle:
+    st.success("Checkpoint status: OFFICIAL FROZEN CHECKPOINT")
 
 st.info(
     "Model A is frozen. Best epoch: 162. Stop epoch: 174. "
@@ -951,11 +959,12 @@ st.info(
     "Model A has not been probability-calibrated."
 )
 
-puzzle_tab, model_tab, mate_tab = st.tabs(
+puzzle_tab, model_tab, mate_tab, error_tab = st.tabs(
     [
         "Human Puzzle Training",
         "Model A Inference",
         "Mate-in-1 Evaluation",
+        "Model A Error Analysis",
     ]
 )
 
@@ -1018,11 +1027,15 @@ with model_tab:
         "Top-K is computed from raw logits over all 1,786 classes. "
         "Legal diagnostics do not replace the official raw ranking."
     )
-    top_k = st.slider(
+    st.caption(
+        "HIT = the puzzle target is contained within the model's first K raw "
+        "predictions. MISS = the target is ranked below K. This does not mean "
+        "inference failed."
+    )
+    top_k = st.selectbox(
         "Top-K",
-        min_value=5,
-        max_value=10,
-        value=5,
+        [5, 10, 20],
+        index=0,
     )
     if str(sample.TargetMove) not in move_to_idx:
         st.warning(
@@ -1050,27 +1063,29 @@ with model_tab:
     if result:
         top1 = result["topk"][0] if result["topk"] else None
         result_cols = st.columns(4)
-        result_cols[0].metric("Top-1", "PASS" if result["top1_hit"] else "FAIL")
-        result_cols[1].metric("Top-3", "PASS" if result["top3_hit"] else "FAIL")
-        result_cols[2].metric("Top-5", "PASS" if result["top5_hit"] else "FAIL")
+        result_cols[0].metric("Top-1 target match", result["top1_label"])
+        result_cols[1].metric("Top-3 contains target", result["top3_label"])
+        result_cols[2].metric("Top-5 contains target", result["top5_label"])
         result_cols[3].metric(
             "Target Rank",
-            "Ground Truth OOV"
+            "unavailable — target OOV"
             if result["target_oov"]
-            else f"{result['target_rank']} / {len(move_to_idx)}",
+            else f"#{result['target_rank']} / {len(move_to_idx)}",
         )
+        st.write(f"Inference: `{result['inference_status']}`")
+        st.write(f"Meaning: {target_rank_explanation(result['target_rank'])}")
         if top1:
             st.write(f"Raw Model Top-1: `{top1['move']}`")
             st.write(f"Top-1 legal: `{top1['legal']}`")
-            best_legal = next(
-                (row for row in result["topk"] if row["legal"]),
-                None,
-            )
+            best_legal = result.get("best_legal")
             if best_legal:
                 st.caption(
-                    "Best legal move among shown Model A outputs "
-                    f"(diagnostic only): `{best_legal['move']}`"
+                    "Best legal prediction (DIAGNOSTIC ONLY — NOT MODEL A "
+                    f"OFFICIAL ACCURACY): `{best_legal['move']}` at raw rank "
+                    f"#{best_legal['rank']}"
                 )
+        if result["target_rank"] and result["target_rank"] > top_k:
+            st.info(f"Ground truth appears at rank #{result['target_rank']}.")
         st.dataframe(
             pd.DataFrame(result["topk"]).rename(
                 columns={
@@ -1159,6 +1174,138 @@ with mate_tab:
                 "Median target rank": metrics["median_target_rank"],
             }
         )
+
+with error_tab:
+    st.subheader("Model A Error Analysis")
+    st.caption(
+        "DIAGNOSTIC POST-HOC ANALYSIS. This tab interprets the already frozen "
+        "test result; it must not be used for Model A selection or tuning."
+    )
+    official_ready = bool(bundle and bundle.is_official_checkpoint)
+    if not official_ready:
+        st.warning(
+            "Official frozen checkpoint is not loaded. Batch Error Analysis is "
+            f"disabled. Required checkpoint: `{EXPECTED_CHECKPOINT_PATH}`."
+        )
+    min_theme_samples = st.number_input(
+        "Minimum theme sample",
+        min_value=1,
+        value=30,
+        step=5,
+    )
+    run_disabled = not official_ready or selected_split != "test"
+    if selected_split != "test":
+        st.info("Metric parity is defined for the official test split only.")
+    run_col, clear_col = st.columns(2)
+    if run_col.button("Run Model A Error Analysis", disabled=run_disabled):
+        progress = st.progress(0)
+        status = st.empty()
+
+        def update_progress(processed, total):
+            status.write(f"Processed {processed:,} / {total:,} examples")
+            progress.progress(processed / total if total else 1.0)
+
+        try:
+            analysis = run_error_analysis(
+                bundle=bundle,
+                dataframe=df_full,
+                split_name=selected_split,
+                batch_size=128,
+                min_theme_samples=int(min_theme_samples),
+                progress_callback=update_progress,
+            )
+            paths = write_error_analysis_report(analysis)
+            analysis["artifact_paths"] = paths
+            st.session_state["model_a_error_analysis"] = analysis
+            status.write("Analysis complete.")
+        except Exception as error:
+            st.error(f"Model A Error Analysis failed: {error}")
+    if clear_col.button("Clear analysis results"):
+        st.session_state["model_a_error_analysis"] = None
+
+    analysis = st.session_state.get("model_a_error_analysis")
+    if analysis:
+        overall = analysis["overall"]
+        rates = overall["rates"]
+        parity = overall["parity"]
+        st.metric("OFFICIAL METRIC PARITY", parity["status"])
+        if parity["status"] != "PASS":
+            st.warning(
+                "Inference parity with the frozen test evaluation was not achieved."
+            )
+            st.json(parity)
+        dash = st.columns(4)
+        dash[0].metric("Test N", overall["evaluable"])
+        dash[1].metric("Top1", f"{rates['top1']:.2%}")
+        dash[2].metric("Top3", f"{rates['top3']:.2%}")
+        dash[3].metric("Top5", f"{rates['top5']:.2%}")
+
+        st.write("Error structure")
+        error_df = pd.DataFrame(
+            [
+                {"Category": key, "Count": value}
+                for key, value in overall["error_categories"].items()
+            ]
+        )
+        st.bar_chart(error_df, x="Category", y="Count")
+        st.dataframe(error_df, use_container_width=True)
+
+        st.write("Rank recovery")
+        st.json(overall["rank_recovery"])
+        rank_df = pd.DataFrame(
+            [
+                {"Rank bucket": key, "Count": value}
+                for key, value in overall["rank_buckets"].items()
+            ]
+        )
+        st.bar_chart(rank_df, x="Rank bucket", y="Count")
+        st.dataframe(rank_df, use_container_width=True)
+
+        st.write("Raw vs legal diagnostic")
+        st.metric(
+            "Diagnostic best-legal Top1",
+            f"{rates['best_legal_top1']:.2%}",
+            delta=f"{(rates['best_legal_top1'] - rates['top1']) * 100:.2f} pp",
+        )
+
+        st.write("Mate depth analysis")
+        st.dataframe(
+            pd.DataFrame(analysis["mate_depth"].values()),
+            use_container_width=True,
+        )
+        if "mateIn1" in analysis["mate_depth"]:
+            st.write("Mate-in-1 focus")
+            st.json(analysis["mate_depth"]["mateIn1"])
+
+        st.write("Theme analysis")
+        st.caption("Theme metrics are overlapping subgroup analyses.")
+        st.dataframe(
+            pd.DataFrame(analysis["theme"].values()),
+            use_container_width=True,
+        )
+
+        st.write("Rating analysis")
+        st.dataframe(
+            pd.DataFrame(analysis["rating"].values()),
+            use_container_width=True,
+        )
+
+        st.write("Explore mistakes")
+        mistake_filter = st.selectbox(
+            "Mistake filter",
+            [
+                "Top1 incorrect",
+                "Illegal Top1",
+                "Legal wrong Top1",
+                "Target rank >5",
+                "Mate-in-1 missed",
+            ],
+        )
+        examples = overall["illegal_examples"] if mistake_filter == "Illegal Top1" else overall["mistake_examples"]
+        st.dataframe(pd.DataFrame(examples), use_container_width=True)
+        if analysis.get("artifact_paths"):
+            st.write("Report artifacts")
+            st.json(analysis["artifact_paths"])
 
 # =========================================================
 # RAW DATA

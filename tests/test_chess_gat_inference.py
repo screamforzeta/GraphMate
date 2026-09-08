@@ -7,12 +7,19 @@ import torch
 from src.graph.graph_builder import build_graph
 from src.inference.chess_gat_inference import (
     check_user_move,
+    compute_metric_parity,
+    empty_error_analysis_metrics,
+    error_category,
     evaluate_rows_with_logits,
+    finalize_error_analysis_metrics,
+    hit_label,
     is_legal_uci,
     is_mate_in_one_row,
     puzzle_row_to_graph,
+    rank_bucket,
     summarize_prediction,
     target_rank_from_logits,
+    update_error_analysis_metrics,
     verify_target_checkmate,
 )
 
@@ -80,8 +87,42 @@ def test_raw_top1_is_not_replaced_when_it_is_illegal():
 
     assert summary["topk"][0]["move"] == "e2e5"
     assert summary["topk"][0]["legal"] is False
+    assert summary["top1_label"] == "MISS"
+    assert summary["top3_label"] == "HIT"
+    assert summary["best_legal"]["move"] == "g1f3"
+    assert summary["best_legal"]["ground_truth"] is True
     assert summary["top3_hit"] is True
     assert summary["target_rank"] == 2
+
+
+@pytest.mark.parametrize(
+    ("rank", "top1", "top3", "top5", "bucket"),
+    [
+        (1, "HIT", "HIT", "HIT", "rank_1"),
+        (2, "MISS", "HIT", "HIT", "rank_2_3"),
+        (4, "MISS", "MISS", "HIT", "rank_4_5"),
+        (7, "MISS", "MISS", "MISS", "rank_6_10"),
+        (None, "OOV", "OOV", "OOV", "TARGET_OOV"),
+    ],
+)
+def test_hit_labels_and_rank_buckets(rank, top1, top3, top5, bucket):
+    assert hit_label(rank, 1) == top1
+    assert hit_label(rank, 3) == top3
+    assert hit_label(rank, 5) == top5
+    assert rank_bucket(rank) == bucket
+
+
+@pytest.mark.parametrize(
+    ("rank", "legal", "category"),
+    [
+        (1, True, "TOP1_CORRECT"),
+        (2, True, "TOP1_WRONG_LEGAL"),
+        (2, False, "TOP1_ILLEGAL"),
+        (None, False, "TARGET_OOV"),
+    ],
+)
+def test_error_category_helper(rank, legal, category):
+    assert error_category(rank, legal) == category
 
 
 def test_user_move_validation_distinguishes_statuses():
@@ -130,6 +171,50 @@ def test_batch_metric_helper_counts_oov_and_illegal_top1():
     assert metrics["top1"] == 0
     assert metrics["top3"] == 1
     assert metrics["top5"] == 1
+
+
+def test_error_analysis_aggregation_and_parity_infrastructure():
+    rows = [
+        _row(chess.STARTING_FEN, "g1f3", themes="mateIn1 sacrifice", mate_depth=1),
+        _row(chess.STARTING_FEN, "e2e4", themes="mateIn2", mate_depth=2),
+        _row(chess.STARTING_FEN, "b1c3", themes="mateIn2", mate_depth=2),
+    ]
+    move_to_idx = {"g1f3": 0, "e2e4": 1, "e2e5": 2}
+    idx_to_move = {0: "g1f3", 1: "e2e4", 2: "e2e5"}
+    logits = [
+        torch.tensor([9.0, 2.0, 1.0]),
+        torch.tensor([8.0, 7.0, 6.0]),
+        torch.tensor([8.0, 7.0, 6.0]),
+    ]
+
+    metrics = empty_error_analysis_metrics()
+    for row, row_logits in zip(rows, logits):
+        summary = summarize_prediction(
+            logits=row_logits,
+            board=chess.Board(row.FEN),
+            target_move=row.TargetMove,
+            move_to_idx=move_to_idx,
+            idx_to_move=idx_to_move,
+            k=3,
+        )
+        update_error_analysis_metrics(metrics, row, summary)
+    finalized = finalize_error_analysis_metrics(metrics)
+
+    assert finalized["total"] == 3
+    assert finalized["evaluable"] == 2
+    assert finalized["oov"] == 1
+    assert finalized["error_categories"]["TOP1_CORRECT"] == 1
+    assert finalized["error_categories"]["TOP1_WRONG_LEGAL"] == 1
+    assert finalized["rank_buckets"]["rank_2_3"] == 1
+    assert finalized["rates"]["top1"] == pytest.approx(0.5)
+    assert finalized["rates"]["top3"] == pytest.approx(1.0)
+    assert finalized["rates"]["best_legal_top1"] == pytest.approx(0.5)
+
+    parity = compute_metric_parity(
+        finalized,
+        reference={"examples": 2, "top1": 0.5, "top3": 1.0, "top5": 1.0},
+    )
+    assert parity["status"] == "PASS"
 
 
 @pytest.mark.parametrize(
