@@ -218,6 +218,23 @@ Manteniamo un modello dedicato, ma dobbiamo gestire training e checkpoint nel pr
 **Current Status**  
 Implemented.
 
+## 13. Legal Candidate Scorer For Model A3
+
+**Decision**  
+Creare `ChessGATLegalMoveScorer` come modello separato che usa lo stesso encoder GAT no-timing di Model A, ma produce uno score per ogni mossa legale della posizione.
+
+**Rationale**  
+Il problema reale del puzzle è scegliere tra mosse legali, non tra tutte le classi della vocabulary train-only. A3 testa questa formulazione senza introdurre timing e senza modificare Model A o Model A2.
+
+**Alternatives Considered**  
+Applicare solo una legal mask ai logits globali, come in A2. Questa resta una baseline utile, ma conserva uno spazio di output globale e non modella esplicitamente la competizione tra candidati legali.
+
+**Trade-offs**  
+Il numero di candidati varia per grafo, quindi training e metriche richiedono batching segmentato. La rappresentazione candidata resta volutamente minima: source, destination, contesto grafo e tipo promozione.
+
+**Current Status**  
+Implemented as `MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING`.
+
 ## 13. Model A Architecture
 
 **Decision**  

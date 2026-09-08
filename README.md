@@ -24,9 +24,10 @@ Implementato:
 - diagnosi/fix shard-aware per subset progressivi Pilot/Confirmation, validato sul server;
 - `MODEL_A_CONVERGENCE_RUN_V1` completata e congelata come baseline no-timing;
 - variante `MODEL_A2_LEGAL_MASK_NO_TIMING` implementata e pronta per training come ablation no-timing legal-masked;
+- variante `MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING` implementata come scorer diretto sulle mosse legali, senza logits globali sulla vocabulary;
 - debugger Streamlit standalone per grafo/scacchiera.
 
-Non implementato: Model B timing-aware, legal move masking, nuove feature temporali, valutazione MateDepth dedicata e confronto LLM.
+Non implementato: Model B timing-aware, nuove feature temporali, valutazione MateDepth dedicata e confronto LLM.
 
 Baseline full completato: `MODEL_A_FULL_BASELINE_V1`.
 
@@ -51,6 +52,7 @@ Baseline ufficiale congelato: `MODEL_A_NO_TIMING_FROZEN_BASELINE`.
 - [Model A no-timing](generic_info/model_a_no_timing.md): report completo del baseline congelato `ChessGATNoTiming`.
 - [Streamlit Model A verification](generic_info/streamlit_model_a_verification.md): sezione UI per training umano sui puzzle, inference read-only e diagnostica Mate-in-1.
 - [Model A2 legal mask no-timing](generic_info/model_a2_legal_mask_no_timing.md): piano/protocollo della variante legal-masked senza timing.
+- [Model A3 legal move scorer no-timing](generic_info/model_a3_legal_move_scorer_no_timing.md): variante che confronta direttamente i candidati legali della posizione.
 - [Model A vs A2 evaluator](generic_info/model_a_vs_a2_evaluation.md): valutazione post-hoc raw/best-legal/masked tra i due baseline.
 - [Analisi TimeGNN](generic_info/timegnn_info.md): audit della libreria esterna `TimeGNN-main/`.
 - [Guida training TimeGNN/GNN](generic_info/timegnn_gnn_training_guide.md): note di integrazione future.
@@ -151,6 +153,24 @@ Resume Model A2:
 
 ```bash
 ./venv/bin/python -m src.train_chess_gat_legal_mask --resume --device cuda
+```
+
+Training Model A3 legal-candidate scorer no-timing:
+
+```bash
+./venv/bin/python -m src.train_chess_gat_legal_scorer \
+  --device cuda \
+  --batch-size 128 \
+  --num-workers 0 \
+  --pin-memory \
+  --non-blocking \
+  --amp
+```
+
+Resume Model A3:
+
+```bash
+./venv/bin/python -m src.train_chess_gat_legal_scorer --resume --device cuda
 ```
 
 Post-hoc Model A vs A2 evaluation:
