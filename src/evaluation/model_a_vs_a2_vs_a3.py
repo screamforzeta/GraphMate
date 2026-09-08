@@ -67,7 +67,16 @@ MODEL_A3_REFERENCE = {
     "a3_median_legal_rank": 1.0,
     "a3_illegal_top1_rate": 0.0,
 }
-A3_PARITY_TOLERANCE = 1e-12
+A3_PARITY_TOLERANCES = {
+    "n": 0,
+    "a3_loss": 1e-6,
+    "a3_top1": 1e-12,
+    "a3_top3": 1e-12,
+    "a3_top5": 1e-12,
+    "a3_mean_legal_rank": 1e-12,
+    "a3_median_legal_rank": 1e-12,
+    "a3_illegal_top1_rate": 1e-12,
+}
 
 
 @dataclass
@@ -217,13 +226,13 @@ def finalize_bucket(bucket):
     return result
 
 
-def a3_parity_diagnostics(actual, reference=MODEL_A3_REFERENCE, tolerance=A3_PARITY_TOLERANCE):
+def a3_parity_diagnostics(actual, reference=MODEL_A3_REFERENCE, tolerances=A3_PARITY_TOLERANCES):
     """Return per-field A3 parity diagnostics.
 
     Parameters:
         actual: Dict with A3 metrics produced by the evaluator.
         reference: Frozen canonical A3 metric values.
-        tolerance: Maximum absolute float difference allowed for metrics.
+        tolerances: Per-metric maximum absolute differences.
     Returns:
         List of per-field diagnostic dictionaries.
     Side effects:
@@ -233,12 +242,13 @@ def a3_parity_diagnostics(actual, reference=MODEL_A3_REFERENCE, tolerance=A3_PAR
     diagnostics = []
     for key, expected in reference.items():
         actual_value = actual.get(key)
+        tolerance = tolerances.get(key, 1e-12)
         if actual_value is None:
             diff = None
             passed = False
         elif key == "n":
             diff = abs(int(actual_value) - int(expected))
-            passed = diff == 0
+            passed = diff <= tolerance
         else:
             diff = abs(float(actual_value) - float(expected))
             passed = diff <= tolerance
@@ -248,7 +258,7 @@ def a3_parity_diagnostics(actual, reference=MODEL_A3_REFERENCE, tolerance=A3_PAR
                 "expected": expected,
                 "actual": actual_value,
                 "abs_diff": diff,
-                "tolerance": 0 if key == "n" else tolerance,
+                "tolerance": tolerance,
                 "result": "PASS" if passed else "FAIL",
             }
         )
@@ -518,6 +528,10 @@ def render_report(summary):
             )
             for item in summary["model_a3_parity"].get("diagnostics", [])
         ],
+        "",
+        "Ranking metrics require near-exact numerical parity. Candidate CE / "
+        "NLL loss uses abs tolerance `1e-6` only for CUDA/AMP reproducibility; "
+        "this tolerance does not affect TopK, rank, or model selection.",
         "",
         "## Global Deltas",
         "",
