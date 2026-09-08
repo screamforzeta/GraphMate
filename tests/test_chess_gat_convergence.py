@@ -8,6 +8,7 @@ from src.training.chess_gat_trainer import EarlyStoppingState
 from src.training.convergence_run import (
     BASELINE_V1,
     ConvergenceRunConfig,
+    apply_terminal_extension,
     assert_resume_config_compatible,
     compare_with_baseline,
     convergence_status,
@@ -273,3 +274,202 @@ def test_compare_with_baseline_reports_deltas_and_methodology():
 
     assert delta["delta_test_loss"] == pytest.approx(-0.1)
     assert "not by using test V1" in delta["methodology_note"]
+
+
+def test_terminal_extension_smoke_preserves_state_and_counts_tests(tmp_path, monkeypatch):
+    config = _config(tmp_path, max_epochs=2, patience=12)
+    train = _dataset(4)
+    val = _dataset(3)
+    test = _dataset(2)
+    val_losses = iter([1.0, 0.9, 0.95, 0.96])
+    calls = {
+        "test_evaluations": 0,
+        "test_calls_during_training": 0,
+    }
+
+    def fake_train(*args, **kwargs):
+        optimizer = args[3]
+        loader = args[1]
+        if len(loader.dataset) == len(test) and loader.dataset is test:
+            calls["test_calls_during_training"] += 1
+        return {
+            "loss": 1.0,
+            "top1": 0.1,
+            "top3": 0.2,
+            "top5": 0.3,
+            "num_examples": len(loader.dataset),
+        }
+
+    def fake_evaluate(*args, **kwargs):
+        loader = args[1]
+        if loader.dataset is test:
+            calls["test_evaluations"] += 1
+            return {
+                "loss": 0.7 + calls["test_evaluations"] * 0.01,
+                "top1": 0.4,
+                "top3": 0.5,
+                "top5": 0.6,
+                "num_examples": len(loader.dataset),
+            }
+        return {
+            "loss": next(val_losses),
+            "top1": 0.2,
+            "top3": 0.3,
+            "top5": 0.4,
+            "num_examples": len(loader.dataset),
+        }
+
+    monkeypatch.setattr("src.training.convergence_run.train_one_epoch", fake_train)
+    monkeypatch.setattr("src.training.convergence_run.evaluate", fake_evaluate)
+
+    first = run_convergence_training(
+        train,
+        val,
+        test,
+        2,
+        config,
+        torch.device("cpu"),
+    )
+    root = tmp_path / "convergence"
+    checkpoint = torch.load(root / "last.pt", map_location="cpu", weights_only=False)
+    checkpoint["optimizer_state_dict"]["param_groups"][0]["lr"] = 0.005
+    torch.save(checkpoint, root / "last.pt")
+
+    extended = run_convergence_training(
+        train,
+        val,
+        test,
+        2,
+        config,
+        torch.device("cpu"),
+        resume=True,
+        extend_max_epochs=4,
+    )
+
+    history = json.loads((root / "history.json").read_text(encoding="utf-8"))[
+        "history"
+    ]
+    state = json.loads(
+        (root / "controller_state.json").read_text(encoding="utf-8")
+    )
+
+    assert first["training"]["best_epoch"] == 2
+    assert [row["epoch"] for row in history] == [1, 2, 3, 4]
+    assert extended["training"]["best_epoch"] == 2
+    assert history[2]["previous_lr"] == pytest.approx(0.005)
+    assert calls["test_evaluations"] == 2
+    assert calls["test_calls_during_training"] == 0
+    assert state["test_evaluation_count"] == 2
+    assert state["intermediate_test_evaluations"][0]["after_epoch"] == 2
+    assert (root / "snapshots" / "epoch_2_terminal" / "controller_state.json").exists()
+    assert extended["continuation"]["current_max_epochs"] == 4
+
+
+def test_extension_rejects_early_stopping_and_non_increasing_budget(tmp_path, monkeypatch):
+    config = _config(tmp_path, max_epochs=2, patience=1)
+    test = _dataset(2)
+    val_losses = iter([1.0, 1.0])
+
+    monkeypatch.setattr(
+        "src.training.convergence_run.train_one_epoch",
+        lambda *args, **kwargs: {
+            "loss": 1.0,
+            "top1": 0.1,
+            "top3": 0.2,
+            "top5": 0.3,
+            "num_examples": 4,
+        },
+    )
+    def fake_evaluate(*args, **kwargs):
+        loader = args[1]
+        if loader.dataset is test:
+            return {
+                "loss": 0.8,
+                "top1": 0.2,
+                "top3": 0.3,
+                "top5": 0.4,
+                "num_examples": 2,
+            }
+        return {
+            "loss": next(val_losses),
+            "top1": 0.2,
+            "top3": 0.3,
+            "top5": 0.4,
+            "num_examples": 3,
+        }
+
+    monkeypatch.setattr("src.training.convergence_run.evaluate", fake_evaluate)
+
+    run_convergence_training(
+        _dataset(4),
+        _dataset(3),
+        test,
+        2,
+        config,
+        torch.device("cpu"),
+    )
+
+    with pytest.raises(ValueError, match="MAX_EPOCHS_REACHED"):
+        apply_terminal_extension(tmp_path / "convergence", config, 2, 4)
+
+    state_path = tmp_path / "convergence" / "controller_state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["status"] = "COMPLETED"
+    state["stop_reason"] = "MAX_EPOCHS_REACHED"
+    state["epochs_completed"] = 2
+    state["best_epoch"] = 2
+    state["early_stopping_counter"] = 0
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="greater"):
+        apply_terminal_extension(tmp_path / "convergence", config, 2, 2)
+
+
+def test_extension_rejects_non_max_epoch_config_change(tmp_path, monkeypatch):
+    config = _config(tmp_path, max_epochs=2, patience=12)
+    test = _dataset(2)
+    val_losses = iter([1.0, 0.9])
+
+    monkeypatch.setattr(
+        "src.training.convergence_run.train_one_epoch",
+        lambda *args, **kwargs: {
+            "loss": 1.0,
+            "top1": 0.1,
+            "top3": 0.2,
+            "top5": 0.3,
+            "num_examples": 4,
+        },
+    )
+    def fake_evaluate(*args, **kwargs):
+        loader = args[1]
+        if loader.dataset is test:
+            return {
+                "loss": 0.8,
+                "top1": 0.2,
+                "top3": 0.3,
+                "top5": 0.4,
+                "num_examples": 2,
+            }
+        return {
+            "loss": next(val_losses),
+            "top1": 0.2,
+            "top3": 0.3,
+            "top5": 0.4,
+            "num_examples": 3,
+        }
+
+    monkeypatch.setattr("src.training.convergence_run.evaluate", fake_evaluate)
+
+    run_convergence_training(
+        _dataset(4),
+        _dataset(3),
+        test,
+        2,
+        config,
+        torch.device("cpu"),
+    )
+    changed = _config(tmp_path, max_epochs=2, patience=12)
+    changed.batch_size = 4
+
+    with pytest.raises(ValueError, match="Only max_epochs"):
+        apply_terminal_extension(tmp_path / "convergence", changed, 2, 4)

@@ -803,4 +803,38 @@ Richiede ulteriore compute sul server, ma risponde alla domanda scientifica corr
 **Status**  
 IMPLEMENTED / READY_TO_RUN. Nessun risultato futuro e stato ancora prodotto.
 
+## 39. Model A Convergence Continuation
+
+**Decision**  
+Consentire una continuation esplicita della stessa `MODEL_A_CONVERGENCE_RUN_V1` tramite `--resume --extend-max-epochs <N>`.
+
+**Rationale**  
+La continuation serve solo quando una run terminale finisce per `MAX_EPOCHS_REACHED` con il best validation result all'ultima epoch e `early_stopping_counter=0`. In quel caso la motivazione e validation-only: il budget ha troncato una traiettoria ancora promettente.
+
+**Controls**
+
+- si riparte da `last.pt`, non da `best.pt`;
+- optimizer, scheduler, AMP scaler, LR corrente, early stopping state e history vengono ripristinati;
+- l'unico campo modificabile e `max_epochs`;
+- extension dopo `EARLY_STOPPING`, `RUNTIME_LIMIT_REACHED`, `USER_INTERRUPT` o `ERROR` viene rifiutata;
+- il test osservato al terminal state precedente resta archiviato;
+- il test non guida continuation, scheduler, stopping o checkpoint selection;
+- il nuovo final test dopo continuation e una seconda osservazione tracciata.
+
+**Snapshot Policy**  
+Prima di mutare lo stato terminale vengono copiati metadata leggeri in `snapshots/epoch_<N>_terminal/`: `controller_state.json`, `final_report.json`, `history.json`, `experiment_config.json`.
+
+**Trade-off**  
+La storia della run contiene piu fasi e piu osservazioni test. Questo e metodologicamente esplicito nel report invece di essere nascosto.
+
+**Status**  
+IMPLEMENTED / READY_TO_RUN. Per il caso server atteso il comando e:
+
+```bash
+./venv/bin/python -m src.train_chess_gat_convergence \
+  --resume \
+  --extend-max-epochs 300 \
+  --device cuda
+```
+
 Queste opzioni non sono implementate nello stato corrente.

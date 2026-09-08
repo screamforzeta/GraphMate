@@ -18,6 +18,7 @@ from dataclasses import asdict
 from dataclasses import dataclass
 from pathlib import Path
 import json
+import shutil
 import time
 
 import torch
@@ -159,6 +160,159 @@ def assert_resume_config_compatible(saved_config, config, num_classes):
             "Resume config mismatch for critical fields: "
             + ", ".join(sorted(set(mismatches)))
         )
+
+
+def assert_extension_config_compatible(saved_config, config, num_classes):
+    """Allow only max_epochs to change during an explicit continuation."""
+
+    saved = dict(saved_config)
+    checks = [
+        "learning_rate",
+        "weight_decay",
+        "dropout",
+        "batch_size",
+        "seed",
+        "model_class",
+        "lr_scheduler_factor",
+        "lr_scheduler_patience",
+        "min_learning_rate",
+        "early_stopping_patience",
+        "min_delta",
+        "amp",
+    ]
+    mismatches = [
+        key
+        for key in checks
+        if saved.get(key) != getattr(config, key)
+    ]
+    if saved.get("num_classes") != num_classes:
+        mismatches.append("num_classes")
+    if mismatches:
+        raise ValueError(
+            "Only max_epochs can change during continuation. Mismatched fields: "
+            + ", ".join(sorted(set(mismatches)))
+        )
+
+
+def snapshot_terminal_state(root, epoch):
+    """Copy lightweight terminal metadata before mutating a completed run."""
+
+    root = Path(root)
+    snapshot_dir = root / "snapshots" / f"epoch_{epoch}_terminal"
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "controller_state.json",
+        "final_report.json",
+        "history.json",
+        "experiment_config.json",
+    ):
+        source = root / name
+        destination = snapshot_dir / name
+        if source.exists() and not destination.exists():
+            shutil.copy2(source, destination)
+    return snapshot_dir
+
+
+def archived_test_evaluations(root, state, epoch):
+    """Return previous test evaluations recorded before continuation."""
+
+    existing = list(state.get("intermediate_test_evaluations") or [])
+    if state.get("final_test_completed"):
+        final_report_path = Path(root) / "final_report.json"
+        final_test = None
+        if final_report_path.exists():
+            final_test = read_json(final_report_path).get("final_test")
+        final_test = final_test or state.get("final_test")
+        if final_test and not existing:
+            existing.append(
+                {
+                    "after_epoch": epoch,
+                    "reason": "PREVIOUS_TERMINAL_MAX_EPOCH_RUN",
+                    "metrics": final_test,
+                }
+            )
+    return existing
+
+
+def apply_terminal_extension(root, config, num_classes, new_max_epochs):
+    """Validate and persist an explicit max-epoch extension."""
+
+    root = Path(root)
+    experiment_config_path = root / "experiment_config.json"
+    state_path = root / "controller_state.json"
+    last_path = root / "last.pt"
+    if not experiment_config_path.exists() or not state_path.exists():
+        raise FileNotFoundError(
+            "Continuation requires experiment_config.json and controller_state.json."
+        )
+    if not last_path.exists():
+        raise FileNotFoundError("Continuation requires last.pt.")
+
+    saved_config = read_json(experiment_config_path)
+    state = read_json(state_path)
+    assert_extension_config_compatible(saved_config, config, num_classes)
+
+    if state.get("status") != "COMPLETED":
+        raise ValueError("Continuation requires a terminal COMPLETED run.")
+    if state.get("stop_reason") != "MAX_EPOCHS_REACHED":
+        raise ValueError("Continuation is allowed only after MAX_EPOCHS_REACHED.")
+
+    previous_max_epochs = int(saved_config["max_epochs"])
+    epochs_completed = int(state.get("epochs_completed", -1))
+    if epochs_completed != previous_max_epochs:
+        raise ValueError(
+            "Continuation requires epochs_completed == previous max_epochs."
+        )
+    if int(state.get("best_epoch", -1)) != epochs_completed:
+        raise ValueError("Continuation requires best_epoch at the final epoch.")
+    if int(state.get("early_stopping_counter", -1)) != 0:
+        raise ValueError("Continuation requires early_stopping_counter == 0.")
+    if new_max_epochs <= epochs_completed:
+        raise ValueError("extend max epochs must be greater than completed epochs.")
+
+    checkpoint = torch.load(last_path, map_location="cpu", weights_only=False)
+    if int(checkpoint["epoch"]) != epochs_completed:
+        raise ValueError("last.pt epoch does not match controller state.")
+
+    snapshot_dir = snapshot_terminal_state(root, epochs_completed)
+    evaluations = archived_test_evaluations(root, state, epochs_completed)
+    continuation_count = int(state.get("continuation_count", 0)) + 1
+    continued_at = time.time()
+
+    saved_config["original_max_epochs"] = saved_config.get(
+        "original_max_epochs",
+        previous_max_epochs,
+    )
+    saved_config["max_epochs"] = new_max_epochs
+    saved_config["current_max_epochs"] = new_max_epochs
+    saved_config["continuation_count"] = continuation_count
+    saved_config["continued_from_epoch"] = epochs_completed
+    saved_config["continued_at"] = continued_at
+    atomic_write_json(experiment_config_path, saved_config)
+
+    state.update(
+        {
+            "status": "RUNNING",
+            "stop_reason": None,
+            "original_max_epochs": saved_config["original_max_epochs"],
+            "current_max_epochs": new_max_epochs,
+            "continuation_count": continuation_count,
+            "continued_from_epoch": epochs_completed,
+            "continued_at": continued_at,
+            "continuation_reason": (
+                "MAX_EPOCH_BUDGET_EXHAUSTED_WITH_BEST_AT_FINAL_EPOCH"
+            ),
+            "terminal_snapshot": str(snapshot_dir),
+            "intermediate_test_evaluations": evaluations,
+            "test_evaluation_count": len(evaluations),
+            "final_test_completed": False,
+        }
+    )
+    state.pop("final_test", None)
+    atomic_write_json(state_path, state)
+
+    config.max_epochs = new_max_epochs
+    return state
 
 
 def save_best_checkpoint(
@@ -331,7 +485,18 @@ def write_final_reports(root, report):
         "## Methodology",
         "",
         "Test is evaluated only after terminal training and best-checkpoint reload.",
+        (
+            "Previous terminal test evaluations are archived and reported when "
+            "a continuation is approved."
+        ),
+        f"- Test evaluation count: `{report.get('test_evaluation_count', 0)}`",
     ]
+    for evaluation in report.get("intermediate_test_evaluations", []):
+        lines.append(
+            "- Archived test evaluation: "
+            f"after_epoch=`{evaluation.get('after_epoch')}`, "
+            f"reason=`{evaluation.get('reason')}`"
+        )
     (root / "final_report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -368,6 +533,7 @@ def run_convergence_training(
     config,
     device,
     resume=False,
+    extend_max_epochs=None,
 ):
     """Run or resume the dedicated Model A convergence pipeline."""
 
@@ -379,7 +545,14 @@ def run_convergence_training(
     last_path = root / "last.pt"
     history_path = root / "history.json"
 
-    if resume and experiment_config_path.exists():
+    if resume and extend_max_epochs is not None:
+        existing_state = apply_terminal_extension(
+            root,
+            config,
+            num_classes,
+            int(extend_max_epochs),
+        )
+    elif resume and experiment_config_path.exists():
         saved_config = read_json(experiment_config_path)
         assert_resume_config_compatible(saved_config, config, num_classes)
     elif not resume:
@@ -446,6 +619,36 @@ def run_convergence_training(
         best_epoch = checkpoint.get("best_epoch")
         start_epoch = int(checkpoint["epoch"]) + 1
         started_at = existing_state.get("started_at", started_at)
+        print(f"{config.run_id}", flush=True)
+        if extend_max_epochs is not None:
+            print("Continuing terminal run", flush=True)
+            print(
+                f"Previous max epochs: {existing_state.get('continued_from_epoch')}",
+                flush=True,
+            )
+            print(f"New max epochs: {config.max_epochs}", flush=True)
+            print(f"Resume epoch: {start_epoch}", flush=True)
+            print(f"Best epoch: {best_epoch}", flush=True)
+            print(f"Best val loss: {early_stopping.best_val_loss:.8f}", flush=True)
+            print(
+                f"Current LR: {optimizer.param_groups[0]['lr']:.6g}",
+                flush=True,
+            )
+            print(
+                "Early stopping counter: "
+                f"{early_stopping.epochs_without_improvement}",
+                flush=True,
+            )
+            print(
+                "Previous test evaluations: "
+                f"{existing_state.get('test_evaluation_count', 0)}",
+                flush=True,
+            )
+            print(
+                "Continuation reason: "
+                f"{existing_state.get('continuation_reason')}",
+                flush=True,
+            )
 
     status = "RUNNING"
     stop_reason = None
@@ -626,6 +829,25 @@ def run_convergence_training(
         early_stopping,
         optimizer,
     )
+    if existing_state.get("intermediate_test_evaluations"):
+        final_state["intermediate_test_evaluations"] = existing_state[
+            "intermediate_test_evaluations"
+        ]
+        final_state["test_evaluation_count"] = existing_state.get(
+            "test_evaluation_count",
+            len(existing_state["intermediate_test_evaluations"]),
+        )
+    for key in (
+        "original_max_epochs",
+        "current_max_epochs",
+        "continuation_count",
+        "continued_from_epoch",
+        "continued_at",
+        "continuation_reason",
+        "terminal_snapshot",
+    ):
+        if key in existing_state:
+            final_state[key] = existing_state[key]
     atomic_write_json(state_path, final_state)
 
     final_test = None
@@ -657,6 +879,10 @@ def run_convergence_training(
             final_state,
         )
         final_state["final_test_completed"] = True
+        final_state["test_evaluation_count"] = (
+            int(final_state.get("test_evaluation_count", 0)) + 1
+        )
+        atomic_write_json(state_path, final_state)
 
     best_val_metrics = None
     if best_path.exists():
@@ -701,6 +927,27 @@ def run_convergence_training(
             "total_runtime_seconds": time.time() - started_at,
         },
         "final_test": final_test,
+        "intermediate_test_evaluations": final_state.get(
+            "intermediate_test_evaluations",
+            [],
+        ),
+        "test_evaluation_count": final_state.get(
+            "test_evaluation_count",
+            1 if final_test else 0,
+        ),
+        "continuation": {
+            key: final_state.get(key)
+            for key in (
+                "original_max_epochs",
+                "current_max_epochs",
+                "continuation_count",
+                "continued_from_epoch",
+                "continued_at",
+                "continuation_reason",
+                "terminal_snapshot",
+            )
+            if final_state.get(key) is not None
+        },
         "baseline_v1_reference": BASELINE_V1,
         "baseline_v1_delta": compare_with_baseline(final_test),
         "test_used_for_training_or_selection": False,
