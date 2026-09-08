@@ -48,6 +48,7 @@ Baseline ufficiale congelato: `MODEL_A_NO_TIMING_FROZEN_BASELINE`.
 - [Architettura del progetto](generic_info/project_architecture.md): come sono organizzati moduli, pipeline, dati, training e artifact.
 - [Scelte architetturali](generic_info/architectural_choices.md): perché sono state prese le principali decisioni progettuali.
 - [Model A no-timing](generic_info/model_a_no_timing.md): report completo del baseline congelato `ChessGATNoTiming`.
+- [Streamlit Model A verification](generic_info/streamlit_model_a_verification.md): sezione UI per training umano sui puzzle, inference read-only e diagnostica Mate-in-1.
 - [Analisi TimeGNN](generic_info/timegnn_info.md): audit della libreria esterna `TimeGNN-main/`.
 - [Guida training TimeGNN/GNN](generic_info/timegnn_gnn_training_guide.md): note di integrazione future.
 - [Piano architettura Chess GAT](generic_info/chess_gat_architecture_plan.md): piano tecnico del modello chess-specific.

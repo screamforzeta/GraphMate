@@ -31,7 +31,6 @@ if str(PROJECT_ROOT) not in sys.path:
 # IMPORTS
 # =========================================================
 
-import json
 import random
 
 import chess
@@ -50,22 +49,40 @@ from streamlit_agraph import (
 )
 
 from src.graph.graph_builder import (
-    build_graph,
+    load_move_encoder as load_graph_move_encoder,
+)
+from src.inference.chess_gat_inference import (
+    EXPECTED_CHECKPOINT_PATH,
+    MODEL_A_NAME,
+    check_user_move,
+    evaluate_mate_in_one_dataframe,
+    is_legal_uci,
+    is_mate_in_one_row,
+    load_model_bundle,
+    move_to_san,
+    puzzle_row_to_graph,
+    run_single_inference,
+    verify_target_checkmate,
 )
 
 # =========================================================
 # CONFIG
 # =========================================================
 
-DATASET_PATH = Path(
-    "data/final/puzzles/train.csv"
-)
+DATASET_PATHS = {
+    "train": Path("data/final/puzzles/train.csv"),
+    "validation": Path("data/final/puzzles/val.csv"),
+    "test": Path("data/final/puzzles/test.csv"),
+}
 
 MOVE_ENCODER_PATH = Path(
     "artifacts/move_to_idx.json"
 )
 
 BOARD_SIZE = 700
+USER_MOVE_COLOR = "#f59e0b"
+MODEL_TOP1_COLOR = "#38bdf8"
+GROUND_TRUTH_COLOR = "#22c55e"
 
 # =========================================================
 # PAGE CONFIG
@@ -134,18 +151,18 @@ PIECE_IMAGES = {
 # =========================================================
 
 @st.cache_data
-def load_dataset():
+def load_dataset(split):
     """Load the puzzle split used by the debugger.
 
     Parameters:
         None.
     Returns:
-        Pandas DataFrame loaded from DATASET_PATH.
+        Pandas DataFrame loaded from the selected split CSV.
     Side effects:
         Reads the CSV file from disk and caches the result in Streamlit.
     """
 
-    return pd.read_csv(DATASET_PATH)
+    return pd.read_csv(DATASET_PATHS[split])
 
 
 @st.cache_data
@@ -160,12 +177,7 @@ def load_move_encoder():
         Reads MOVE_ENCODER_PATH from disk and caches the result in Streamlit.
     """
 
-    with open(
-        MOVE_ENCODER_PATH,
-        "r"
-    ) as f:
-
-        return json.load(f)
+    return load_graph_move_encoder(MOVE_ENCODER_PATH)
 
 
 def edge_types_from_features(features):
@@ -317,11 +329,101 @@ def build_svg_arrows(
 
     return arrows
 
+
+def build_move_arrow(move_uci, color):
+    """Create one chess.svg arrow for a UCI move.
+
+    Parameters:
+        move_uci: Move in UCI notation.
+        color: SVG-compatible arrow color.
+    Returns:
+        chess.svg.Arrow, or None when move_uci is invalid.
+    Side effects:
+        None.
+    """
+
+    try:
+        move = chess.Move.from_uci(str(move_uci))
+    except ValueError:
+        return None
+    return chess.svg.Arrow(
+        tail=move.from_square,
+        head=move.to_square,
+        color=color,
+    )
+
+
+@st.cache_resource
+def load_model_a_resource():
+    """Load the frozen Model A bundle once per Streamlit process.
+
+    Parameters:
+        None.
+    Returns:
+        Tuple (bundle, error_message). Only one item is non-None.
+    Side effects:
+        Reads vocabulary and checkpoint files if available.
+    """
+
+    try:
+        return load_model_bundle(), None
+    except Exception as error:
+        return None, str(error)
+
+
+def reset_puzzle_state():
+    """Clear per-puzzle user and inference state."""
+
+    st.session_state["user_move"] = ""
+    st.session_state["last_user_result"] = None
+    st.session_state["revealed_solution"] = False
+    st.session_state["model_result"] = None
+
+
+def apply_filtered_index(new_index):
+    """Set a new puzzle index and reset per-puzzle UI state."""
+
+    st.session_state["current_idx"] = int(new_index)
+    reset_puzzle_state()
+
 # =========================================================
-# LOAD DATA
+# LOAD DATA / SESSION DEFAULTS
 # =========================================================
 
-df = load_dataset()
+if "current_idx" not in st.session_state:
+    st.session_state["current_idx"] = 0
+
+if "selected_split" not in st.session_state:
+    st.session_state["selected_split"] = "test"
+
+if "session_counters" not in st.session_state:
+    st.session_state["session_counters"] = {
+        "attempted": 0,
+        "human_correct": 0,
+        "model_top1_correct": 0,
+        "model_top3_correct": 0,
+        "model_top5_correct": 0,
+    }
+
+for key, default in [
+    ("user_move", ""),
+    ("revealed_solution", False),
+    ("model_result", None),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+selected_split = st.sidebar.selectbox(
+    "Dataset Split",
+    list(DATASET_PATHS),
+    index=list(DATASET_PATHS).index(st.session_state["selected_split"]),
+)
+
+if selected_split != st.session_state["selected_split"]:
+    st.session_state["selected_split"] = selected_split
+    apply_filtered_index(0)
+
+df_full = load_dataset(selected_split)
 
 move_to_idx = load_move_encoder()
 
@@ -332,6 +434,75 @@ move_to_idx = load_move_encoder()
 st.sidebar.title(
     "Chess GNN Debugger"
 )
+
+st.sidebar.caption(
+    "Model A UI is diagnostic only. Do not use test-set browsing for future model selection."
+)
+
+# =========================================================
+# FILTERS
+# =========================================================
+
+st.sidebar.subheader(
+    "Puzzle Filters"
+)
+
+mate_in_one_only = st.sidebar.checkbox(
+    "Mate-in-1 only",
+    value=False,
+)
+
+theme_options = sorted(
+    {
+        theme
+        for themes in df_full.get("Themes", pd.Series(dtype=str)).dropna()
+        for theme in str(themes).split()
+    }
+)
+
+selected_theme = st.sidebar.selectbox(
+    "Theme",
+    ["All"] + theme_options,
+)
+
+rating_min = int(df_full["Rating"].min()) if "Rating" in df_full else 0
+rating_max = int(df_full["Rating"].max()) if "Rating" in df_full else 3000
+rating_range = st.sidebar.slider(
+    "Rating",
+    min_value=rating_min,
+    max_value=rating_max,
+    value=(rating_min, rating_max),
+)
+
+df = df_full.copy()
+if mate_in_one_only:
+    df = df[
+        df.apply(
+            is_mate_in_one_row,
+            axis=1,
+        )
+    ]
+if selected_theme != "All":
+    df = df[
+        df["Themes"].fillna("").str.split().apply(
+            lambda themes: selected_theme in themes
+        )
+    ]
+if "Rating" in df:
+    df = df[
+        df["Rating"].between(
+            rating_range[0],
+            rating_range[1],
+        )
+    ]
+
+df = df.reset_index(drop=False).rename(
+    columns={"index": "source_row_index"}
+)
+
+if df.empty:
+    st.warning("No puzzles match the selected filters.")
+    st.stop()
 
 # =========================================================
 # RANDOM PUZZLE
@@ -346,15 +517,13 @@ if st.sidebar.button(
         len(df) - 1
     )
 
-    st.session_state[
-        "current_idx"
-    ] = random_idx
+    apply_filtered_index(random_idx)
 
-if "current_idx" not in st.session_state:
-
-    st.session_state[
-        "current_idx"
-    ] = 0
+nav_previous, nav_next = st.sidebar.columns(2)
+if nav_previous.button("Previous"):
+    apply_filtered_index(max(0, st.session_state["current_idx"] - 1))
+if nav_next.button("Next"):
+    apply_filtered_index(min(len(df) - 1, st.session_state["current_idx"] + 1))
 
 # =========================================================
 # PUZZLE SELECTOR
@@ -364,8 +533,11 @@ current_idx = st.sidebar.slider(
     "Puzzle Index",
     0,
     len(df) - 1,
-    st.session_state["current_idx"]
+    min(st.session_state["current_idx"], len(df) - 1)
 )
+
+if current_idx != st.session_state["current_idx"]:
+    apply_filtered_index(current_idx)
 
 sample = df.iloc[current_idx]
 
@@ -448,13 +620,17 @@ info3.metric(
     sample.TargetMove
 )
 
+st.caption(
+    f"Split: {selected_split} | Source row: {sample.source_row_index} | "
+    "Displayed FEN is the transformed solver position used by Model A."
+)
+
 # =========================================================
 # BUILD GRAPH
 # =========================================================
 
-graph = build_graph(
-    fen=sample.FEN,
-    target_move=sample.TargetMove,
+graph = puzzle_row_to_graph(
+    row=sample,
     move_to_idx=move_to_idx,
 )
 
@@ -473,6 +649,31 @@ board_arrows = build_svg_arrows(
     show_pin=show_pin,
     show_check=show_check,
 )
+
+if st.session_state.get("user_move"):
+    user_arrow = build_move_arrow(
+        st.session_state["user_move"],
+        USER_MOVE_COLOR,
+    )
+    if user_arrow is not None:
+        board_arrows.append(user_arrow)
+
+model_result = st.session_state.get("model_result")
+if model_result and model_result.get("topk"):
+    model_arrow = build_move_arrow(
+        model_result["topk"][0]["move"],
+        MODEL_TOP1_COLOR,
+    )
+    if model_arrow is not None:
+        board_arrows.append(model_arrow)
+
+if st.session_state.get("revealed_solution"):
+    target_arrow = build_move_arrow(
+        sample.TargetMove,
+        GROUND_TRUTH_COLOR,
+    )
+    if target_arrow is not None:
+        board_arrows.append(target_arrow)
 
 # =========================================================
 # STATS
@@ -705,6 +906,259 @@ if view_mode in ["Graph", "Both"]:
         edges=edges,
         config=config,
     )
+
+# =========================================================
+# MODEL A PUZZLE TRAINING AND VERIFICATION
+# =========================================================
+
+st.divider()
+st.header("Puzzle Training & Model Verification")
+
+bundle, model_error = load_model_a_resource()
+
+status_cols = st.columns(4)
+status_cols[0].metric("Model", MODEL_A_NAME)
+status_cols[1].metric(
+    "Device",
+    str(bundle.device).upper() if bundle else "UNAVAILABLE",
+)
+status_cols[2].metric(
+    "Checkpoint",
+    "loaded" if bundle else "unavailable",
+)
+status_cols[3].metric(
+    "Vocabulary",
+    f"{len(move_to_idx):,}",
+)
+
+if model_error:
+    st.warning(
+        "Checkpoint unavailable. Expected path: "
+        f"`{EXPECTED_CHECKPOINT_PATH}`. "
+        f"Loader message: {model_error}"
+    )
+elif bundle and bundle.checkpoint_path != EXPECTED_CHECKPOINT_PATH:
+    st.info(
+        "Loaded fallback checkpoint for local verification: "
+        f"`{bundle.checkpoint_path}`. The frozen convergence checkpoint is "
+        f"expected at `{EXPECTED_CHECKPOINT_PATH}` on the server."
+    )
+
+st.info(
+    "Model A is frozen. Best epoch: 162. Stop epoch: 174. "
+    "Convergence: CONVERGED_BY_EARLY_STOPPING. Final test: "
+    "Top1 39.62%, Top3 55.81%, Top5 62.75%. "
+    "Model A has not been probability-calibrated."
+)
+
+puzzle_tab, model_tab, mate_tab = st.tabs(
+    [
+        "Human Puzzle Training",
+        "Model A Inference",
+        "Mate-in-1 Evaluation",
+    ]
+)
+
+with puzzle_tab:
+    st.subheader("Try the puzzle")
+    st.write(
+        "Ground truth is hidden until reveal. Use UCI notation, for example `g5f7`."
+    )
+    move_input = st.text_input(
+        "Your move",
+        value=st.session_state.get("user_move", ""),
+        key="user_move_input",
+    )
+    check_col, reveal_col, reset_col = st.columns(3)
+    if check_col.button("Check move"):
+        result = check_user_move(
+            board=board,
+            user_move=move_input,
+            target_move=sample.TargetMove,
+        )
+        st.session_state["user_move"] = result["move"]
+        st.session_state["last_user_result"] = result
+        counters = st.session_state["session_counters"]
+        counters["attempted"] += 1
+        counters["human_correct"] += int(result["status"] == "CORRECT")
+    if reveal_col.button("Reveal solution"):
+        st.session_state["revealed_solution"] = True
+    if reset_col.button("Reset answer"):
+        reset_puzzle_state()
+
+    result = st.session_state.get("last_user_result")
+    if result:
+        st.write(f"Your move: `{result['move']}`")
+        if st.session_state.get("revealed_solution"):
+            st.write(f"Expected: `{sample.TargetMove}`")
+            san = move_to_san(board, sample.TargetMove)
+            if san:
+                st.write(f"Expected SAN: `{san}`")
+        st.write(f"Result: `{result['status']}`")
+        st.caption(result["message"])
+
+    if st.session_state.get("revealed_solution"):
+        st.success(f"Solution: `{sample.TargetMove}`")
+        continuation = str(sample.Moves).split()[1:]
+        if continuation:
+            st.write("Solution line:")
+            st.code(" ".join(continuation))
+
+    counters = st.session_state["session_counters"]
+    st.write("Session counters")
+    counter_cols = st.columns(4)
+    counter_cols[0].metric("Attempted", counters["attempted"])
+    counter_cols[1].metric("Human correct", counters["human_correct"])
+    counter_cols[2].metric("Model Top1", counters["model_top1_correct"])
+    counter_cols[3].metric("Model Top5", counters["model_top5_correct"])
+
+with model_tab:
+    st.subheader("Raw Model A predictions")
+    st.caption(
+        "Top-K is computed from raw logits over all 1,786 classes. "
+        "Legal diagnostics do not replace the official raw ranking."
+    )
+    top_k = st.slider(
+        "Top-K",
+        min_value=5,
+        max_value=10,
+        value=5,
+    )
+    if str(sample.TargetMove) not in move_to_idx:
+        st.warning(
+            "Ground-truth move is outside Model A's train-derived vocabulary. "
+            "The puzzle is still playable, but Model A cannot predict that "
+            "class by construction."
+        )
+    if st.button("Ask Model A", disabled=bundle is None):
+        with st.spinner("Running Model A inference..."):
+            try:
+                result = run_single_inference(
+                    bundle=bundle,
+                    row=sample,
+                    top_k=top_k,
+                )
+                st.session_state["model_result"] = result
+                counters = st.session_state["session_counters"]
+                counters["model_top1_correct"] += int(result["top1_hit"])
+                counters["model_top3_correct"] += int(result["top3_hit"])
+                counters["model_top5_correct"] += int(result["top5_hit"])
+            except Exception as error:
+                st.error(f"Model inference failed: {error}")
+
+    result = st.session_state.get("model_result")
+    if result:
+        top1 = result["topk"][0] if result["topk"] else None
+        result_cols = st.columns(4)
+        result_cols[0].metric("Top-1", "PASS" if result["top1_hit"] else "FAIL")
+        result_cols[1].metric("Top-3", "PASS" if result["top3_hit"] else "FAIL")
+        result_cols[2].metric("Top-5", "PASS" if result["top5_hit"] else "FAIL")
+        result_cols[3].metric(
+            "Target Rank",
+            "Ground Truth OOV"
+            if result["target_oov"]
+            else f"{result['target_rank']} / {len(move_to_idx)}",
+        )
+        if top1:
+            st.write(f"Raw Model Top-1: `{top1['move']}`")
+            st.write(f"Top-1 legal: `{top1['legal']}`")
+            best_legal = next(
+                (row for row in result["topk"] if row["legal"]),
+                None,
+            )
+            if best_legal:
+                st.caption(
+                    "Best legal move among shown Model A outputs "
+                    f"(diagnostic only): `{best_legal['move']}`"
+                )
+        st.dataframe(
+            pd.DataFrame(result["topk"]).rename(
+                columns={
+                    "rank": "Rank",
+                    "move": "Move",
+                    "san": "SAN",
+                    "softmax_score": "Softmax Score",
+                    "legal": "Legal",
+                    "ground_truth": "Ground Truth",
+                }
+            ),
+            use_container_width=True,
+        )
+
+with mate_tab:
+    st.subheader("Mate-in-1 diagnostic subgroup")
+    if is_mate_in_one_row(sample):
+        is_mate = verify_target_checkmate(
+            fen=sample.FEN,
+            target_move=sample.TargetMove,
+        )
+        st.write("Can Model A find the mate?")
+        st.write(f"Expected mating move: `{sample.TargetMove}`")
+        st.write(f"Target checkmates: `{is_mate}`")
+        if not is_mate:
+            st.warning("Metadata says mateIn1, but target checkmate verification failed.")
+        result = st.session_state.get("model_result")
+        if result and result["topk"]:
+            top1 = result["topk"][0]
+            st.write(f"Model Top-1: `{top1['move']}`")
+            st.write("Result: `MATE FOUND`" if result["top1_hit"] else "Result: `MATE MISSED`")
+            st.write(f"Target rank: `{result['target_rank']}`")
+            st.write(f"Top3 hit: `{result['top3_hit']}`")
+            st.write(f"Top5 hit: `{result['top5_hit']}`")
+            st.write(f"Prediction legal: `{top1['legal']}`")
+        else:
+            st.caption("Run Ask Model A to fill single-puzzle mate diagnostics.")
+    else:
+        st.info("Current puzzle is not marked as mateIn1.")
+
+    st.caption(
+        "Batch evaluation is a diagnostic subgroup evaluation, not a new "
+        "official Model A test score."
+    )
+    eval_limit = st.number_input(
+        "Optional evaluation limit",
+        min_value=0,
+        value=0,
+        step=50,
+    )
+    if st.button("Evaluate Model A on Mate-in-1 puzzles", disabled=bundle is None):
+        with st.spinner("Running batched Mate-in-1 diagnostics..."):
+            try:
+                metrics = evaluate_mate_in_one_dataframe(
+                    bundle=bundle,
+                    dataframe=df_full,
+                    batch_size=128,
+                    limit=int(eval_limit) or None,
+                )
+                st.session_state["mate_eval_metrics"] = metrics
+            except Exception as error:
+                st.error(f"Mate-in-1 evaluation failed: {error}")
+
+    metrics = st.session_state.get("mate_eval_metrics")
+    if metrics:
+        eval_cols = st.columns(4)
+        eval_cols[0].metric("Total puzzles", metrics["total"])
+        eval_cols[1].metric("Evaluated", metrics["evaluable"])
+        eval_cols[2].metric("OOV", metrics["oov"])
+        eval_cols[3].metric("Illegal Top1", metrics["illegal_top1"])
+
+        denominator = max(1, metrics["evaluable"])
+        score_cols = st.columns(3)
+        score_cols[0].metric("Top1", f"{metrics['top1'] / denominator:.2%}")
+        score_cols[1].metric("Top3", f"{metrics['top3'] / denominator:.2%}")
+        score_cols[2].metric("Top5", f"{metrics['top5'] / denominator:.2%}")
+
+        st.write("Error breakdown")
+        st.json(
+            {
+                "Correct Top1": metrics["correct_top1"],
+                "Wrong but legal Top1": metrics["wrong_legal_top1"],
+                "Illegal Top1": metrics["illegal_top1"],
+                "OOV target": metrics["oov"],
+                "Average target rank": metrics["average_target_rank"],
+                "Median target rank": metrics["median_target_rank"],
+            }
+        )
 
 # =========================================================
 # RAW DATA
