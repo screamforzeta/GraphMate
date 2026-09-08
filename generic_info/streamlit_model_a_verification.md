@@ -48,6 +48,155 @@ La nuova sezione è integrata nello stesso entrypoint Streamlit e riusa:
 
 Non è stato creato un secondo frontend.
 
+## Model A Error Analysis
+
+La tab `Model A Error Analysis` aggiunge una valutazione batch post-hoc del baseline congelato.
+
+Questa analisi è abilitata solo quando è caricato il checkpoint ufficiale:
+
+```text
+artifacts/convergence_training/chess_gat_no_timing/best.pt
+```
+
+Se la UI sta usando un fallback locale, la single-puzzle inference resta disponibile per debug, ma la batch Error Analysis ufficiale viene disabilitata. Questo evita di produrre risultati etichettati come `MODEL_A_NO_TIMING_FROZEN_BASELINE Error Analysis` con un checkpoint non ufficiale.
+
+La UI mostra:
+
+- model name;
+- checkpoint path reale;
+- checkpoint status: `OFFICIAL FROZEN CHECKPOINT` oppure `FALLBACK / NON-OFFICIAL CHECKPOINT`;
+- vocabulary size;
+- device.
+
+## HIT/MISS Semantics
+
+La vecchia visualizzazione `PASS/FAIL` è stata sostituita da:
+
+- `HIT`;
+- `MISS`;
+- `OOV`.
+
+Significato:
+
+```text
+HIT = the puzzle target is contained within the model's first K raw predictions.
+MISS = the target is ranked below K.
+OOV = the target is outside the train-derived move vocabulary.
+```
+
+`MISS` non significa che l'inference è fallita. Lo stato tecnico resta separato tramite `inference_status = SUCCESS / ERROR`.
+
+Per ogni puzzle la UI mostra sempre, quando disponibile:
+
+```text
+Target rank: #N / 1786
+```
+
+Se il target è OOV:
+
+```text
+Target rank: unavailable — target OOV
+```
+
+## Error Categories
+
+La batch analysis calcola categorie globali interpretabili:
+
+| Categoria | Significato |
+| --- | --- |
+| `TOP1_CORRECT` | target al rank 1 |
+| `TOP1_WRONG_LEGAL` | raw Top-1 legale ma diversa dalla target |
+| `TOP1_ILLEGAL` | raw Top-1 illegale |
+| `TARGET_OOV` | target fuori vocabulary train-only |
+
+## Target Rank Distribution
+
+La distribuzione rank usa bucket:
+
+- `rank_1`;
+- `rank_2_3`;
+- `rank_4_5`;
+- `rank_6_10`;
+- `rank_11_20`;
+- `rank_21_50`;
+- `rank_gt_50`;
+- `TARGET_OOV`.
+
+La UI espone anche:
+
+- Top3 additional recovery = rank 2-3;
+- Top5 additional recovery = rank 4-5;
+- conditional recovery su miss Top1 e miss Top3.
+
+## Raw vs Legal Diagnostic
+
+La prediction ufficiale resta il raw argmax sui 1,786 logits. Non viene applicato legal masking.
+
+La metrica:
+
+```text
+Diagnostic best-legal Top1
+```
+
+filtra il ranking raw scegliendo la prima mossa legale, ma viene etichettata ovunque come:
+
+```text
+DIAGNOSTIC ONLY — NOT MODEL A OFFICIAL ACCURACY
+```
+
+Serve solo a stimare quanto errore potrebbe dipendere dall'assenza di un vincolo di legalità.
+
+## Metric Parity
+
+La prima verifica della batch Error Analysis è la parity con le metriche ufficiali del test set:
+
+| Metrica | Valore atteso |
+| --- | ---: |
+| examples | 8610 |
+| Top1 | 0.3961672474213732 |
+| Top3 | 0.5580720094022851 |
+| Top5 | 0.6275261325010993 |
+
+La UI mostra:
+
+```text
+OFFICIAL METRIC PARITY: PASS
+```
+
+solo se examples e metriche coincidono con tolleranza `1e-6`. Se la parity fallisce, il report mostra expected, actual e delta.
+
+## Subgroup Analysis
+
+La batch analysis calcola:
+
+- mate-depth metrics (`mateIn1`, `mateIn2`, ecc. realmente presenti);
+- focus Mate-in-1;
+- theme metrics con sample minimo configurabile, default `30`;
+- rating buckets: `<1200`, `1200-1599`, `1600-1999`, `2000-2399`, `2400+`.
+
+Le metriche theme sono multi-label e sovrapposte: un puzzle con `mateIn1 sacrifice` contribuisce sia a `mateIn1` sia a `sacrifice`. I conteggi theme non devono sommare al totale.
+
+## Report Generation
+
+La Error Analysis può salvare artifact diagnostici in:
+
+```text
+artifacts/model_a_error_analysis/
+```
+
+Output:
+
+- `summary.json`;
+- `report.md`.
+
+Il report è marcato come:
+
+```text
+DIAGNOSTIC POST-HOC ANALYSIS
+```
+
+Non sostituisce la test evaluation ufficiale e non modifica artifact scientifici precedenti.
+
 ## Data Source
 
 La sidebar permette di selezionare:
