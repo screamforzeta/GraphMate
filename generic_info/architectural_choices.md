@@ -865,3 +865,20 @@ Da questo punto modifiche a architecture, feature, target, vocabulary, masking, 
 
 **Methodology Note**  
 Il test è stato osservato più volte nella storia. La continuation fu decisa usando solo stato training/validation, non il risultato test epoch 150. Il documento principale è [model_a_no_timing.md](model_a_no_timing.md).
+
+## 41. Evaluate Legality-Aware Training As Controlled No-Timing Ablation
+
+**Decision**  
+Implementare `MODEL_A2_LEGAL_MASK_NO_TIMING` come variante sperimentale separata.
+
+**Rationale**  
+Model A resta congelato, ma la error analysis post-hoc mostra una quota importante di raw Top-1 illegali e un incremento diagnostico best-legal di circa `+10.22` percentage points. A2 misura se applicare il vincolo di legalità anche durante training produce valore oltre al filtro post-hoc.
+
+**Controls**  
+Architettura, feature, vocabulary, split, optimizer, LR, dropout, batch size, scheduler, early stopping, seed e runtime restano invariati. L'unico cambiamento scientifico è il legal move masking nella loss e nelle metriche ufficiali.
+
+**Artifact Boundary**  
+Gli artifact A2 sono separati in `artifacts/model_a2_legal_mask_no_timing/`. Non vengono sovrascritti checkpoint o report Model A.
+
+**Status**  
+IMPLEMENTED / READY_FOR_TRAINING. Nessun risultato finale A2 è ancora documentato.
