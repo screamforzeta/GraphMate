@@ -37,6 +37,21 @@ def test_a3_candidate_topk_and_legal_rank_are_native():
     assert metrics["illegal_top1"] == 0
 
 
+def test_a3_topk_does_not_move_scores_to_cpu_before_ranking(monkeypatch):
+    scores = torch.tensor([0.1, 0.9, 0.2])
+    ptr = torch.tensor([0, 3])
+    targets = torch.tensor([2])
+
+    def fail_cpu(self):
+        raise AssertionError("A3 ranking must stay on the current tensor device.")
+
+    monkeypatch.setattr(torch.Tensor, "cpu", fail_cpu)
+
+    metrics = a3_topk_and_ranks(scores, ptr, targets)
+
+    assert metrics["ranks"] == [2]
+
+
 def test_a3_parity_passes_for_reference_metrics():
     actual = dict(MODEL_A3_REFERENCE)
 
