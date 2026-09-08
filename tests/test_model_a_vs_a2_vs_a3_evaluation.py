@@ -65,6 +65,67 @@ def test_a3_parity_passes_for_reference_metrics():
     )
 
 
+def test_a3_loss_amp_sized_diff_passes():
+    actual = dict(MODEL_A3_REFERENCE)
+    actual["a3_loss"] += 1.940300793368266e-7
+
+    parity = parity_status_a3(actual)
+
+    assert parity["status"] == "PASS"
+    loss_row = [
+        item
+        for item in parity["diagnostics"]
+        if item["metric"] == "a3_loss"
+    ][0]
+    assert loss_row["tolerance"] == pytest.approx(1e-6)
+    assert loss_row["result"] == "PASS"
+
+
+def test_a3_loss_diff_above_metric_tolerance_fails():
+    actual = dict(MODEL_A3_REFERENCE)
+    actual["a3_loss"] += 1.1e-6
+
+    parity = parity_status_a3(actual)
+
+    assert parity["status"] == "FAIL"
+    failed = [
+        item
+        for item in parity["diagnostics"]
+        if item["result"] == "FAIL"
+    ]
+    assert [item["metric"] for item in failed] == ["a3_loss"]
+
+
+def test_a3_top1_small_diff_still_fails():
+    actual = dict(MODEL_A3_REFERENCE)
+    actual["a3_top1"] += 1e-8
+
+    parity = parity_status_a3(actual)
+
+    assert parity["status"] == "FAIL"
+    failed = [
+        item
+        for item in parity["diagnostics"]
+        if item["result"] == "FAIL"
+    ]
+    assert [item["metric"] for item in failed] == ["a3_top1"]
+
+
+def test_a3_n_mismatch_fails():
+    actual = dict(MODEL_A3_REFERENCE)
+    actual["n"] += 1
+
+    parity = parity_status_a3(actual)
+
+    assert parity["status"] == "FAIL"
+    failed = [
+        item
+        for item in parity["diagnostics"]
+        if item["result"] == "FAIL"
+    ]
+    assert [item["metric"] for item in failed] == ["n"]
+
+
 def test_a3_parity_diagnostics_report_each_official_field():
     diagnostics = a3_parity_diagnostics(dict(MODEL_A3_REFERENCE))
 
