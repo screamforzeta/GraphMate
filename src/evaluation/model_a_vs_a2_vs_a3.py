@@ -145,7 +145,9 @@ def a3_topk_and_ranks(scores, candidate_ptr, target_indices, top_k=(1, 3, 5)):
         end = int(candidate_ptr[graph_index + 1].item())
         target = int(target_indices[graph_index].item())
         group_scores = scores[start:end]
-        ordered = torch.argsort(group_scores.detach().cpu(), descending=True)
+        # Keep the same device-side ordering used by the A3 terminal evaluator.
+        # Moving scores to CPU before argsort can change tie/near-tie ordering.
+        ordered = torch.argsort(group_scores, descending=True)
         rank = int((ordered == target).nonzero(as_tuple=False).item()) + 1
         result["ranks"].append(rank)
         for k in top_k:
