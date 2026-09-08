@@ -67,6 +67,7 @@ def parse_args():
     parser.add_argument("--no-amp", action="store_false", dest="amp")
     parser.add_argument("--max-runtime-hours", type=parse_optional_float, default=None)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--extend-max-epochs", type=int, default=None)
     parser.add_argument("--experiment-dir", type=Path, default=CONVERGENCE_ROOT)
     parser.add_argument("--limit-train-graphs", type=int, default=None)
     parser.add_argument("--limit-val-graphs", type=int, default=None)
@@ -116,6 +117,8 @@ def main():
     """Run or resume the convergence pipeline from the command line."""
 
     args = parse_args()
+    if args.extend_max_epochs is not None and not args.resume:
+        raise ValueError("--extend-max-epochs requires --resume.")
     config = load_resume_config(args) if args.resume else config_from_args(args)
     device = resolve_device(args.device)
 
@@ -138,6 +141,7 @@ def main():
         config,
         device,
         resume=args.resume,
+        extend_max_epochs=args.extend_max_epochs,
     )
 
 

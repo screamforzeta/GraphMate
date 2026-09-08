@@ -446,6 +446,29 @@ Resume:
 ./venv/bin/python -m src.train_chess_gat_convergence --resume --device cuda
 ```
 
+Continuation controllata:
+
+```bash
+./venv/bin/python -m src.train_chess_gat_convergence \
+  --resume \
+  --extend-max-epochs 300 \
+  --device cuda
+```
+
+La continuation usa la stessa directory e riparte da `last.pt`, non da `best.pt`. E consentita solo dopo una run terminale `COMPLETED / MAX_EPOCHS_REACHED` con `best_epoch` all'ultima epoch e `early_stopping_counter=0`. L'unico campo scientifico modificabile e `max_epochs`; optimizer, scheduler, scaler, LR corrente, history e best checkpoint metadata vengono ripristinati.
+
+Prima di mutare lo stato terminale viene creato uno snapshot leggero:
+
+```text
+artifacts/convergence_training/chess_gat_no_timing/snapshots/epoch_<N>_terminal/
+  controller_state.json
+  final_report.json
+  history.json
+  experiment_config.json
+```
+
+Se il test era gia stato osservato al terminal state precedente, la metrica viene archiviata in `intermediate_test_evaluations`. La continuation non usa quel test per scheduler, early stopping, selection o stop decision. Il test successivo, al nuovo terminal state, e registrato come ulteriore osservazione.
+
 Stato: implemented / ready to run. Non contiene risultati futuri.
 
 ## Progressive Training

@@ -34,7 +34,7 @@ Baseline full completato: `MODEL_A_FULL_BASELINE_V1`.
 - config selezionata: lr `5e-4`, weight decay `1e-4`, dropout `0.30`, batch `128`;
 - final test: Top1 circa `31,87%`, Top3 circa `47,72%`, Top5 circa `54,29%`.
 
-Il run ha esaurito il budget configurato di `60` epoch con il miglior risultato di validation all'ultima epoch. La pipeline `MODEL_A_CONVERGENCE_RUN_V1` e pronta per una run piu lunga da zero, con stessa architettura/config, scheduler ed early stopping.
+Il run ha esaurito il budget configurato di `60` epoch con il miglior risultato di validation all'ultima epoch. La pipeline `MODEL_A_CONVERGENCE_RUN_V1` e pronta per una run piu lunga da zero, con stessa architettura/config, scheduler ed early stopping. Se una convergence run terminale finisce ancora per `MAX_EPOCHS_REACHED` con best all'ultima epoch, puo essere estesa esplicitamente con `--resume --extend-max-epochs`.
 
 ## Documentazione
 
@@ -112,6 +112,15 @@ Resume convergence run:
 
 ```bash
 ./venv/bin/python -m src.train_chess_gat_convergence --resume --device cuda
+```
+
+Continuation convergence run:
+
+```bash
+./venv/bin/python -m src.train_chess_gat_convergence \
+  --resume \
+  --extend-max-epochs 300 \
+  --device cuda
 ```
 
 Benchmark runtime:
