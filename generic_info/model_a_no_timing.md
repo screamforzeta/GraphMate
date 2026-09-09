@@ -1,73 +1,30 @@
-# Model A — ChessGATNoTiming
+# Famiglia No-Timing — Model A, Model A2, Model A3
 
-## 1. Executive Summary
-
-`ChessGATNoTiming` è il baseline no-timing congelato del progetto. Il modello prende una posizione di puzzle Lichess già corretta secondo la semantica del solver, la rappresenta come grafo PyTorch Geometric a 64 nodi e predice la prima mossa UCI della soluzione.
-
-Risultato ufficiale congelato:
+Questo documento chiude formalmente la fase no-timing del progetto. La famiglia no-timing nasce con `Model A`, passa per l'ablation `Model A2`, e arriva al baseline finale `Model A3`.
 
 ```text
-MODEL_A_NO_TIMING_FROZEN_BASELINE
-status = FROZEN
-convergence_status = CONVERGED_BY_EARLY_STOPPING
-best_epoch = 162
-stop_epoch = 174
-test_loss = 3.078363185864846
-test_top1 = 39.6167%
-test_top3 = 55.8072%
-test_top5 = 62.7526%
+MODEL_A3_NO_TIMING_FROZEN_BASELINE = YES
 ```
 
-La convergenza qui significa convergenza empirica sotto il protocollo definito: la validation loss non migliora per tutta la patience di early stopping dopo più riduzioni del learning rate. Non implica massimo globale dell'architettura o del task.
+## 1. Obiettivo Della Baseline No-Timing
 
-## 2. Scientific Objective
+L'obiettivo è risolvere puzzle Lichess mate-in-n usando grafi PyTorch Geometric senza informazioni temporali o timing sintetici. Il task supervisionato è predire la prima mossa UCI corretta della soluzione dalla posizione vista dal solver.
 
-Model A risolve un task supervised graph-level: data una posizione puzzle, predire la mossa soluzione target.
+La fase no-timing serve come riferimento scientifico per le future varianti timing-aware. Nessun modello no-timing usa event IDs, tempi di pensiero o feature temporali.
 
-Il suo ruolo scientifico è essere il riferimento senza timing contro cui confrontare esperimenti futuri. Non usa timing, event IDs, legal-move masking o Model B.
-
-## 3. Dataset
-
-Split CSV finali:
-
-| Split | CSV rows |
-|---|---:|
-| Train | 68,958 |
-| Validation | 8,620 |
-| Test | 8,620 |
-| Total | 86,198 |
-
-Split PyG utilizzabili:
-
-| Split | PyG graphs | Note |
-|---|---:|---|
-| Train | 68,958 | nessun OOV rispetto alla vocabulary train |
-| Validation | 8,612 | 8 target OOV esclusi |
-| Test | 8,610 | 10 target OOV esclusi |
-
-La vocabulary è costruita solo sul train set. Questo produce `1,786` classi. Gli OOV validation/test sono gestiti esplicitamente, non persi silenziosamente.
-
-Fonti locali verificate: `data/pyg/manifest.json`, `artifacts/move_encoder_stats.json`.
-
-## 4. Lichess Puzzle Semantics
-
-La FEN raw di Lichess rappresenta la posizione prima della setup move dell'avversario.
-
-Semantica corretta:
-
-1. leggere `OriginalFEN`;
-2. applicare `Moves[0]`;
-3. la posizione risultante è quella vista dal solver;
-4. la soluzione inizia da `Moves[1]`;
-5. `TargetMove = Moves[1]`.
-
-Una versione precedente della pipeline usava erroneamente raw FEN + `Moves[0]` come target. Questo errore fondazionale è stato corretto prima degli esperimenti finali di Model A. Senza questa correzione il modello avrebbe imparato la setup move dell'avversario, non la risposta del solver.
-
-## 5. Graph Representation
+## 2. Rappresentazione Del Grafo
 
 Ogni posizione è un grafo con 64 nodi, uno per casella.
 
-Node features: `x [64,15]`.
+```text
+x [64,15]
+edge_index [2,E]
+edge_attr [E,5]
+global_features [1,4]
+y = target graph-level
+```
+
+Node features:
 
 | Index | Feature |
 |---:|---|
@@ -75,39 +32,22 @@ Node features: `x [64,15]`.
 | 6 | color |
 | 7 | occupied |
 | 8 | normalized row |
-| 9 | normalized col |
+| 9 | normalized column |
 | 10 | attacked_by_white |
 | 11 | attacked_by_black |
 | 12 | legal_mobility |
 | 13 | is_pinned |
 | 14 | piece_value |
 
-Non esiste una node feature `is_check`.
+Edge features multilabel:
 
-Edge representation:
-
-```text
-edge_index [2,E] sparse COO
-edge_attr  [E,5]
-```
-
-Ogni `(src,dst)` compare al massimo una volta. Le relazioni tattiche sono aggregate in un vettore multilabel:
-
-1. `legal_move`;
-2. `attack`;
-3. `defend`;
-4. `pin`;
-5. `check_line`.
-
-Una versione precedente produceva parallel edges separati per relazione. La rappresentazione finale aggrega invece le relazioni nello stesso edge multilabel.
-
-Dettagli importanti:
-
-- pin detection geometrica corretta;
-- legal mobility calcolata per entrambi i colori;
-- `check_line = checker -> king`;
-- `global_features [1,4]`;
-- target graph-level `y`.
+| Index | Feature |
+|---:|---|
+| 0 | legal_move |
+| 1 | attack |
+| 2 | defend |
+| 3 | pin |
+| 4 | check_line |
 
 Global features:
 
@@ -118,623 +58,377 @@ Global features:
 | 2 | fullmove_number normalized |
 | 3 | halfmove_clock normalized |
 
-## 6. Move Target and Vocabulary
+Queste global features descrivono solo lo stato della posizione. Non contengono rating, MateDepth, themes, target move, solution/future moves o informazioni derivate dalla risposta corretta.
 
-Il target è una classificazione graph-level:
+## 3. Semantica Lichess
+
+La FEN raw Lichess rappresenta la posizione prima della setup move dell'avversario.
+
+Pipeline corretta:
+
+1. leggere `OriginalFEN`;
+2. applicare `Moves[0]`;
+3. salvare la posizione risultante come `FEN`;
+4. usare `Moves[1]` come `TargetMove`.
+
+Quindi `Data.fen` è la posizione vista dal solver e `Data.target_move` è la prima risposta UCI corretta. `Data.y`, quando disponibile, è `move_to_idx[TargetMove]`.
+
+## 4. Dataset E Vocabulary
+
+| Split | CSV rows | PyG graphs | Note |
+|---|---:|---:|---|
+| Train | 68,958 | 68,958 | nessun OOV |
+| Validation | 8,620 | 8,612 | 8 OOV esclusi |
+| Test | 8,620 | 8,610 | 10 OOV esclusi |
+
+La vocabulary `move_to_idx.json` è costruita solo sul train set e contiene `1,786` classi. Questo evita leakage da validation/test.
+
+## 5. Model A — Global Move Classification
+
+Model A è il primo baseline no-timing. Formula il problema come classificazione globale della mossa corretta sull'intera vocabulary train-only da `1,786` mosse.
 
 ```text
-y = move_to_idx[TargetMove]
-TargetMove = prima mossa UCI della soluzione puzzle
-```
-
-Artifact:
-
-- `artifacts/move_to_idx.json`;
-- `artifacts/idx_to_move.json`;
-- `artifacts/move_encoder_stats.json`.
-
-La vocabulary train-only evita leakage da validation/test. Limite metodologico: le `1,786` classi coprono le mosse osservate nel train, non tutte le mosse UCI teoricamente possibili.
-
-Alternative future possibili, non parte di Model A congelato:
-
-- theoretical UCI vocabulary;
-- from-square / to-square heads;
-- promotion head;
-- legal move masking.
-
-## 7. Model Architecture
-
-Fonte: `src/models/chess_gat.py`.
-
-Architettura:
-
-```text
-x [64B,15]
+x [N,15]
 edge_index [2,E]
 edge_attr [E,5]
 
-GATConv(in=15, out=32, heads=4, edge_dim=5)
--> [64B,128]
--> ELU
--> Dropout
-
-GATConv(in=128, out=32, heads=4, edge_dim=5)
--> [64B,128]
--> ELU
-
-global_mean_pool
--> graph embedding [B,128]
-
-concat global_features [B,4]
--> [B,132]
-
-Linear(132,128)
--> ELU
--> Dropout
--> Linear(128,1786)
+GATConv(15,32,heads=4,edge_dim=5) -> 128 -> ELU -> Dropout(0.30)
+GATConv(128,32,heads=4,edge_dim=5) -> 128 -> ELU
+global_mean_pool -> 128
+concat global_features [4] -> 132
+Linear(132,128) -> ELU -> Dropout -> Linear(128,1786)
 ```
 
-Parameter count verificato localmente con `num_classes=1786`: `268,026` trainable parameters.
+No timing. No event IDs. No legal mask durante il training. La scelta era intenzionalmente semplice: misurare quanto una GAT chess-specific potesse apprendere predicendo una classe globale di mossa.
 
-Dropout finale della run congelata: `0.30`.
+## 6. Training E Risultati Model A
 
-Architettura e hyperparameter sono concetti separati: la struttura GAT resta fissa, mentre lr/weight decay/batch/scheduler appartengono al protocollo di training.
-
-## 8. Training Protocol
-
-Protocollo finale:
-
-| Component | Value |
-|---|---|
-| Optimizer | Adam |
-| Loss | CrossEntropyLoss |
-| Initial LR | 5e-4 |
-| Weight decay | 1e-4 |
-| Dropout | 0.30 |
-| Batch size | 128 |
-| Seed | 42 |
-| Metrics | Top1, Top3, Top5 |
-| Checkpoint selection | minimum validation loss |
-
-Runtime server:
-
-- CUDA;
-- AMP true;
-- `num_workers=0`;
-- `pin_memory=true`;
-- `non_blocking=true`;
-- `ShardAwareSampler`.
-
-Scheduler:
+Checkpoint ufficiale:
 
 ```text
-ReduceLROnPlateau(mode=min, factor=0.5, patience=3, min_lr=1e-6)
+artifacts/convergence_training/chess_gat_no_timing/best.pt
 ```
-
-Early stopping:
-
-```text
-patience = 12
-min_delta = 0.0
-monitor = validation loss
-```
-
-## 9. Experimental History
-
-La storia Model A ha seguito questa sequenza:
-
-1. correzione semantica Lichess;
-2. costruzione rappresentazione PyG;
-3. esperimento iniziale circa 5k;
-4. passaggio al dataset full sharded;
-5. progressive training;
-6. fix performance subset;
-7. `MODEL_A_FULL_BASELINE_V1` a 60 epoch;
-8. `MODEL_A_CONVERGENCE_RUN_V1` da zero a 150 epoch;
-9. continuation controllata 151-174;
-10. freeze del baseline no-timing.
-
-## 10. Initial 5k Experiment
-
-Esperimento ridotto:
-
-| Field | Value |
-|---|---:|
-| Train | circa 5,000 |
-| Validation | 4,997 |
-| Test | 4,994 |
-| Best trial epoch | 11 |
-
-Best adaptive configuration:
-
-- lr `5e-4`;
-- dropout `0.30`;
-- weight decay `1e-4`;
-- batch size `32`.
-
-Validation:
-
-- loss `6.245944`;
-- Top1 `4.42%`;
-- Top5 `13.09%`.
-
-Test:
-
-- loss `6.184599`;
-- Top1 `5.2663%`;
-- Top3 `10.1922%`;
-- Top5 `13.7765%`.
-
-Questo esperimento non rappresenta il risultato finale. Serviva a verificare pipeline, ottenere una configurazione plausibile e mostrare i limiti del training su subset ridotto.
-
-Fonte locale parziale: `artifacts/adaptive_training/chess_gat_no_timing/final_report.json`.
-
-## 11. Full Dataset Transition
-
-Il passaggio full ha introdotto dataset PyG sharded:
-
-| Split | Graphs | Shards | OOV skipped |
-|---|---:|---:|---:|
-| Train | 68,958 | 69 | 0 |
-| Validation | 8,612 | 9 | 8 |
-| Test | 8,610 | 9 | 10 |
-
-Circa `1000` grafi per shard.
-
-Componenti:
-
-- `ShardedPyGDataset`;
-- manifest;
-- lazy loading;
-- LRU cache;
-- shard-aware sampling;
-- `source_row_index`;
-- atomic build tramite directory temporanea e rename finale.
-
-## 12. Progressive Training Experiment
-
-Pilot:
-
-| Trial | lr | wd | dropout | batch | best epoch | val loss | Top1 | Top3 | Top5 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | .0005 | .0001 | .3 | 128 | 10 | 5.96671484 | 5.25% | 10.55% | 14.75% |
-| 2 | .00025 | .0001 | .3 | 128 | N/A | 6.3032656 | 4.40% | N/A | 11.85% |
-| 3 | .0005 | .001 | .3 | 128 | N/A | 5.9803047 | 4.70% | N/A | 13.75% |
-| 4 | .0005 | .0001 | .4 | 128 | N/A | 5.9820249 | 5.15% | N/A | 14.15% |
-
-Promossi:
-
-- lr `.0005`, wd `.0001`, dropout `.3`;
-- lr `.0005`, wd `.001`, dropout `.3`.
-
-Confirmation:
-
-| Config | Train | Val | Best epoch | Val loss | Top1 | Top3 | Top5 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| lr .0005 wd .0001 drop .3 | 30,000 | 4,000 | 15 | 5.3856451 | 9.125% | 18.425% | 23.15% |
-| lr .0005 wd .001 drop .3 | 30,000 | 4,000 | 15 | 5.7197434 | 6.375% | 12.80% | 17.925% |
-
-La configurazione finale congelata deriva da questo stage.
-
-## 13. Subset Performance Problem and Fix
-
-Problema osservato: Pilot e Confirmation erano molto più lenti del Full.
-
-Runtime indicativi pre-fix:
-
-- Pilot: circa `1997 s` per trial;
-- Confirmation: circa `5686-5726 s` per run;
-- Full: circa `17.4 s/epoch`.
-
-Root cause: la membership casuale dei subset era corretta, ma il traversal naive saltava continuamente fra shard. Con LRU cache piccola questo causava reload continui. Non era un problema del modello o della GPU.
-
-Pattern diagnostic:
-
-| Case | Old shard transitions | Old estimated shard loads |
-|---|---:|---:|
-| Pilot 12k | 11,829 | 11,642 |
-| Confirmation 30k | 29,573 | 29,141 |
-| Full 68,958 | 68 | 69 |
-
-Fix: `ShardAwareSampler`.
-
-Proprietà:
-
-- membership invariata;
-- deterministic shuffle;
-- traversal shard-local;
-- `set_epoch(epoch)`;
-- Pilot ancora sottoinsieme di Confirmation;
-- nessun cambio scientifico ai sample.
-
-Server validation data-loading only:
-
-| Case | Elapsed | Graphs/s | Transitions | Shard loads | Cache hit |
-|---|---:|---:|---:|---:|---:|
-| Pilot 12k | 8.7386 s | 1373.21 | 68 | 69 | 99.425% |
-| Confirmation 30k | 9.2540 s | 3241.83 | 68 | 69 | 99.770% |
-| Full 68,958 | 10.6042 s | 6502.88 | 68 | 69 | 99.900% |
-
-Il benchmark finale distingue `BEFORE = ANALYTICAL_PATTERN_SIMULATION` da `AFTER = REAL_SERVER_TRAVERSAL`.
-
-## 14. MODEL_A_FULL_BASELINE_V1
-
-Primo vero baseline full dataset:
-
-| Field | Value |
-|---|---|
-| Config | lr .0005, wd .0001, dropout .3, batch 128 |
-| Epochs | 60 |
-| Best epoch | 60 |
-| Stop reason | MAX_EPOCHS_REACHED |
-
-Validation:
-
-- loss `3.6216142139`;
-- Top1 `31.8625%`;
-- Top3 `46.9577%`;
-- Top5 `53.6925%`.
-
-Final test:
-
-- loss `3.59010546`;
-- Top1 `31.8699%`;
-- Top3 `47.7236%`;
-- Top5 `54.2857%`.
-
-Rispetto al 5k:
-
-- Test Top1: `5.2663% -> 31.8699%`;
-- Test Top5: `13.7765% -> 54.2857%`.
-
-Questo non è una ablation isolata del solo dataset size: sono cambiati anche batch size, runtime config e training orchestration.
-
-## 15. Why Baseline V1 Was Not Considered Converged
-
-Il baseline 60 epoch non fu considerato convergente perché:
-
-- `max_epochs = 60`;
-- `epochs_completed = 60`;
-- `best_epoch = 60`;
-- validation loss ancora in discesa nelle ultime epoch;
-- stop per `MAX_EPOCHS_REACHED`;
-- nessun early stopping.
-
-`best_epoch == max_epochs` con validation ancora in miglioramento indica che il budget stava troncando il training. La decisione di fare una convergence run non fu basata sul test.
-
-## 16. MODEL_A_CONVERGENCE_RUN_V1
-
-La convergence run è una nuova run da zero, non continuation del baseline 60.
-
-Motivo: ottenere una traiettoria riproducibile completa con protocollo di convergenza definito fin dall'inizio.
-
-Differenze principali:
-
-- max epochs `150`;
-- `ReduceLROnPlateau`;
-- early stopping patience `12`;
-- best checkpoint by validation loss;
-- test isolato fino al terminal state.
-
-## 17. Epoch 150 Terminal State
-
-Risultato terminale a epoch 150:
-
-| Field | Value |
-|---|---|
-| status | COMPLETED |
-| stop_reason | MAX_EPOCHS_REACHED |
-| convergence_status | MAX_EPOCH_BUDGET_EXHAUSTED |
-| epochs | 150 |
-| best_epoch | 150 |
-| best_val_loss | 3.123774577671021 |
-| final LR | 1.25e-4 |
-| LR reductions | 2 |
-| early_stopping_counter | 0 |
-
-Test #1 della convergence trajectory:
-
-- loss `3.098223075523332`;
-- Top1 `39.291521%`;
-- Top3 `55.389082%`;
-- Top5 `62.195122%`;
-- examples `8610`.
-
-## 18. Why the Run Was Continued
-
-Epoch 150 non dimostrava ancora convergenza:
-
-- `best_epoch = 150/150`;
-- best validation loss all'ultima epoch;
-- `early_stopping_counter = 0`;
-- scheduler sopra `min_lr`;
-- stop ancora `MAX_EPOCHS_REACHED`.
-
-La continuation fu decisa solo su stato training/validation. Le metriche test epoch 150 non furono usate per scheduler, checkpoint, config o stopping.
-
-## 19. Continuation 151–174
-
-Continuation controllata della stessa trajectory:
-
-```text
-last.pt epoch 150 -> epoch 151
-max_epochs 150 -> 300
-```
-
-Preservati:
-
-- model;
-- optimizer;
-- scheduler;
-- AMP scaler;
-- LR corrente;
-- early stopping;
-- history;
-- best checkpoint;
-- config.
-
-Il test precedente è stato archiviato come osservazione intermedia.
-
-Eventi principali:
-
-| Epoch | Event |
-|---:|---|
-| 160 | LR `1.25e-4 -> 6.25e-5` |
-| 161 | new best, val loss `3.111613` |
-| 162 | new final best, val loss `3.1078798007920794` |
-| 166 | LR `6.25e-5 -> 3.125e-5` |
-| 170 | LR `3.125e-5 -> 1.5625e-5` |
-| 174 | LR `1.5625e-5 -> 7.8125e-6`; early stopping counter `12` |
-
-Finale:
-
-- stop epoch `174`;
-- stop reason `EARLY_STOPPING`;
-- best resta epoch `162`.
-
-Questi valori vengono dal risultato server fornito nel prompt; gli artifact finali non sono presenti nella VM.
-
-## 20. Evidence of Convergence
-
-Model A ha raggiunto convergenza empirica secondo il protocollo definito.
-
-Evidenze:
-
-1. il budget massimo non è più la causa dello stop;
-2. best validation loss a epoch `162`;
-3. training continua per altre `12` epoch;
-4. nessuna epoch `163-174` migliora il best;
-5. early stopping patience `12` esaurita;
-6. `ReduceLROnPlateau` interviene ripetutamente;
-7. LR progressivamente ridotto;
-8. ulteriori riduzioni non producono un nuovo best;
-9. stop reason finale `EARLY_STOPPING`;
-10. best checkpoint separato dal terminal epoch.
-
-Questa è evidenza di plateau empirico per questa architettura, questi dati, questi hyperparameter, questo seed e questo stopping protocol.
-
-## 21. Final Model A Results
-
-`MODEL_A_NO_TIMING_FROZEN_BASELINE`:
-
-| Field | Value |
-|---|---|
-| Best checkpoint | epoch 162 |
-| Best validation loss | 3.1078798007920794 |
-| Stop epoch | 174 |
-| Stop reason | EARLY_STOPPING |
-| Final LR | 7.8125e-6 |
-| LR reductions | 6 |
-| Convergence status | CONVERGED_BY_EARLY_STOPPING |
-
-Final test after best reload:
 
 | Metric | Value |
 |---|---:|
-| loss | 3.078363185864846 |
-| Top1 | 39.6167% |
-| Top3 | 55.8072% |
-| Top5 | 62.7526% |
-| examples | 8,610 |
+| best epoch | 162 |
+| stop epoch | 174 |
+| stop reason | EARLY_STOPPING |
+| test N | 8,610 |
+| loss | 3.0783631859 |
+| Top1 | 39.6167247421% |
+| Top3 | 55.8072009402% |
+| Top5 | 62.7526132501% |
 
-## 22. Comparison Across Experiments
+Model A ha raggiunto convergenza empirica: la validation loss non migliora per tutta la patience dopo più riduzioni del learning rate. Questo non implica massimo globale del task.
 
-| Experiment | Train size | Best/stop epoch | Val loss | Val Top1 | Val Top5 | Test loss | Test Top1 | Test Top3 | Test Top5 | Status |
-|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|
-| Initial ~5k experiment | ~5,000 | best 11 | 6.245944 | 4.42% | 13.09% | 6.184599 | 5.2663% | 10.1922% | 13.7765% | preliminary |
-| MODEL_A_FULL_BASELINE_V1 | 68,958 | best/stop 60 | 3.621614 | 31.8625% | 53.6925% | 3.590105 | 31.8699% | 47.7236% | 54.2857% | budget-limited |
-| Convergence @ epoch 150 | 68,958 | best/stop 150 | 3.123775 | N/A | N/A | 3.098223 | 39.2915% | 55.3891% | 62.1951% | budget-limited |
-| Final convergence | 68,958 | best 162 / stop 174 | 3.107880 | N/A | N/A | 3.078363 | 39.6167% | 55.8072% | 62.7526% | frozen |
+## 7. Limiti Osservati Di Model A
 
-N/A indica metriche non disponibili negli artifact locali o non fornite nel prompt.
-
-Delta `MODEL_A_FULL_BASELINE_V1 -> final`:
-
-- loss: `-0.5117422741`;
-- Top1: `+7.7468 pp`;
-- Top3: `+8.0836 pp`;
-- Top5: `+8.4669 pp`.
-
-Delta `epoch 150 -> final`:
-
-- loss: `-0.0198598897`;
-- Top1: `+0.3252 pp`;
-- Top3: `+0.4181 pp`;
-- Top5: `+0.5575 pp`.
-
-La continuation ha dato miglioramenti marginali ma reali; il punto scientifico principale era verificare plateau/early stopping validation-driven.
-
-## 23. Generalization
-
-Baseline V1 mostrava validation e test molto vicini. La convergence finale mantiene test performance coerente con il trend validation osservato.
-
-Non si può affermare assenza assoluta di overfitting, ma dai risultati disponibili non emerge un evidente generalization collapse.
-
-## 24. Test-Set Methodology
-
-Il test set è stato osservato più volte nella storia:
-
-1. baseline V1;
-2. convergence terminal state epoch 150;
-3. final convergence dopo continuation.
-
-Nella convergence trajectory `test_evaluation_count = 2`: epoch 150 e finale sono due evaluation della stessa run continuata.
-
-La continuation 150->300 fu decisa usando solo stato validation/training: best epoch al massimo budget, best validation all'ultima epoch, early stopping counter zero, scheduler sopra min LR.
-
-Il test non fu usato per scheduler, checkpoint, stopping o config. Tuttavia il test non può essere descritto come completamente untouched. Questa limitazione deve restare esplicita in ogni report scientifico futuro.
-
-## 25. Performance / Runtime
-
-Training runtime server durante continuation: train epoch circa `15.3-16.2 s`, validation circa `1.6-1.9 s`.
-
-Questi tempi sono full training epoch runtime, diversi dai benchmark data-loading only.
-
-Benchmark training iniziale su RTX A2000 6GB:
-
-| Config | Graph/s | Estimated full epoch |
-|---|---:|---:|
-| batch 32, no AMP | ~3530.69 | ~19.53 s |
-| batch 64, no AMP | ~4131 | ~16.69 s |
-| batch 128, AMP | ~4757.85 | ~14.49 s |
-| batch 256, AMP | ~4904.12 | ~14.06 s |
-
-Batch 128 è stato mantenuto come compromesso operativo. Il sistema non è documentato come VRAM-bound; il modello usa poca VRAM rispetto ai 6GB disponibili.
-
-## 26. Known Limitations
-
-- vocabulary train-derived fissa;
-- OOV validation/test;
-- classificazione su 1786 mosse;
-- nessun legal-move masking;
-- nessuna vocabulary UCI teorica completa;
-- singolo seed/run principale per la convergence finale;
-- test osservato più volte storicamente;
-- convergenza empirica non equivale a massimo globale;
-- distribuzione puzzle diversa dal gioco generale;
-- target = mossa soluzione puzzle, non valutazione generale della qualità delle mosse;
-- nessun timing in Model A per design.
-
-## 27. Frozen Baseline Definition
+Il limite più importante emerso è la legalità delle mosse:
 
 ```text
-MODEL_A_NO_TIMING_FROZEN_BASELINE
-Status: FROZEN
+raw illegal Top1 rate ≈ 30.2323%
 ```
 
-Definizione:
+Il modello poteva assegnare massima probabilità a mosse impossibili. Questo mostra che la formulazione globale obbligava il modello anche ad apprendere un vincolo già noto: la legalità della mossa.
 
-| Component | Frozen value |
+Model A best-legal filtra le predizioni illegali dopo il forward, senza cambiare il modello:
+
+| Metric | Model A Best-Legal |
+|---|---:|
+| Top1 | 49.8142% |
+| Top3 | 70.4994% |
+| Top5 | 79.5587% |
+
+Questo forte salto ha motivato una ablation controllata.
+
+## 8. Model A2 — Legal Mask Training
+
+Model A2 non è un'architettura completamente diversa. È una ablation per rispondere alla domanda:
+
+```text
+Quanto del limite di Model A deriva dal fatto che il classificatore può scegliere mosse illegali?
+```
+
+A2 mantiene stessa rappresentazione, stessa GAT architecture, stessa vocabulary, stesso dataset/split, stesso optimizer, lr iniziale `5e-4`, weight decay `1e-4`, dropout `0.30`, batch size `128`, seed `42` e model selection su validation loss.
+
+Cambia solo lo spazio delle azioni durante loss/metriche:
+
+1. ricostruisce la posizione da `Data.fen`;
+2. genera mosse legali con `python-chess`;
+3. mappa le mosse legali nella vocabulary;
+4. maschera logits illegali con valore finito `-1e4`;
+5. applica CrossEntropy sullo spazio legalmente consentito.
+
+## 9. Perché È Stato Creato A2
+
+A2 isola l'effetto della legalità. Se A2 avesse risolto il problema, allora il limite principale di Model A sarebbe stato solo la presenza di mosse illegali nello spazio di output.
+
+Il risultato è stato più interessante: legal filtering è fondamentale, ma legal-mask training non basta.
+
+## 10. Risultati E Limiti Di A2
+
+| Metric | A2 Masked |
+|---|---:|
+| loss | 1.7831716187 |
+| masked Top1 | 49.2566782811% |
+| masked Top3 | 71.4982578480% |
+| masked Top5 | 81.1730545946% |
+| masked illegal Top1 | 0% |
+
+Confronto chiave:
+
+| Metric | Model A Best-Legal | A2 Masked |
+|---|---:|---:|
+| Top1 | 49.8142% | 49.2567% |
+| Top3 | 70.4994% | 71.4983% |
+| Top5 | 79.5587% | 81.1731% |
+
+Interpretazione:
+
+- legal filtering produce un grande miglioramento;
+- A2 non migliora il Top1 globale rispetto al best-legal post-hoc di Model A;
+- A2 migliora leggermente Top3/Top5;
+- il limite non è semplicemente "allenare con legal mask";
+- il problema sembra essere nella formulazione globale della decisione.
+
+MateIn1:
+
+| Metric | Model A Best-Legal | A2 |
+|---|---:|---:|
+| Top1 | 56.14% | 52.53% |
+
+A2 peggiora MateIn1 rispetto al best-legal post-hoc di Model A. Questo è stato il segnale principale che ha motivato A3.
+
+## 11. Motivazione Per Model A3
+
+Il passaggio concettuale è:
+
+```text
+A / A2: score di tutte le 1786 classi globali
+A3: score solo delle mosse legali realmente disponibili nella posizione
+```
+
+La domanda scientifica diventa: è migliore una formulazione candidate-ranking rispetto a una classificazione globale delle mosse?
+
+A3 elimina il classifier finale da `1,786` classi e usa un insieme variabile di candidate legali per ogni grafo.
+
+## 12. Model A3 — Legal Move Candidate Scorer
+
+A3 mantiene lo stile dell'encoder GAT di Model A ma cambia la formulazione dell'output.
+
+Proprietà:
+
+- no timing;
+- no event IDs;
+- no global move-classification head;
+- legal candidates generate da `Data.fen`;
+- target = `Data.target_move`;
+- grouped/listwise CrossEntropy per grafo;
+- output variabile = numero di mosse legali.
+
+```text
+NO_1786_CLASSIFIER_IN_A3_FORWARD = YES
+```
+
+## 13. Scelte Architetturali A3
+
+Encoder:
+
+```text
+GATConv(15,32,heads=4,edge_dim=5) -> 128
+ELU
+Dropout(0.30)
+GATConv(128,32,heads=4,edge_dim=5) -> 128
+ELU
+global_mean_pool -> 128
+concat global_features [4] -> graph context 132
+```
+
+Candidate representation:
+
+| Component | Dim |
+|---|---:|
+| source node embedding | 128 |
+| destination node embedding | 128 |
+| graph context | 132 |
+| promotion embedding | 8 |
+| total | 396 |
+
+Scorer:
+
+```text
+Linear(396,128) -> ELU -> Dropout(0.30) -> Linear(128,1)
+```
+
+Parametri:
+
+| Component | Parameters |
+|---|---:|
+| encoder | 20,608 |
+| scorer | 50,985 |
+| total | 71,593 |
+
+A3 ha molti meno parametri di Model A, circa `71.6k` contro circa `268k`. Il miglioramento non può quindi essere attribuito semplicemente a maggiore capacità parametrica.
+
+## 14. Training Protocol A3
+
+| Component | Value |
 |---|---|
-| Model | ChessGATNoTiming |
-| Vocabulary | 1,786 train-derived classes |
-| Architecture | current `src/models/chess_gat.py` |
-| Initial LR | 5e-4 |
-| Weight decay | 1e-4 |
-| Dropout | 0.30 |
-| Batch size | 128 |
-| Seed | 42 |
-| Scheduler | ReduceLROnPlateau |
-| Early stopping | patience 12 |
-| Best checkpoint | epoch 162 |
-| Final test loss | 3.078363185864846 |
-| Final Top1 | 39.6167% |
-| Final Top3 | 55.8072% |
-| Final Top5 | 62.7526% |
-| Convergence | CONVERGED_BY_EARLY_STOPPING |
+| optimizer | Adam |
+| lr | 5e-4 |
+| weight decay | 1e-4 |
+| dropout | 0.30 |
+| batch size | 128 |
+| seed | 42 |
+| scheduler | ReduceLROnPlateau |
+| factor / patience / min LR | 0.5 / 3 / 1e-6 |
+| early stopping patience | 12 |
+| max epochs | 300 |
+| AMP | enabled on server |
+| num_workers | 0 |
+| pin_memory | true |
+| non_blocking | true |
+| model selection | validation loss only |
 
-## 28. Reproducibility
+Il test viene eseguito solo dopo training terminale e reload del best checkpoint.
 
-Representation validation:
+## 15. Validation / Parity
 
-```bash
-./venv/bin/python -m src.validate_representations \
-  --csv-sample 1000 \
-  --graph-sample 500 \
-  --seed 42
+Pretraining candidate validation:
+
+| Split | Valid | Total | Candidate errors |
+|---|---:|---:|---:|
+| train | 68,958 | 68,958 | 0 |
+| val | 8,612 | 8,612 | 0 |
+| test | 8,610 | 8,610 | 0 |
+
+Candidate generation:
+
+```text
+batch.fen -> python-chess legal_moves -> candidate list
 ```
 
-Historical convergence command:
+Grouped CE:
 
-```bash
-./venv/bin/python -m src.train_chess_gat_convergence \
-  --device cuda \
-  --batch-size 128 \
-  --num-workers 0 \
-  --pin-memory \
-  --non-blocking \
-  --amp \
-  --max-epochs 150 \
-  --early-stopping-patience 12 \
-  --lr-scheduler-factor 0.5 \
-  --lr-scheduler-patience 3 \
-  --min-learning-rate 1e-6 \
-  --seed 42
+```text
+-log exp(score_target) / sum(exp(score_legal_moves_same_graph))
 ```
 
-Historical continuation command:
+Ogni grafo ha il proprio denominatore. Candidate di grafi diversi non condividono il softmax.
 
-```bash
-./venv/bin/python -m src.train_chess_gat_convergence \
-  --resume \
-  --extend-max-epochs 300 \
-  --device cuda
+Parity finale ufficiale:
+
+```text
+MODEL_A_PARITY = PASS
+MODEL_A2_PARITY = PASS
+MODEL_A3_PARITY = PASS
 ```
 
-Do not relaunch these commands to create the frozen baseline again unless intentionally reproducing the experiment in a separate controlled environment.
+A3 canonical shared-test:
 
-Test suite:
+| Metric | Value |
+|---|---:|
+| N | 8,610 |
+| candidate CE/NLL | 1.0832485489175157 circa |
+| Top1 | 0.675609756097561 |
+| Top3 | 0.8565621370499419 |
+| Top5 | 0.9185830429732869 |
+| mean legal rank | 2.224274099883856 |
+| median legal rank | 1.0 |
+| illegal Top1 | 0.0 |
 
-```bash
-./venv/bin/python -m pytest -q
-./venv/bin/python -m compileall -q main.py src tests
+TopK/rank hanno parity near-exact. Solo CE/NLL usa tolerance assoluta `1e-6` per differenze floating-point CUDA/AMP. Questa tolerance non influenza ranking metrics, model selection o interpretazione TopK.
+
+## 16. Risultati Globali
+
+| Metric | A Raw | A Best-Legal | A2 Masked | A3 |
+|---|---:|---:|---:|---:|
+| Top1 | 39.6167% | 49.8142% | 49.2567% | 67.5610% |
+| Top3 | 55.8072% | 70.4994% | 71.4983% | 85.6562% |
+| Top5 | 62.7526% | 79.5587% | 81.1731% | 91.8583% |
+| Mean legal rank | 4.0115 | 4.0115 | 3.7220 | 2.2243 |
+| Median legal rank | 2 | 2 | 2 | 1 |
+| Illegal Top1 | 30.2323% | 0% | 0% | 0% |
+
+Deltas A3:
+
+| Comparison | Top1 | Top3 | Top5 |
+|---|---:|---:|---:|
+| A3 vs A raw | +27.9443 pp | +29.8490 pp | +29.1057 pp |
+| A3 vs A best-legal | +17.7468 pp | +15.1568 pp | +12.2997 pp |
+| A3 vs A2 | +18.3043 pp | +14.1580 pp | +10.6852 pp |
+
+## 17. MateDepth Analysis
+
+Top1 per MateDepth:
+
+| MateDepth | A Raw | A Best-Legal | A2 | A3 |
+|---|---:|---:|---:|---:|
+| MateIn1 | 47.22% | 56.14% | 52.53% | 79.55% |
+| MateIn2 | 40.62% | 52.83% | 52.08% | 69.78% |
+| MateIn3 | 42.42% | 52.33% | 52.38% | 66.73% |
+| MateIn4 | 32.47% | 42.12% | 43.12% | 58.73% |
+| MateIn5 | 25.89% | 36.41% | 39.32% | 52.91% |
+
+A3 domina A/A2 in ogni MateDepth e risolve chiaramente la debolezza MateIn1 mostrata da A2. L'accuracy diminuisce comunque con la profondità: la difficoltà residua non è più principalmente legalità della mossa, ma ranking/rappresentazione/comprensione della posizione.
+
+## 18. Rating Analysis
+
+A3 Top1 per rating:
+
+| Rating bucket | N | A3 Top1 |
+|---|---:|---:|
+| <1200 | 3,879 | 82.0572% |
+| 1200-1599 | 2,176 | 65.8548% |
+| 1600-1999 | 1,564 | 51.3427% |
+| 2000-2399 | 811 | 43.1566% |
+| 2400+ | 180 | 26.6667% |
+
+La performance cala all'aumentare della difficoltà/rating. A3 resta superiore ai predecessori in tutti i bucket. Il bucket `2400+` va interpretato con cautela per `N=180`.
+
+Questa subgroup analysis è descrittiva e post-hoc. Non è stata usata per model selection.
+
+## 19. Confronto A Vs A2 Vs A3
+
+La sequenza sperimentale mostra:
+
+1. Model A dimostra che una GAT chess-specific può apprendere il task, ma soffre lo spazio globale da `1,786` classi.
+2. Model A best-legal mostra che legal filtering recupera molti errori.
+3. Model A2 mostra che allenare con legal mask migliora Top3/Top5 ma non risolve Top1 e peggiora MateIn1 rispetto al best-legal post-hoc.
+4. Model A3 riformula il problema come ranking tra candidate legali e migliora nettamente tutte le metriche principali.
+
+## 20. Interpretazione Scientifica
+
+Conclusione principale:
+
+- legal filtering è fondamentale;
+- legal-mask training da solo non risolve il problema;
+- candidate-based legal move scoring è molto più adatto della classificazione globale su vocabulary;
+- A3 migliora molto pur usando meno parametri;
+- il task residuo è ranking tra poche mosse plausibili, non eliminazione di mosse illegali.
+
+Non si deve affermare causalità su componenti interni specifici: A3 cambia sia output parametrization sia inductive bias.
+
+## 21. Baseline No-Timing Ufficiale
+
+La baseline no-timing ufficiale del progetto è:
+
+```text
+MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING
 ```
 
-Benchmark commands:
+Model A resta baseline iniziale storica. Model A2 resta ablation controllata sulla legal mask. A3 è il riferimento no-timing da usare per confronti futuri.
 
-```bash
-./venv/bin/python -m src.benchmark_chess_gat_training --device cuda
-./venv/bin/python -m src.benchmark_progressive_subset_loading --device cuda --batch-size 128 --num-workers 0 --pin-memory --non-blocking --amp
-```
+## 22. Implicazioni Per Il Modello Timing-Aware
 
-## 29. Final Verdict
+La futura variante timing-aware dovrà partire dalla formulazione candidate-based di A3, mantenendo invariati per quanto possibile:
 
-Model A is complete, converged under the defined protocol, and frozen as the official no-timing baseline.
+- dataset/split;
+- rappresentazione base del grafo;
+- candidate generation;
+- target semantics;
+- training protocol;
+- metriche shared-test.
 
-Future changes to architecture, features, target, vocabulary, masking, optimizer protocol or hyperparameters are not the same Model A baseline. They must be treated as a new variant, ablation or experiment.
-
-## Source of Truth
-
-MODEL DEFINITION:
-
-- `src/models/chess_gat.py`
-
-TRAINING / CONVERGENCE LOGIC:
-
-- `src/train_chess_gat_convergence.py`
-- `src/training/convergence_run.py`
-- `src/training/chess_gat_trainer.py`
-
-DATA REPRESENTATION:
-
-- `src/graph/node_features.py`
-- `src/graph/edge_features.py`
-- `src/graph/graph_builder.py`
-- `src/graph/pyg_dataset.py`
-- `data/pyg/manifest.json`
-- `artifacts/move_encoder_stats.json`
-
-FINAL TRAINING ARTIFACTS:
-
-- expected server path: `artifacts/convergence_training/chess_gat_no_timing/best.pt`
-- expected server path: `artifacts/convergence_training/chess_gat_no_timing/last.pt`
-- expected server path: `artifacts/convergence_training/chess_gat_no_timing/history.json`
-- expected server path: `artifacts/convergence_training/chess_gat_no_timing/controller_state.json`
-- expected server path: `artifacts/convergence_training/chess_gat_no_timing/final_report.json`
-- expected server path: `artifacts/convergence_training/chess_gat_no_timing/final_report.md`
-- expected server snapshot: `artifacts/convergence_training/chess_gat_no_timing/snapshots/epoch_150_terminal/`
-
-LOCAL AUDIT NOTE:
-
-- The VM used for this documentation does not contain the final convergence artifact directory. Final convergence values in this document come from the server results supplied for this audit.
-- Locally verified artifacts include `data/pyg/manifest.json`, `artifacts/move_encoder_stats.json`, `artifacts/adaptive_training/chess_gat_no_timing/final_report.json`, and benchmark report files under `artifacts/benchmarks/`.
+Il timing dovrà essere aggiunto come nuova componente sperimentale controllata. Non deve riportare il progetto alla classificazione globale su vocabulary come output principale.
