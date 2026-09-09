@@ -2,7 +2,7 @@ import pandas as pd
 import torch
 from torch_geometric.data import Data
 
-from src.validate_representations import (
+from src.validation.representations import (
     EXPECTED_EDGE_FEATURE_DIM,
     EXPECTED_GLOBAL_SHAPE,
     EXPECTED_NODE_SHAPE,

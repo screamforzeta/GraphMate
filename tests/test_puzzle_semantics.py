@@ -1,7 +1,7 @@
 import pandas as pd
 
 from src.graph.move_encoder import compute_oov_stats
-from src.preprocess.prepare_puzzles_dataset import (
+from src.data.preprocess.prepare_puzzles_dataset import (
     extract_target_move,
     transform_lichess_puzzle,
 )

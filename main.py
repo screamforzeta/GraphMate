@@ -12,20 +12,20 @@ Run:
 """
 
 # Download raw data.
-from src.download import download_puzzles
-from src.download import download_games
+from src.data.download import download_puzzles
+from src.data.download import download_games
 
 # Preprocess raw puzzle and PGN data.
-from src.preprocess import preprocess_puzzles
-from src.preprocess import parse_games
+from src.data.preprocess import preprocess_puzzles
+from src.data.preprocess import parse_games
 
 # Validate and clean preprocessed data.
-from src.preprocess import clean_games
-from src.preprocess import clean_puzzles
+from src.data.preprocess import clean_games
+from src.data.preprocess import clean_puzzles
 
 # Partition and prepare final CSV datasets.
-from src.preprocess import prepare_puzzles_dataset
-from src.preprocess import prepare_games_dataset
+from src.data.preprocess import prepare_puzzles_dataset
+from src.data.preprocess import prepare_games_dataset
 
 # Graph construction and encoding.
 from src.graph import move_encoder

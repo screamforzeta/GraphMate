@@ -3,7 +3,7 @@ import json
 import pytest
 import torch
 
-from src.evaluation.model_a_vs_a2 import (
+from src.evaluation.model_a.model_a_vs_a2 import (
     compute_deltas_pp,
     finalize_bucket,
     masked_topk_metrics,
@@ -15,7 +15,7 @@ from src.evaluation.model_a_vs_a2 import (
     validate_checkpoint,
     write_outputs,
 )
-from src.training.legal_mask import build_legal_mask_from_indices
+from src.training.model_a.legal_mask import build_legal_mask_from_indices
 
 
 def test_best_legal_topk_promotes_legal_target_after_illegal_raw_leaders():

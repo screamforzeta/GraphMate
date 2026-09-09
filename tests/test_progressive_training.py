@@ -4,8 +4,8 @@ import pytest
 import torch
 from torch_geometric.data import Data
 
-from src.training.adaptive_controller import TrialConfig
-from src.training.progressive_controller import (
+from src.training.model_a.adaptive_controller import TrialConfig
+from src.training.model_a.progressive_controller import (
     ProgressiveTrainingConfig,
     RunResult,
     deterministic_indices,
@@ -156,7 +156,7 @@ def test_zero_valid_trial_raises_diagnostic(tmp_path, monkeypatch):
     config = _small_config(tmp_path)
 
     monkeypatch.setattr(
-        "src.training.progressive_controller.run_training_run",
+        "src.training.model_a.progressive_controller.run_training_run",
         lambda *args, **kwargs: RunResult(
             "pilot_trial_001",
             TrialConfig(),

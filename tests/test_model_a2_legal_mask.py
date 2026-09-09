@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from src.training.legal_mask import (
+from src.training.model_a.legal_mask import (
     apply_legal_mask,
     build_legal_mask_from_indices,
     legal_class_indices_from_fen,

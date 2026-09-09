@@ -10,11 +10,11 @@ Role:
     Keeps training and smoke-test imports stable as more models are added.
 """
 
-from src.models.chess_gat import (
+from src.models.model_a.chess_gat import (
     ChessGATNoTiming,
     count_trainable_parameters,
 )
-from src.models.chess_legal_scorer import (
+from src.models.model_a.chess_legal_scorer import (
     ChessGATLegalMoveScorer,
     promotion_id,
 )

@@ -2,7 +2,7 @@ import pytest
 import torch
 from torch_geometric.data import Data
 
-from src.benchmark_chess_gat_training import (
+from src.benchmarks.model_a_training import (
     BenchmarkConfig,
     classify_bottleneck,
     estimate_epoch_times,
@@ -10,7 +10,7 @@ from src.benchmark_chess_gat_training import (
     run_single_benchmark,
     select_recommended_config,
 )
-from src.training.chess_gat_trainer import (
+from src.training.model_a.chess_gat_trainer import (
     ChessGATTrainingConfig,
     make_loaders,
     set_loader_epoch,

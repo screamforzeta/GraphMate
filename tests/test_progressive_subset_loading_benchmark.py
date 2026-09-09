@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import Subset
 from torch_geometric.data import Data
 
-from src.benchmark_progressive_subset_loading import (
+from src.benchmarks.progressive_subset_loading import (
     TraversalCase,
     analytical_before,
     compare_case,
@@ -114,7 +114,7 @@ def test_compare_case_after_uses_shard_aware_sampler(tmp_path, monkeypatch):
         return make_shard_aware_sampler(*args, **kwargs)
 
     monkeypatch.setattr(
-        "src.benchmark_progressive_subset_loading.make_shard_aware_sampler",
+        "src.benchmarks.progressive_subset_loading.make_shard_aware_sampler",
         tracking_sampler,
     )
 
@@ -153,11 +153,11 @@ def test_write_reports_creates_json_and_markdown(tmp_path, monkeypatch):
     json_path = tmp_path / "report.json"
     md_path = tmp_path / "report.md"
     monkeypatch.setattr(
-        "src.benchmark_progressive_subset_loading.REPORT_JSON",
+        "src.benchmarks.progressive_subset_loading.REPORT_JSON",
         json_path,
     )
     monkeypatch.setattr(
-        "src.benchmark_progressive_subset_loading.REPORT_MD",
+        "src.benchmarks.progressive_subset_loading.REPORT_MD",
         md_path,
     )
     payload = {

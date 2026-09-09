@@ -3,7 +3,7 @@ import json
 import pytest
 import torch
 
-from src.evaluation.model_a_vs_a2_vs_a3 import (
+from src.evaluation.model_a.model_a_vs_a2_vs_a3 import (
     MODEL_A3_REFERENCE,
     SHARED_TEST_N,
     a3_parity_diagnostics,
@@ -16,7 +16,7 @@ from src.evaluation.model_a_vs_a2_vs_a3 import (
     update_bucket,
     write_outputs,
 )
-from src.training.legal_mask import build_legal_mask_from_indices
+from src.training.model_a.legal_mask import build_legal_mask_from_indices
 
 
 def test_shared_test_n_reference_is_frozen():
