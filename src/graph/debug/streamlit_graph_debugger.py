@@ -68,6 +68,16 @@ from src.inference.chess_gat_inference import (
     run_single_inference,
     verify_target_checkmate,
 )
+from src.inference.no_timing_multimodel import (
+    MODEL_A2_CHECKPOINT_PATH,
+    MODEL_A3_CHECKPOINT_PATH,
+    MODEL_OPTIONS,
+    error_analysis_record,
+    evaluate_mate_in_one_modes,
+    load_model_a2_bundle,
+    load_model_a3_bundle,
+    run_model_mode_inference,
+)
 
 # =========================================================
 # CONFIG
@@ -371,6 +381,26 @@ def load_model_a_resource():
 
     try:
         return load_model_bundle(), None
+    except Exception as error:
+        return None, str(error)
+
+
+@st.cache_resource
+def load_model_a2_resource():
+    """Load the official Model A2 bundle once per Streamlit process."""
+
+    try:
+        return load_model_a2_bundle(), None
+    except Exception as error:
+        return None, str(error)
+
+
+@st.cache_resource
+def load_model_a3_resource():
+    """Load the official Model A3 bundle once per Streamlit process."""
+
+    try:
+        return load_model_a3_bundle(), None
     except Exception as error:
         return None, str(error)
 
@@ -919,16 +949,18 @@ st.divider()
 st.header("Puzzle Training & Model Verification")
 
 bundle, model_error = load_model_a_resource()
+bundle_a2, model_a2_error = load_model_a2_resource()
+bundle_a3, model_a3_error = load_model_a3_resource()
 
 status_cols = st.columns(4)
-status_cols[0].metric("Model", MODEL_A_NAME)
+status_cols[0].metric("Primary Model", "MODEL_A3_NO_TIMING")
 status_cols[1].metric(
     "Device",
-    str(bundle.device).upper() if bundle else "UNAVAILABLE",
+    str(bundle_a3.device).upper() if bundle_a3 else "UNAVAILABLE",
 )
 status_cols[2].metric(
     "Checkpoint",
-    str(bundle.checkpoint_path) if bundle else "unavailable",
+    str(bundle_a3.checkpoint_path) if bundle_a3 else "unavailable",
 )
 status_cols[3].metric(
     "Vocabulary",
@@ -953,18 +985,23 @@ elif bundle:
     st.success("Checkpoint status: OFFICIAL FROZEN CHECKPOINT")
 
 st.info(
-    "Model A is frozen. Best epoch: 162. Stop epoch: 174. "
-    "Convergence: CONVERGED_BY_EARLY_STOPPING. Final test: "
-    "Top1 39.62%, Top3 55.81%, Top5 62.75%. "
-    "Model A has not been probability-calibrated."
+    "No-timing phase is frozen. Model A3 is the official no-timing baseline. "
+    "A3 shared-test metrics: Top1 67.56%, Top3 85.66%, Top5 91.86%, "
+    "mean legal rank 2.2243. Model A and A2 remain available for diagnostics."
 )
+if model_a2_error:
+    st.caption(f"Model A2 unavailable at `{MODEL_A2_CHECKPOINT_PATH}`: {model_a2_error}")
+if model_a3_error:
+    st.warning(f"Model A3 unavailable at `{MODEL_A3_CHECKPOINT_PATH}`: {model_a3_error}")
+elif bundle_a3:
+    st.success("Model A3 checkpoint status: OFFICIAL NO-TIMING BASELINE")
 
 puzzle_tab, model_tab, mate_tab, error_tab = st.tabs(
     [
         "Human Puzzle Training",
-        "Model A Inference",
+        "Model A3 Inference",
         "Mate-in-1 Evaluation",
-        "Model A Error Analysis",
+        "Error Analysis",
     ]
 )
 
@@ -1022,33 +1059,23 @@ with puzzle_tab:
     counter_cols[3].metric("Model Top5", counters["model_top5_correct"])
 
 with model_tab:
-    st.subheader("Raw Model A predictions")
+    st.subheader("Model A3 legal-candidate predictions")
     st.caption(
-        "Top-K is computed from raw logits over all 1,786 classes. "
-        "Legal diagnostics do not replace the official raw ranking."
-    )
-    st.caption(
-        "HIT = the puzzle target is contained within the model's first K raw "
-        "predictions. MISS = the target is ranked below K. This does not mean "
-        "inference failed."
+        "A3 scores only legal moves from the current position. It never emits "
+        "global 1,786-class logits."
     )
     top_k = st.selectbox(
         "Top-K",
         [5, 10, 20],
         index=0,
     )
-    if str(sample.TargetMove) not in move_to_idx:
-        st.warning(
-            "Ground-truth move is outside Model A's train-derived vocabulary. "
-            "The puzzle is still playable, but Model A cannot predict that "
-            "class by construction."
-        )
-    if st.button("Ask Model A", disabled=bundle is None):
-        with st.spinner("Running Model A inference..."):
+    if st.button("Ask Model A3", disabled=bundle_a3 is None):
+        with st.spinner("Running Model A3 legal-candidate inference..."):
             try:
-                result = run_single_inference(
-                    bundle=bundle,
+                result = run_model_mode_inference(
+                    "Model A3 Legal Scorer",
                     row=sample,
+                    bundle_a3=bundle_a3,
                     top_k=top_k,
                 )
                 st.session_state["model_result"] = result
@@ -1067,23 +1094,17 @@ with model_tab:
         result_cols[1].metric("Top-3 contains target", result["top3_label"])
         result_cols[2].metric("Top-5 contains target", result["top5_label"])
         result_cols[3].metric(
-            "Target Rank",
+            "Target Legal Rank",
             "unavailable — target OOV"
             if result["target_oov"]
-            else f"#{result['target_rank']} / {len(move_to_idx)}",
+            else f"#{result['target_rank']} / {result.get('legal_candidate_count', 'legal')}",
         )
         st.write(f"Inference: `{result['inference_status']}`")
-        st.write(f"Meaning: {target_rank_explanation(result['target_rank'])}")
+        st.write("Illegal Top1 rate: `0.0` by construction.")
+        st.write(f"Legal candidates: `{result.get('legal_candidate_count')}`")
         if top1:
-            st.write(f"Raw Model Top-1: `{top1['move']}`")
-            st.write(f"Top-1 legal: `{top1['legal']}`")
-            best_legal = result.get("best_legal")
-            if best_legal:
-                st.caption(
-                    "Best legal prediction (DIAGNOSTIC ONLY — NOT MODEL A "
-                    f"OFFICIAL ACCURACY): `{best_legal['move']}` at raw rank "
-                    f"#{best_legal['rank']}"
-                )
+            st.write(f"A3 Top-1: `{top1['move']}`")
+            st.write(f"Top-1 score: `{top1.get('score')}`")
         if result["target_rank"] and result["target_rank"] > top_k:
             st.info(f"Ground truth appears at rank #{result['target_rank']}.")
         st.dataframe(
@@ -1092,7 +1113,7 @@ with model_tab:
                     "rank": "Rank",
                     "move": "Move",
                     "san": "SAN",
-                    "softmax_score": "Softmax Score",
+                    "score": "Score",
                     "legal": "Legal",
                     "ground_truth": "Ground Truth",
                 }
@@ -1102,12 +1123,14 @@ with model_tab:
 
 with mate_tab:
     st.subheader("Mate-in-1 diagnostic subgroup")
+    mode_selection = st.selectbox("Model", MODEL_OPTIONS, index=3)
+    compare_all = st.checkbox("Compare all", value=True)
     if is_mate_in_one_row(sample):
         is_mate = verify_target_checkmate(
             fen=sample.FEN,
             target_move=sample.TargetMove,
         )
-        st.write("Can Model A find the mate?")
+        st.write("Can the selected no-timing model find the mate?")
         st.write(f"Expected mating move: `{sample.TargetMove}`")
         st.write(f"Target checkmates: `{is_mate}`")
         if not is_mate:
@@ -1115,14 +1138,14 @@ with mate_tab:
         result = st.session_state.get("model_result")
         if result and result["topk"]:
             top1 = result["topk"][0]
-            st.write(f"Model Top-1: `{top1['move']}`")
+            st.write(f"Last inference Top-1: `{top1['move']}`")
             st.write("Result: `MATE FOUND`" if result["top1_hit"] else "Result: `MATE MISSED`")
             st.write(f"Target rank: `{result['target_rank']}`")
             st.write(f"Top3 hit: `{result['top3_hit']}`")
             st.write(f"Top5 hit: `{result['top5_hit']}`")
             st.write(f"Prediction legal: `{top1['legal']}`")
         else:
-            st.caption("Run Ask Model A to fill single-puzzle mate diagnostics.")
+            st.caption("Run Ask Model A3 to fill single-puzzle mate diagnostics.")
     else:
         st.info("Current puzzle is not marked as mateIn1.")
 
@@ -1136,13 +1159,23 @@ with mate_tab:
         value=0,
         step=50,
     )
-    if st.button("Evaluate Model A on Mate-in-1 puzzles", disabled=bundle is None):
+    selected_modes = MODEL_OPTIONS if compare_all else [mode_selection]
+    available_bundles = {
+        "Model A Raw": bundle,
+        "Model A Best-Legal": bundle,
+        "Model A2 Masked": bundle_a2,
+        "Model A3 Legal Scorer": bundle_a3,
+    }
+    disabled_modes = [mode for mode in selected_modes if available_bundles.get(mode) is None]
+    if disabled_modes:
+        st.warning(f"Unavailable model resources: {', '.join(disabled_modes)}")
+    if st.button("Evaluate Mate-in-1 puzzles", disabled=bool(disabled_modes)):
         with st.spinner("Running batched Mate-in-1 diagnostics..."):
             try:
-                metrics = evaluate_mate_in_one_dataframe(
-                    bundle=bundle,
+                metrics = evaluate_mate_in_one_modes(
                     dataframe=df_full,
-                    batch_size=128,
+                    modes=selected_modes,
+                    bundles=available_bundles,
                     limit=int(eval_limit) or None,
                 )
                 st.session_state["mate_eval_metrics"] = metrics
@@ -1151,41 +1184,41 @@ with mate_tab:
 
     metrics = st.session_state.get("mate_eval_metrics")
     if metrics:
-        eval_cols = st.columns(4)
-        eval_cols[0].metric("Total puzzles", metrics["total"])
-        eval_cols[1].metric("Evaluated", metrics["evaluable"])
-        eval_cols[2].metric("OOV", metrics["oov"])
-        eval_cols[3].metric("Illegal Top1", metrics["illegal_top1"])
-
-        denominator = max(1, metrics["evaluable"])
-        score_cols = st.columns(3)
-        score_cols[0].metric("Top1", f"{metrics['top1'] / denominator:.2%}")
-        score_cols[1].metric("Top3", f"{metrics['top3'] / denominator:.2%}")
-        score_cols[2].metric("Top5", f"{metrics['top5'] / denominator:.2%}")
-
-        st.write("Error breakdown")
-        st.json(
-            {
-                "Correct Top1": metrics["correct_top1"],
-                "Wrong but legal Top1": metrics["wrong_legal_top1"],
-                "Illegal Top1": metrics["illegal_top1"],
-                "OOV target": metrics["oov"],
-                "Average target rank": metrics["average_target_rank"],
-                "Median target rank": metrics["median_target_rank"],
-            }
+        table = pd.DataFrame(
+            [
+                {
+                    "Model": mode,
+                    "N": values["N"],
+                    "Top1": values["top1"],
+                    "Top3": values["top3"],
+                    "Top5": values["top5"],
+                    "Mean rank": values["mean_legal_target_rank"],
+                    "Median rank": values["median_legal_target_rank"],
+                    "Illegal Top1": values["illegal_top1_rate"],
+                }
+                for mode, values in metrics.items()
+            ]
         )
+        st.dataframe(table, use_container_width=True)
 
 with error_tab:
-    st.subheader("Model A Error Analysis")
+    st.subheader("Error Analysis")
     st.caption(
         "DIAGNOSTIC POST-HOC ANALYSIS. This tab interprets the already frozen "
         "test result; it must not be used for Model A selection or tuning."
     )
-    official_ready = bool(bundle and bundle.is_official_checkpoint)
+    analysis_mode = st.selectbox("Analysis model", MODEL_OPTIONS, index=3)
+    analysis_bundle_available = {
+        "Model A Raw": bundle is not None,
+        "Model A Best-Legal": bundle is not None,
+        "Model A2 Masked": bundle_a2 is not None,
+        "Model A3 Legal Scorer": bundle_a3 is not None,
+    }[analysis_mode]
+    official_ready = analysis_bundle_available
     if not official_ready:
         st.warning(
-            "Official frozen checkpoint is not loaded. Batch Error Analysis is "
-            f"disabled. Required checkpoint: `{EXPECTED_CHECKPOINT_PATH}`."
+            "Required checkpoint for the selected model is not loaded. "
+            "Batch Error Analysis is disabled."
         )
     min_theme_samples = st.number_input(
         "Minimum theme sample",
@@ -1197,7 +1230,7 @@ with error_tab:
     if selected_split != "test":
         st.info("Metric parity is defined for the official test split only.")
     run_col, clear_col = st.columns(2)
-    if run_col.button("Run Model A Error Analysis", disabled=run_disabled):
+    if run_col.button("Run Error Analysis", disabled=run_disabled):
         progress = st.progress(0)
         status = st.empty()
 
@@ -1206,106 +1239,118 @@ with error_tab:
             progress.progress(processed / total if total else 1.0)
 
         try:
-            analysis = run_error_analysis(
-                bundle=bundle,
-                dataframe=df_full,
-                split_name=selected_split,
-                batch_size=128,
-                min_theme_samples=int(min_theme_samples),
-                progress_callback=update_progress,
-            )
-            paths = write_error_analysis_report(analysis)
-            analysis["artifact_paths"] = paths
-            st.session_state["model_a_error_analysis"] = analysis
+            rows = list(df_full.itertuples(index=False))
+            records = []
+            for processed, row in enumerate(rows, 1):
+                prediction = run_model_mode_inference(
+                    analysis_mode,
+                    row,
+                    bundle_a=bundle,
+                    bundle_a2=bundle_a2,
+                    bundle_a3=bundle_a3,
+                    top_k=5,
+                )
+                records.append(error_analysis_record(row, prediction))
+                if processed % 50 == 0:
+                    update_progress(processed, len(rows))
+            update_progress(len(rows), len(rows))
+            st.session_state["model_a_error_analysis"] = {
+                "model": analysis_mode,
+                "records": records,
+            }
             status.write("Analysis complete.")
         except Exception as error:
-            st.error(f"Model A Error Analysis failed: {error}")
+            st.error(f"Error Analysis failed: {error}")
     if clear_col.button("Clear analysis results"):
         st.session_state["model_a_error_analysis"] = None
 
     analysis = st.session_state.get("model_a_error_analysis")
     if analysis:
-        overall = analysis["overall"]
-        rates = overall["rates"]
-        parity = overall["parity"]
-        st.metric("OFFICIAL METRIC PARITY", parity["status"])
-        if parity["status"] != "PASS":
-            st.warning(
-                "Inference parity with the frozen test evaluation was not achieved."
+        if "records" in analysis:
+            st.write(f"Model: `{analysis['model']}`")
+            st.dataframe(pd.DataFrame(analysis["records"]), use_container_width=True)
+        else:
+            overall = analysis["overall"]
+            rates = overall["rates"]
+            parity = overall["parity"]
+            st.metric("OFFICIAL METRIC PARITY", parity["status"])
+            if parity["status"] != "PASS":
+                st.warning(
+                    "Inference parity with the frozen test evaluation was not achieved."
+                )
+                st.json(parity)
+            dash = st.columns(4)
+            dash[0].metric("Test N", overall["evaluable"])
+            dash[1].metric("Top1", f"{rates['top1']:.2%}")
+            dash[2].metric("Top3", f"{rates['top3']:.2%}")
+            dash[3].metric("Top5", f"{rates['top5']:.2%}")
+
+            st.write("Error structure")
+            error_df = pd.DataFrame(
+                [
+                    {"Category": key, "Count": value}
+                    for key, value in overall["error_categories"].items()
+                ]
             )
-            st.json(parity)
-        dash = st.columns(4)
-        dash[0].metric("Test N", overall["evaluable"])
-        dash[1].metric("Top1", f"{rates['top1']:.2%}")
-        dash[2].metric("Top3", f"{rates['top3']:.2%}")
-        dash[3].metric("Top5", f"{rates['top5']:.2%}")
+            st.bar_chart(error_df, x="Category", y="Count")
+            st.dataframe(error_df, use_container_width=True)
 
-        st.write("Error structure")
-        error_df = pd.DataFrame(
-            [
-                {"Category": key, "Count": value}
-                for key, value in overall["error_categories"].items()
-            ]
-        )
-        st.bar_chart(error_df, x="Category", y="Count")
-        st.dataframe(error_df, use_container_width=True)
+            st.write("Rank recovery")
+            st.json(overall["rank_recovery"])
+            rank_df = pd.DataFrame(
+                [
+                    {"Rank bucket": key, "Count": value}
+                    for key, value in overall["rank_buckets"].items()
+                ]
+            )
+            st.bar_chart(rank_df, x="Rank bucket", y="Count")
+            st.dataframe(rank_df, use_container_width=True)
 
-        st.write("Rank recovery")
-        st.json(overall["rank_recovery"])
-        rank_df = pd.DataFrame(
-            [
-                {"Rank bucket": key, "Count": value}
-                for key, value in overall["rank_buckets"].items()
-            ]
-        )
-        st.bar_chart(rank_df, x="Rank bucket", y="Count")
-        st.dataframe(rank_df, use_container_width=True)
+            st.write("Raw vs legal diagnostic")
+            st.metric(
+                "Diagnostic best-legal Top1",
+                f"{rates['best_legal_top1']:.2%}",
+                delta=f"{(rates['best_legal_top1'] - rates['top1']) * 100:.2f} pp",
+            )
 
-        st.write("Raw vs legal diagnostic")
-        st.metric(
-            "Diagnostic best-legal Top1",
-            f"{rates['best_legal_top1']:.2%}",
-            delta=f"{(rates['best_legal_top1'] - rates['top1']) * 100:.2f} pp",
-        )
+            st.write("Mate depth analysis")
+            st.dataframe(
+                pd.DataFrame(analysis["mate_depth"].values()),
+                use_container_width=True,
+            )
+            if "mateIn1" in analysis["mate_depth"]:
+                st.write("Mate-in-1 focus")
+                st.json(analysis["mate_depth"]["mateIn1"])
 
-        st.write("Mate depth analysis")
-        st.dataframe(
-            pd.DataFrame(analysis["mate_depth"].values()),
-            use_container_width=True,
-        )
-        if "mateIn1" in analysis["mate_depth"]:
-            st.write("Mate-in-1 focus")
-            st.json(analysis["mate_depth"]["mateIn1"])
+            st.write("Theme analysis")
+            st.caption("Theme metrics are overlapping subgroup analyses.")
+            st.dataframe(
+                pd.DataFrame(analysis["theme"].values()),
+                use_container_width=True,
+            )
 
-        st.write("Theme analysis")
-        st.caption("Theme metrics are overlapping subgroup analyses.")
-        st.dataframe(
-            pd.DataFrame(analysis["theme"].values()),
-            use_container_width=True,
-        )
+            st.write("Rating analysis")
+            st.dataframe(
+                pd.DataFrame(analysis["rating"].values()),
+                use_container_width=True,
+            )
 
-        st.write("Rating analysis")
-        st.dataframe(
-            pd.DataFrame(analysis["rating"].values()),
-            use_container_width=True,
-        )
-
-        st.write("Explore mistakes")
-        mistake_filter = st.selectbox(
-            "Mistake filter",
-            [
-                "Top1 incorrect",
-                "Illegal Top1",
-                "Legal wrong Top1",
-                "Target rank >5",
-                "Mate-in-1 missed",
-            ],
-        )
-        examples = overall["illegal_examples"] if mistake_filter == "Illegal Top1" else overall["mistake_examples"]
-        st.dataframe(pd.DataFrame(examples), use_container_width=True)
-        if analysis.get("artifact_paths"):
-            st.write("Report artifacts")
-            st.json(analysis["artifact_paths"])
+            st.write("Explore mistakes")
+            mistake_filter = st.selectbox(
+                "Mistake filter",
+                [
+                    "Top1 incorrect",
+                    "Illegal Top1",
+                    "Legal wrong Top1",
+                    "Target rank >5",
+                    "Mate-in-1 missed",
+                ],
+            )
+            examples = overall["illegal_examples"] if mistake_filter == "Illegal Top1" else overall["mistake_examples"]
+            st.dataframe(pd.DataFrame(examples), use_container_width=True)
+            if analysis.get("artifact_paths"):
+                st.write("Report artifacts")
+                st.json(analysis["artifact_paths"])
 
 # =========================================================
 # RAW DATA

@@ -2,7 +2,7 @@
 
 Pipeline Python per trasformare puzzle e partite Lichess in grafi PyTorch Geometric e addestrare modelli Graph Neural Network / Graph Attention Network su puzzle mate-in-n.
 
-Il baseline scientifico no-timing è `ChessGATNoTiming`: un GAT graph-level che predice la prima mossa corretta della soluzione di un puzzle. Model A è ora completato, convergente secondo il protocollo definito e congelato come riferimento no-timing per confronti futuri.
+La baseline scientifica no-timing finale è `MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING`: un GAT che usa la rappresentazione a grafo del progetto e sceglie direttamente tra le mosse legali della posizione. Model A resta il baseline iniziale global-classification; Model A2 resta la legal-mask ablation.
 
 ## Stato Attuale
 
@@ -22,7 +22,7 @@ Implementato:
 - modello `ChessGATNoTiming`;
 - trainer standard, adaptive storico, benchmark runtime e progressive training;
 - diagnosi/fix shard-aware per subset progressivi Pilot/Confirmation, validato sul server;
-- `MODEL_A_CONVERGENCE_RUN_V1` completata e congelata come baseline no-timing;
+- `MODEL_A_CONVERGENCE_RUN_V1` completata e congelata come baseline iniziale no-timing;
 - variante `MODEL_A2_LEGAL_MASK_NO_TIMING` implementata e pronta per training come ablation no-timing legal-masked;
 - variante `MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING` implementata come scorer diretto sulle mosse legali, senza logits globali sulla vocabulary;
 - debugger Streamlit standalone per grafo/scacchiera.
@@ -49,7 +49,7 @@ Baseline ufficiale congelato: `MODEL_A_NO_TIMING_FROZEN_BASELINE`.
 
 - [Architettura del progetto](generic_info/project_architecture.md): come sono organizzati moduli, pipeline, dati, training e artifact.
 - [Scelte architetturali](generic_info/architectural_choices.md): perché sono state prese le principali decisioni progettuali.
-- [Model A no-timing](generic_info/model_a_no_timing.md): report completo del baseline congelato `ChessGATNoTiming`.
+- [Famiglia no-timing A/A2/A3](generic_info/model_a_no_timing.md): documento definitivo della fase no-timing, con A3 come baseline ufficiale finale.
 - [Streamlit Model A verification](generic_info/streamlit_model_a_verification.md): sezione UI per training umano sui puzzle, inference read-only e diagnostica Mate-in-1.
 - [Model A2 legal mask no-timing](generic_info/model_a2_legal_mask_no_timing.md): piano/protocollo della variante legal-masked senza timing.
 - [Model A3 legal move scorer no-timing](generic_info/model_a3_legal_move_scorer_no_timing.md): variante che confronta direttamente i candidati legali della posizione.
