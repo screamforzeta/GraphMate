@@ -3,11 +3,11 @@ import torch
 from torch_geometric.data import Batch
 from torch_geometric.data import Data
 
-from src.models.chess_legal_scorer import (
+from src.models.model_a.chess_legal_scorer import (
     ChessGATLegalMoveScorer,
     promotion_id,
 )
-from src.training.model_a3_legal_scorer import (
+from src.training.model_a.model_a3_legal_scorer import (
     ModelA3LegalScorerConfig,
     build_candidate_batch,
     build_model_a3,

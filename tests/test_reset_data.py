@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from src.reset_data import (
+from src.cli.data.reset_data import (
     confirm_reset,
     get_reset_targets,
     reset_project_data,

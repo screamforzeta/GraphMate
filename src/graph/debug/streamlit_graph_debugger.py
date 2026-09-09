@@ -51,7 +51,7 @@ from streamlit_agraph import (
 from src.graph.graph_builder import (
     load_move_encoder as load_graph_move_encoder,
 )
-from src.inference.chess_gat_inference import (
+from src.inference.model_a.chess_gat_inference import (
     EXPECTED_CHECKPOINT_PATH,
     MODEL_A_NAME,
     check_user_move,
@@ -68,7 +68,7 @@ from src.inference.chess_gat_inference import (
     run_single_inference,
     verify_target_checkmate,
 )
-from src.inference.no_timing_multimodel import (
+from src.inference.model_a.no_timing_multimodel import (
     MODEL_A2_CHECKPOINT_PATH,
     MODEL_A3_CHECKPOINT_PATH,
     MODEL_OPTIONS,

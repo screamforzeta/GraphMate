@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from src.inference.no_timing_multimodel import (
+from src.inference.model_a.no_timing_multimodel import (
     MODEL_OPTIONS,
     best_legal_summary,
     error_analysis_record,

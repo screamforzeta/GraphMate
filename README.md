@@ -47,16 +47,41 @@ Baseline ufficiale congelato: `MODEL_A_NO_TIMING_FROZEN_BASELINE`.
 
 ## Documentazione
 
-- [Architettura del progetto](generic_info/project_architecture.md): come sono organizzati moduli, pipeline, dati, training e artifact.
-- [Scelte architetturali](generic_info/architectural_choices.md): perché sono state prese le principali decisioni progettuali.
-- [Famiglia no-timing A/A2/A3](generic_info/model_a_no_timing.md): documento definitivo della fase no-timing, con A3 come baseline ufficiale finale.
-- [Streamlit Model A verification](generic_info/streamlit_model_a_verification.md): sezione UI per training umano sui puzzle, inference read-only e diagnostica Mate-in-1.
-- [Model A2 legal mask no-timing](generic_info/model_a2_legal_mask_no_timing.md): piano/protocollo della variante legal-masked senza timing.
-- [Model A3 legal move scorer no-timing](generic_info/model_a3_legal_move_scorer_no_timing.md): variante che confronta direttamente i candidati legali della posizione.
-- [Model A vs A2 evaluator](generic_info/model_a_vs_a2_evaluation.md): valutazione post-hoc raw/best-legal/masked tra i due baseline.
-- [Analisi TimeGNN](generic_info/timegnn_info.md): audit della libreria esterna `TimeGNN-main/`.
-- [Guida training TimeGNN/GNN](generic_info/timegnn_gnn_training_guide.md): note di integrazione future.
-- [Piano architettura Chess GAT](generic_info/chess_gat_architecture_plan.md): piano tecnico del modello chess-specific.
+- [Architettura del progetto](generic_info/architecture/project_architecture.md): come sono organizzati moduli, pipeline, dati, training e artifact.
+- [Scelte architetturali](generic_info/architecture/architectural_choices.md): perché sono state prese le principali decisioni progettuali.
+- [Struttura repository](generic_info/architecture/repo_struct.md): mappa aggiornata di codice, CLI, documentazione e namespace Model B.
+- [Famiglia no-timing A/A2/A3](generic_info/model_a/model_a_no_timing.md): documento definitivo della fase no-timing, con A3 come baseline ufficiale finale.
+- [Streamlit Model A verification](generic_info/model_a/streamlit_model_a_verification.md): sezione UI per training umano sui puzzle, inference read-only e diagnostica Mate-in-1.
+- [Model A2 legal mask no-timing](generic_info/model_a/model_a2_legal_mask_no_timing.md): piano/protocollo della variante legal-masked senza timing.
+- [Model A3 legal move scorer no-timing](generic_info/model_a/model_a3_legal_move_scorer_no_timing.md): variante che confronta direttamente i candidati legali della posizione.
+- [Model A vs A2 evaluator](generic_info/model_a/model_a_vs_a2_evaluation.md): valutazione post-hoc raw/best-legal/masked tra i due baseline.
+- [Analisi TimeGNN](generic_info/timegnn/timegnn_info.md): audit della libreria esterna `TimeGNN-main/`.
+- [Guida training TimeGNN/GNN](generic_info/timegnn/timegnn_gnn_training_guide.md): note di integrazione future.
+- [Piano architettura Chess GAT](generic_info/architecture/chess_gat_architecture_plan.md): piano tecnico del modello chess-specific.
+
+## Struttura Repository
+
+```text
+src/
+  data/download/       # download Lichess puzzle e game PGN
+  data/preprocess/     # preprocessing, cleaning, parsing, split
+  graph/               # feature extraction, graph builder, PyG dataset
+  models/model_a/      # architetture no-timing A/A3
+  models/model_b/      # namespace futuro timing-aware
+  training/common/     # metriche e utilità condivise
+  training/model_a/    # training A/A2/A3
+  training/model_b/    # namespace futuro timing-aware
+  evaluation/model_a/  # evaluator A/A2/A3
+  evaluation/model_b/  # namespace futuro timing-aware
+  inference/model_a/   # inference no-timing
+  inference/model_b/   # namespace futuro timing-aware
+  audit/model_a/       # audit pre-training Model A
+  benchmarks/          # benchmark runtime/data loading
+  validation/          # validator rappresentazioni
+  cli/                 # entrypoint python -m
+```
+
+`generic_info/` è organizzata in `architecture/`, `model_a/`, `timegnn/`, `project/` e `reference/`.
 
 ## Comandi Principali
 
@@ -75,19 +100,19 @@ Generazione dataset PyG sharded:
 Validazione rappresentazioni:
 
 ```bash
-./venv/bin/python -m src.validate_representations --csv-sample 1000 --graph-sample 500 --seed 42
+./venv/bin/python -m src.validation.representations --csv-sample 1000 --graph-sample 500 --seed 42
 ```
 
 Training standard:
 
 ```bash
-./venv/bin/python -m src.train_chess_gat
+./venv/bin/python -m src.cli.training.train_model_a
 ```
 
 Training progressivo full consigliato:
 
 ```bash
-./venv/bin/python -m src.train_chess_gat_progressive \
+./venv/bin/python -m src.cli.training.train_model_a_progressive \
   --device cuda \
   --batch-size 128 \
   --num-workers 0 \
@@ -101,13 +126,13 @@ Training progressivo full consigliato:
 Resume progressivo:
 
 ```bash
-./venv/bin/python -m src.train_chess_gat_progressive --resume --device cuda
+./venv/bin/python -m src.cli.training.train_model_a_progressive --resume --device cuda
 ```
 
 Historical convergence run Model A:
 
 ```bash
-./venv/bin/python -m src.train_chess_gat_convergence \
+./venv/bin/python -m src.cli.training.train_model_a_convergence \
   --device cuda \
   --batch-size 128 \
   --num-workers 0 \
@@ -125,13 +150,13 @@ Historical convergence run Model A:
 Historical resume convergence run:
 
 ```bash
-./venv/bin/python -m src.train_chess_gat_convergence --resume --device cuda
+./venv/bin/python -m src.cli.training.train_model_a_convergence --resume --device cuda
 ```
 
 Historical continuation convergence run:
 
 ```bash
-./venv/bin/python -m src.train_chess_gat_convergence \
+./venv/bin/python -m src.cli.training.train_model_a_convergence \
   --resume \
   --extend-max-epochs 300 \
   --device cuda
@@ -140,7 +165,7 @@ Historical continuation convergence run:
 Training Model A2 legal-masked no-timing:
 
 ```bash
-./venv/bin/python -m src.train_chess_gat_legal_mask \
+./venv/bin/python -m src.cli.training.train_model_a2_legal_mask \
   --device cuda \
   --batch-size 128 \
   --num-workers 0 \
@@ -152,13 +177,13 @@ Training Model A2 legal-masked no-timing:
 Resume Model A2:
 
 ```bash
-./venv/bin/python -m src.train_chess_gat_legal_mask --resume --device cuda
+./venv/bin/python -m src.cli.training.train_model_a2_legal_mask --resume --device cuda
 ```
 
 Training Model A3 legal-candidate scorer no-timing:
 
 ```bash
-./venv/bin/python -m src.train_chess_gat_legal_scorer \
+./venv/bin/python -m src.cli.training.train_model_a3_legal_scorer \
   --device cuda \
   --batch-size 128 \
   --num-workers 0 \
@@ -170,13 +195,25 @@ Training Model A3 legal-candidate scorer no-timing:
 Resume Model A3:
 
 ```bash
-./venv/bin/python -m src.train_chess_gat_legal_scorer --resume --device cuda
+./venv/bin/python -m src.cli.training.train_model_a3_legal_scorer --resume --device cuda
 ```
 
 Post-hoc Model A vs A2 evaluation:
 
 ```bash
-./venv/bin/python -m src.evaluate_model_a_vs_a2 \
+./venv/bin/python -m src.cli.evaluation.evaluate_model_a_vs_a2 \
+  --device cuda \
+  --batch-size 128 \
+  --num-workers 0 \
+  --pin-memory \
+  --non-blocking \
+  --amp
+```
+
+Post-hoc Model A vs A2 vs A3 evaluation:
+
+```bash
+./venv/bin/python -m src.cli.evaluation.evaluate_model_a_vs_a2_vs_a3 \
   --device cuda \
   --batch-size 128 \
   --num-workers 0 \
@@ -188,7 +225,7 @@ Post-hoc Model A vs A2 evaluation:
 Benchmark runtime:
 
 ```bash
-./venv/bin/python -m src.benchmark_chess_gat_training \
+./venv/bin/python -m src.benchmarks.model_a_training \
   --batch-sizes 32,64,128,256 \
   --num-workers 0,2,4 \
   --warmup-batches 10 \
@@ -199,7 +236,7 @@ Benchmark runtime:
 Diagnostica access pattern subset progressivi, da eseguire sul server prima della prossima run lunga:
 
 ```bash
-./venv/bin/python -m src.benchmark_progressive_subset_loading \
+./venv/bin/python -m src.benchmarks.progressive_subset_loading \
   --device cuda \
   --batch-size 128 \
   --num-workers 0 \
@@ -251,7 +288,7 @@ Conteggi attuali:
 ./venv/bin/python -m compileall -q main.py src tests
 ```
 
-Stato dell'audit corrente: `89 passed, 2 skipped`; `compileall` passa.
+Stato dell'audit corrente: `163 passed, 2 skipped`; `compileall` passa.
 
 ## Note Repository
 

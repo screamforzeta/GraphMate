@@ -2,14 +2,14 @@ from dataclasses import asdict
 
 import pytest
 
-from src.training.adaptive_controller import (
+from src.training.model_a.adaptive_controller import (
     AdaptiveTrainingConfig,
     TrialConfig,
     TrialResult,
     choose_next_trial,
     select_best_trial,
 )
-from src.training.convergence import (
+from src.training.model_a.convergence import (
     DIVERGING,
     IMPROVING,
     OVERFITTING,

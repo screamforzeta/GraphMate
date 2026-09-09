@@ -10,7 +10,7 @@ Role:
     Keeps training code separate from preprocessing and graph generation.
 """
 
-from src.training.chess_gat_trainer import (
+from src.training.model_a.chess_gat_trainer import (
     ChessGATTrainingConfig,
     EarlyStoppingState,
     evaluate,
@@ -22,7 +22,7 @@ from src.training.chess_gat_trainer import (
     train_one_epoch,
     validate_graph_splits,
 )
-from src.training.adaptive_controller import (
+from src.training.model_a.adaptive_controller import (
     AdaptiveTrainingConfig,
     TrialConfig,
     TrialResult,
@@ -30,13 +30,13 @@ from src.training.adaptive_controller import (
     run_adaptive_training,
     select_best_trial,
 )
-from src.training.convergence import (
+from src.training.model_a.convergence import (
     analyze_convergence,
 )
-from src.training.metrics import (
+from src.training.common.metrics import (
     compute_topk_accuracies,
 )
-from src.training.progressive_controller import (
+from src.training.model_a.progressive_controller import (
     ProgressiveTrainingConfig,
     run_progressive_training,
 )

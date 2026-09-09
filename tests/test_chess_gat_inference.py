@@ -5,7 +5,7 @@ import pytest
 import torch
 
 from src.graph.graph_builder import build_graph
-from src.inference.chess_gat_inference import (
+from src.inference.model_a.chess_gat_inference import (
     check_user_move,
     compute_metric_parity,
     empty_error_analysis_metrics,

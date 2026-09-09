@@ -4,8 +4,8 @@ import pytest
 import torch
 from torch_geometric.data import Data
 
-from src.training.chess_gat_trainer import EarlyStoppingState
-from src.training.convergence_run import (
+from src.training.model_a.chess_gat_trainer import EarlyStoppingState
+from src.training.model_a.convergence_run import (
     BASELINE_V1,
     ConvergenceRunConfig,
     apply_terminal_extension,
@@ -140,8 +140,8 @@ def test_convergence_run_smoke_final_test_once_and_reports(tmp_path, monkeypatch
             "num_examples": len(loader.dataset),
         }
 
-    monkeypatch.setattr("src.training.convergence_run.train_one_epoch", fake_train)
-    monkeypatch.setattr("src.training.convergence_run.evaluate", fake_evaluate)
+    monkeypatch.setattr("src.training.model_a.convergence_run.train_one_epoch", fake_train)
+    monkeypatch.setattr("src.training.model_a.convergence_run.evaluate", fake_evaluate)
 
     report = run_convergence_training(
         train,
@@ -184,7 +184,7 @@ def test_resume_appends_history_from_next_epoch(tmp_path, monkeypatch):
     val_losses = iter([1.0, 0.9, 0.8])
 
     monkeypatch.setattr(
-        "src.training.convergence_run.train_one_epoch",
+        "src.training.model_a.convergence_run.train_one_epoch",
         lambda *args, **kwargs: {
             "loss": 1.0,
             "top1": 0.1,
@@ -194,7 +194,7 @@ def test_resume_appends_history_from_next_epoch(tmp_path, monkeypatch):
         },
     )
     monkeypatch.setattr(
-        "src.training.convergence_run.evaluate",
+        "src.training.model_a.convergence_run.evaluate",
         lambda *args, **kwargs: {
             "loss": next(val_losses),
             "top1": 0.2,
@@ -206,7 +206,7 @@ def test_resume_appends_history_from_next_epoch(tmp_path, monkeypatch):
     runtime_checks = iter([False, True, False])
 
     monkeypatch.setattr(
-        "src.training.convergence_run.should_stop_for_runtime",
+        "src.training.model_a.convergence_run.should_stop_for_runtime",
         lambda *args, **kwargs: next(runtime_checks),
     )
 
@@ -241,7 +241,7 @@ def test_keyboard_interrupt_marks_state_without_final_test(tmp_path, monkeypatch
     def raise_interrupt(*args, **kwargs):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("src.training.convergence_run.train_one_epoch", raise_interrupt)
+    monkeypatch.setattr("src.training.model_a.convergence_run.train_one_epoch", raise_interrupt)
 
     report = run_convergence_training(
         _dataset(4),
@@ -319,8 +319,8 @@ def test_terminal_extension_smoke_preserves_state_and_counts_tests(tmp_path, mon
             "num_examples": len(loader.dataset),
         }
 
-    monkeypatch.setattr("src.training.convergence_run.train_one_epoch", fake_train)
-    monkeypatch.setattr("src.training.convergence_run.evaluate", fake_evaluate)
+    monkeypatch.setattr("src.training.model_a.convergence_run.train_one_epoch", fake_train)
+    monkeypatch.setattr("src.training.model_a.convergence_run.evaluate", fake_evaluate)
 
     first = run_convergence_training(
         train,
@@ -371,7 +371,7 @@ def test_extension_rejects_early_stopping_and_non_increasing_budget(tmp_path, mo
     val_losses = iter([1.0, 1.0])
 
     monkeypatch.setattr(
-        "src.training.convergence_run.train_one_epoch",
+        "src.training.model_a.convergence_run.train_one_epoch",
         lambda *args, **kwargs: {
             "loss": 1.0,
             "top1": 0.1,
@@ -398,7 +398,7 @@ def test_extension_rejects_early_stopping_and_non_increasing_budget(tmp_path, mo
             "num_examples": 3,
         }
 
-    monkeypatch.setattr("src.training.convergence_run.evaluate", fake_evaluate)
+    monkeypatch.setattr("src.training.model_a.convergence_run.evaluate", fake_evaluate)
 
     run_convergence_training(
         _dataset(4),
@@ -431,7 +431,7 @@ def test_extension_rejects_non_max_epoch_config_change(tmp_path, monkeypatch):
     val_losses = iter([1.0, 0.9])
 
     monkeypatch.setattr(
-        "src.training.convergence_run.train_one_epoch",
+        "src.training.model_a.convergence_run.train_one_epoch",
         lambda *args, **kwargs: {
             "loss": 1.0,
             "top1": 0.1,
@@ -458,7 +458,7 @@ def test_extension_rejects_non_max_epoch_config_change(tmp_path, monkeypatch):
             "num_examples": 3,
         }
 
-    monkeypatch.setattr("src.training.convergence_run.evaluate", fake_evaluate)
+    monkeypatch.setattr("src.training.model_a.convergence_run.evaluate", fake_evaluate)
 
     run_convergence_training(
         _dataset(4),
