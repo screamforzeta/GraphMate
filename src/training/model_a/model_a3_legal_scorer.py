@@ -514,6 +514,7 @@ def _parameter_report(model):
 def train_model_a3(train_graphs, val_graphs, test_graphs, config, device, resume=False):
     """Train or resume MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING."""
 
+    run_id = getattr(config, "run_id", RUN_ID)
     root = Path(config.output_root)
     root.mkdir(parents=True, exist_ok=True)
     move_to_idx = load_move_encoder()
@@ -633,7 +634,7 @@ def train_model_a3(train_graphs, val_graphs, test_graphs, config, device, resume
             _write_json(
                 root / "controller_state.json",
                 {
-                    "run_id": RUN_ID,
+                    "run_id": run_id,
                     "status": "RUNNING",
                     "epoch": epoch,
                     "best_epoch": best_epoch,
@@ -656,7 +657,7 @@ def train_model_a3(train_graphs, val_graphs, test_graphs, config, device, resume
         _write_json(
             root / "controller_state.json",
             {
-                "run_id": RUN_ID,
+                "run_id": run_id,
                 "status": "INTERRUPTED",
                 "epoch": history[-1]["epoch"] if history else start_epoch - 1,
                 "best_epoch": best_epoch,
@@ -672,7 +673,7 @@ def train_model_a3(train_graphs, val_graphs, test_graphs, config, device, resume
     checkpoint = load_a3_checkpoint(root / "best.pt", best_model, device=device)
     test_metrics = evaluate_a3(best_model, test_loader, device, config)
     report = {
-        "run_id": RUN_ID,
+        "run_id": run_id,
         "status": "COMPLETED",
         "stop_reason": stop_reason,
         "best_epoch": checkpoint["epoch"],
@@ -692,7 +693,7 @@ def train_model_a3(train_graphs, val_graphs, test_graphs, config, device, resume
     _write_json(
         root / "controller_state.json",
         {
-            "run_id": RUN_ID,
+            "run_id": run_id,
             "status": "COMPLETED",
             "stop_reason": stop_reason,
             "best_epoch": checkpoint["epoch"],
@@ -707,9 +708,10 @@ def render_report(report):
 
     test = report["test_metrics"]
     baselines = report["comparison_reference"]
+    run_id = report.get("run_id", RUN_ID)
     return "\n".join(
         [
-            "# MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING",
+            f"# {run_id}",
             "",
             "Status: terminal test report for the legal-candidate scorer.",
             "",
