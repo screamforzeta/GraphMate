@@ -18,11 +18,17 @@ from src.models.model_a.chess_legal_scorer import (
     ChessGATLegalMoveScorer,
     promotion_id,
 )
+from src.models.model_b.chess_timing_legal_scorer import (
+    ChessGATTimingLegalMoveScorer,
+    ChessGATWithTiming,
+)
 
 
 __all__ = [
     "ChessGATNoTiming",
     "ChessGATLegalMoveScorer",
+    "ChessGATTimingLegalMoveScorer",
+    "ChessGATWithTiming",
     "count_trainable_parameters",
     "promotion_id",
 ]
