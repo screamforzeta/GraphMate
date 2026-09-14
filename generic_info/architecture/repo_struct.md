@@ -66,13 +66,14 @@ src/
 | --- | --- |
 | `src/data/download/` | Download puzzle Lichess e PGN campionati. |
 | `src/data/preprocess/` | Preprocessing, cleaning, parsing e split dataset. |
+| `src/data/timing/` | Generazione timing sintetici per dataset puzzle Model B. |
 | `src/graph/` | Feature nodi/archi, graph builder e dataset PyG. |
 | `src/graph/debug/` | Debugger Streamlit standalone. |
 | `src/models/model_a/` | Architetture no-timing Model A/A3. |
-| `src/models/model_b/` | Namespace futuro per modelli timing-aware. |
+| `src/models/model_b/` | Architettura timing-aware Model B basata su A3. |
 | `src/training/common/` | Metriche e utilità condivise. |
 | `src/training/model_a/` | Training Model A, A2 e A3 no-timing. |
-| `src/training/model_b/` | Namespace futuro per training timing-aware. |
+| `src/training/model_b/` | Wrapper training Model B sul protocollo A3. |
 | `src/evaluation/model_a/` | Evaluator post-hoc Model A/A2/A3. |
 | `src/evaluation/model_b/` | Namespace futuro per evaluation timing-aware. |
 | `src/inference/model_a/` | Inference read-only no-timing e multi-model. |
@@ -88,7 +89,9 @@ src/
 python3 main.py
 ./venv/bin/python -m src.graph.pyg_dataset --graphs-per-shard 1000 --overwrite
 ./venv/bin/python -m src.validation.representations --csv-sample 1000 --graph-sample 500 --seed 42
+./venv/bin/python -m src.cli.data.generate_puzzle_timing_dataset --overwrite
 ./venv/bin/python -m src.cli.training.train_model_a3_legal_scorer --device cuda --batch-size 128 --num-workers 0 --pin-memory --non-blocking --amp
+./venv/bin/python -m src.cli.training.train_model_b_timing_legal_scorer --dataset-root data/pyg_puzzles_timing --device cuda --batch-size 128 --num-workers 0 --pin-memory --non-blocking --amp
 ./venv/bin/python -m src.cli.evaluation.evaluate_model_a_vs_a2_vs_a3 --device cuda --batch-size 128 --non-blocking --amp
 streamlit run src/graph/debug/streamlit_graph_debugger.py
 ```
@@ -118,4 +121,4 @@ generic_info/
 - Non spostare `data/` o `artifacts/`.
 - Non cambiare dataset, split, vocabulary, checkpoint o semantica dei modelli durante refactor strutturali.
 - Model A/A2/A3 restano sotto namespace `model_a`.
-- Model B ha solo namespace preparatori finché non vengono introdotti timing sintetici e modelli timing-aware.
+- Model B è presente come estensione timing-aware di A3, ma richiede dataset timing ufficiale e audit prima di training/evaluation.
