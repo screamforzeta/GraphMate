@@ -25,9 +25,10 @@ Implementato:
 - `MODEL_A_CONVERGENCE_RUN_V1` completata e congelata come baseline iniziale no-timing;
 - variante `MODEL_A2_LEGAL_MASK_NO_TIMING` implementata e pronta per training come ablation no-timing legal-masked;
 - variante `MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING` implementata come scorer diretto sulle mosse legali, senza logits globali sulla vocabulary;
+- variante `MODEL_B_TIMING_LEGAL_MOVE_SCORER` presente come estensione timing-aware di A3, in attesa di audit/dataset timing e training ufficiale;
 - debugger Streamlit standalone per grafo/scacchiera.
 
-Non implementato: Model B timing-aware, nuove feature temporali, valutazione MateDepth dedicata e confronto LLM.
+Non completato: dataset timing ufficiale, training/evaluation Model B, valutazione MateDepth dedicata e confronto LLM.
 
 Baseline full completato: `MODEL_A_FULL_BASELINE_V1`.
 
@@ -55,6 +56,7 @@ Baseline ufficiale congelato: `MODEL_A_NO_TIMING_FROZEN_BASELINE`.
 - [Model A2 legal mask no-timing](generic_info/model_a/model_a2_legal_mask_no_timing.md): piano/protocollo della variante legal-masked senza timing.
 - [Model A3 legal move scorer no-timing](generic_info/model_a/model_a3_legal_move_scorer_no_timing.md): variante che confronta direttamente i candidati legali della posizione.
 - [Model A vs A2 evaluator](generic_info/model_a/model_a_vs_a2_evaluation.md): valutazione post-hoc raw/best-legal/masked tra i due baseline.
+- [Model B timing dataset](generic_info/model_b_timing_dataset.md): semantica, distribuzione, normalizzazione e leakage policy dei timing sintetici.
 - [Analisi TimeGNN](generic_info/timegnn/timegnn_info.md): audit della libreria esterna `TimeGNN-main/`.
 - [Guida training TimeGNN/GNN](generic_info/timegnn/timegnn_gnn_training_guide.md): note di integrazione future.
 - [Piano architettura Chess GAT](generic_info/architecture/chess_gat_architecture_plan.md): piano tecnico del modello chess-specific.
@@ -67,14 +69,14 @@ src/
   data/preprocess/     # preprocessing, cleaning, parsing, split
   graph/               # feature extraction, graph builder, PyG dataset
   models/model_a/      # architetture no-timing A/A3
-  models/model_b/      # namespace futuro timing-aware
+  models/model_b/      # architettura timing-aware B
   training/common/     # metriche e utilità condivise
   training/model_a/    # training A/A2/A3
-  training/model_b/    # namespace futuro timing-aware
+  training/model_b/    # training wrapper B su protocollo A3
   evaluation/model_a/  # evaluator A/A2/A3
-  evaluation/model_b/  # namespace futuro timing-aware
+  evaluation/model_b/  # namespace futuro evaluation B
   inference/model_a/   # inference no-timing
-  inference/model_b/   # namespace futuro timing-aware
+  inference/model_b/   # namespace futuro inference B
   audit/model_a/       # audit pre-training Model A
   benchmarks/          # benchmark runtime/data loading
   validation/          # validator rappresentazioni
@@ -197,6 +199,23 @@ Resume Model A3:
 ```bash
 ./venv/bin/python -m src.cli.training.train_model_a3_legal_scorer --resume --device cuda
 ```
+
+Training Model B timing-aware legal-candidate scorer:
+
+```bash
+./venv/bin/python -m src.cli.data.generate_puzzle_timing_dataset --overwrite
+
+./venv/bin/python -m src.cli.training.train_model_b_timing_legal_scorer \
+  --dataset-root data/pyg_puzzles_timing \
+  --device cuda \
+  --batch-size 128 \
+  --num-workers 0 \
+  --pin-memory \
+  --non-blocking \
+  --amp
+```
+
+Model B richiede grafi con attributi timing graph-level `previous_move_time`, `original_move_time` e `time_is_synthetic`. La pipeline dedicata crea `data/pyg_puzzles_timing/` dal dataset PyG ufficiale senza rigenerare topologia o target. Al momento non è presente una accuracy ufficiale Model B nella repository.
 
 Post-hoc Model A vs A2 evaluation:
 

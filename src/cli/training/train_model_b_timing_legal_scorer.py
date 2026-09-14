@@ -20,7 +20,7 @@ def parse_args():
         description="Run MODEL_B_TIMING_LEGAL_MOVE_SCORER training."
     )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--dataset-root", default="data/pyg_games_timing")
+    parser.add_argument("--dataset-root", default="data/pyg_puzzles_timing")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--num-workers", type=int, default=0)

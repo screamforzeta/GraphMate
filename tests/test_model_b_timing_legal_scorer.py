@@ -89,3 +89,23 @@ def test_model_b_uses_a3_training_epoch_and_has_extra_timing_parameters():
     assert metrics["num_examples"] == 2
     assert model.candidate_dim > ChessGATLegalMoveScorer(dropout=0.0).candidate_dim
     assert isinstance(config, ModelA3LegalScorerConfig)
+
+
+def test_model_b_timing_changes_candidate_scores():
+    torch.manual_seed(42)
+    model = ChessGATTimingLegalMoveScorer(dropout=0.0)
+    model.eval()
+
+    graph = _graph("e2e4")
+    batch_early = Batch.from_data_list([graph.clone()])
+    batch_late = Batch.from_data_list([graph.clone()])
+    batch_late.previous_move_time = torch.tensor([[120.0]], dtype=torch.float)
+    batch_late.original_move_time = torch.tensor([[120.0]], dtype=torch.float)
+
+    candidate = build_candidate_batch(batch_early)
+    with torch.no_grad():
+        scores_early = model(batch_early, candidate["candidate_moves"])["scores"]
+        scores_late = model(batch_late, candidate["candidate_moves"])["scores"]
+
+    max_difference = torch.max(torch.abs(scores_early - scores_late)).item()
+    assert max_difference > 0.0
