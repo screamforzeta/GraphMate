@@ -229,6 +229,13 @@ Post-hoc Model B timing ablation:
 
 Questo evaluator non ritrena nulla: confronta A3 ufficiale, B synthetic timing e diagnostiche B neutral timing sullo stesso test set.
 
+Aggiornamento solo della sezione real-vs-synthetic timing, usando artifact già prodotti:
+
+```bash
+./venv/bin/python -m src.cli.evaluation.evaluate_model_b_timing_ablation \
+  --timing-distribution-only
+```
+
 Post-hoc Model A vs A2 evaluation:
 
 ```bash

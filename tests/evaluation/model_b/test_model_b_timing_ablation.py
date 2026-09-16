@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -12,11 +13,14 @@ from src.evaluation.model_b.model_b_timing_ablation import (
     MODEL_B_REFERENCE,
     _graph_metadata,
     _merge_per_puzzle,
+    _timing_distribution,
     _transition_counts,
     _validate_puzzle_alignment,
     build_shared_comparison_frame,
     canonical_a3_metrics,
+    extract_real_move_times,
     model_b_parity_status,
+    update_timing_distribution_only,
 )
 
 
@@ -199,3 +203,146 @@ def test_validate_puzzle_alignment_detects_order_without_requiring_it(monkeypatc
     alignment = _validate_puzzle_alignment(a3, synthetic)
 
     assert alignment == {"same_order": False, "same_set": True, "n": 2}
+
+
+def test_extract_real_move_times_flattens_sequences_and_filters(tmp_path):
+    """MoveTimes extraction keeps positive finite seconds and records discards."""
+
+    path = tmp_path / "games.csv"
+    path.write_text(
+        "MoveTimes\n"
+        "\"[1.0, 2.5, None, 0.0, -1.0]\"\n"
+        "\"[3, 1e309]\"\n"
+        "\"bad\"\n",
+        encoding="utf-8",
+    )
+
+    audit = extract_real_move_times({"fixture": path})
+
+    assert audit["status"] == "COMPLETE"
+    assert audit["games_scanned"] == 3
+    assert audit["games_with_timing"] == 2
+    assert audit["raw_timing_values"] == 7
+    assert audit["valid_timing_values"] == 3
+    assert audit["seconds"] == [1.0, 2.5, 3.0]
+    assert audit["discard_reasons"]["missing"] == 1
+    assert audit["discard_reasons"]["non_finite"] == 1
+    assert audit["discard_reasons"]["non_positive"] == 2
+    assert audit["discard_reasons"]["parse_errors"] == 1
+
+
+def test_extract_real_move_times_missing_source_is_incomplete(tmp_path):
+    """Missing games source returns explicit INCOMPLETE status."""
+
+    audit = extract_real_move_times({"missing": tmp_path / "missing.csv"})
+
+    assert audit["status"] == "INCOMPLETE"
+    assert audit["valid_timing_values"] == 0
+    assert audit["warnings"]
+
+
+def test_extract_real_move_times_present_source_has_positive_n(tmp_path):
+    """A valid source reports non-zero real timing count."""
+
+    path = tmp_path / "games.csv"
+    path.write_text('MoveTimes\n"[4.0, 5.0]"\n', encoding="utf-8")
+
+    audit = extract_real_move_times({"fixture": path})
+
+    assert audit["status"] == "COMPLETE"
+    assert audit["valid_timing_values"] == 2
+
+
+def test_timing_distribution_statistics_are_deterministic(monkeypatch):
+    """Known real/synthetic values produce deterministic descriptive stats."""
+
+    monkeypatch.setattr(
+        "src.evaluation.model_b.model_b_timing_ablation.extract_real_move_times",
+        lambda: {
+            "status": "COMPLETE",
+            "source": "fixture",
+            "unit": "seconds",
+            "paths_searched": {},
+            "paths_used": ["fixture"],
+            "games_scanned": 1,
+            "games_with_timing": 1,
+            "raw_timing_values": 3,
+            "valid_timing_values": 3,
+            "discarded_values": 0,
+            "discard_reasons": {
+                "missing": 0,
+                "non_numeric": 0,
+                "non_finite": 0,
+                "non_positive": 0,
+                "parse_errors": 0,
+            },
+            "warnings": [],
+            "seconds": [1.0, 2.0, 4.0],
+        },
+    )
+    rows = [
+        {"original_move_time_seconds": 2.0, "rating": 1000},
+        {"original_move_time_seconds": 4.0, "rating": 1200},
+    ]
+
+    distribution = _timing_distribution(rows)
+
+    assert distribution["status"] == "COMPLETE"
+    assert distribution["real_seconds"]["n"] == 3
+    assert distribution["real_seconds"]["mean"] == pytest.approx(7 / 3)
+    assert distribution["synthetic_original_seconds"]["median"] == pytest.approx(3.0)
+    assert distribution["ratios"]["synthetic_mean_over_real_mean"] == pytest.approx(9 / 7)
+
+
+def test_timing_distribution_only_preserves_model_metrics(tmp_path, monkeypatch):
+    """Distribution-only mode updates timing stats without touching model metrics."""
+
+    output_dir = tmp_path / "ablation"
+    output_dir.mkdir()
+    summary = {
+        "official_model_performance": {"A3": {"top1": 0.1}},
+        "post_hoc_diagnostic_ablations": {"B_NEUTRAL_TIMING": {"top1": 0.2}},
+        "transitions": {"x": 1},
+        "mate_depth": {"mateIn1": {}},
+        "rating": {"<1200": {}},
+        "mcnemar": {"x": {}},
+        "rank_delta": {"x": {}},
+        "timing_distribution_vs_real_games": {"status": "OLD"},
+    }
+    paired_rows = [{"original_move_time_seconds": 2.0}]
+    (output_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    (output_dir / "paired_test_rows.json").write_text(
+        json.dumps(paired_rows), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        "src.evaluation.model_b.model_b_timing_ablation.extract_real_move_times",
+        lambda: {
+            "status": "COMPLETE",
+            "source": "fixture",
+            "unit": "seconds",
+            "paths_searched": {},
+            "paths_used": ["fixture"],
+            "games_scanned": 1,
+            "games_with_timing": 1,
+            "raw_timing_values": 1,
+            "valid_timing_values": 1,
+            "discarded_values": 0,
+            "discard_reasons": {
+                "missing": 0,
+                "non_numeric": 0,
+                "non_finite": 0,
+                "non_positive": 0,
+                "parse_errors": 0,
+            },
+            "warnings": [],
+            "seconds": [1.0],
+        },
+    )
+
+    outputs = update_timing_distribution_only(output_dir)
+    updated = json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert outputs["timing_distribution_status"] == "COMPLETE"
+    assert updated["official_model_performance"] == summary["official_model_performance"]
+    assert updated["post_hoc_diagnostic_ablations"] == summary["post_hoc_diagnostic_ablations"]
+    assert updated["timing_distribution_vs_real_games"]["real_seconds"]["n"] == 1
