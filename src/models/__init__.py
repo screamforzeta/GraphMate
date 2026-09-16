@@ -18,6 +18,10 @@ from src.models.model_a.chess_legal_scorer import (
     ChessGATLegalMoveScorer,
     promotion_id,
 )
+from src.models.model_a.chess_postmove_reranker import (
+    ChessA4PostMoveReranker,
+    PostMoveGATEncoder,
+)
 from src.models.model_b.chess_timing_legal_scorer import (
     ChessGATTimingLegalMoveScorer,
     ChessGATWithTiming,
@@ -27,6 +31,8 @@ from src.models.model_b.chess_timing_legal_scorer import (
 __all__ = [
     "ChessGATNoTiming",
     "ChessGATLegalMoveScorer",
+    "ChessA4PostMoveReranker",
+    "PostMoveGATEncoder",
     "ChessGATTimingLegalMoveScorer",
     "ChessGATWithTiming",
     "count_trainable_parameters",
