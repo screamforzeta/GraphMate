@@ -1,335 +1,211 @@
 # Progetto Damiani - Chess GNN
 
-Pipeline Python per trasformare puzzle e partite Lichess in grafi PyTorch Geometric e addestrare modelli Graph Neural Network / Graph Attention Network su puzzle mate-in-n.
+Repository Python per costruire grafi PyTorch Geometric da puzzle Lichess mate-in-1..5 e valutare una famiglia di modelli GNN/GAT per predire la prossima mossa corretta.
 
-La baseline scientifica no-timing finale è `MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING`: un GAT che usa la rappresentazione a grafo del progetto e sceglie direttamente tra le mosse legali della posizione. Model A resta il baseline iniziale global-classification; Model A2 resta la legal-mask ablation.
+La fase GNN è congelata. La prossima fase è il benchmark held-out / LLM.
+
+## Obiettivo
+
+Il progetto studia:
+
+- rappresentazione a grafo di posizioni chess;
+- modelli no-timing e timing-aware;
+- ablation timing sintetico vs no timing;
+- futuro confronto con LLM su puzzle mate-in-n held-out.
 
 ## Stato Attuale
 
-Implementato:
+Completato:
 
 - download puzzle Lichess `.csv.zst`;
-- download streaming PGN Lichess con campionamento senza scaricare tutto l'archivio mensile;
-- preprocessing puzzle mate-in-1 fino a mate-in-5;
-- parsing e cleaning partite;
-- cleaning puzzle;
+- download streaming PGN Lichess con campionamento;
+- preprocessing puzzle mate-in-1..5;
+- parsing/cleaning partite;
 - split train/validation/test;
-- vocabulary mosse train-only;
-- feature nodi e archi;
-- graph builder PyG;
-- dataset PyG sharded completo;
-- validator rappresentazione;
-- modello `ChessGATNoTiming`;
-- trainer standard, adaptive storico, benchmark runtime e progressive training;
-- diagnosi/fix shard-aware per subset progressivi Pilot/Confirmation, validato sul server;
-- `MODEL_A_CONVERGENCE_RUN_V1` completata e congelata come baseline iniziale no-timing;
-- variante `MODEL_A2_LEGAL_MASK_NO_TIMING` implementata e pronta per training come ablation no-timing legal-masked;
-- variante `MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING` implementata come scorer diretto sulle mosse legali, senza logits globali sulla vocabulary;
-- variante `MODEL_B_TIMING_LEGAL_MOVE_SCORER` presente come estensione timing-aware di A3, in attesa di audit/dataset timing e training ufficiale;
-- debugger Streamlit standalone per grafo/scacchiera.
+- vocabulary mosse costruita solo sul train set;
+- feature nodi, archi e globali;
+- dataset PyG sharded;
+- validator rappresentazioni;
+- Model A/A1/A2/A3/A4/B congelati e documentati;
+- terminal evaluation A3 vs A4;
+- timing ablation Model B;
+- Streamlit debugger/app con filtro MateDepth, graph view, puzzle interaction, model/result dashboard.
 
-Non completato: dataset timing ufficiale, training/evaluation Model B, valutazione MateDepth dedicata e confronto LLM.
+Non ancora completato:
 
-Baseline full completato: `MODEL_A_FULL_BASELINE_V1`.
+- held-out classic puzzle benchmark;
+- protocollo LLM;
+- confronto finale GNN-vs-LLM.
 
-- dataset: train `68.958`, validation `8.612`, test `8.610`;
-- modello: `ChessGATNoTiming`;
-- config selezionata: lr `5e-4`, weight decay `1e-4`, dropout `0.30`, batch `128`;
-- final test: Top1 circa `31,87%`, Top3 circa `47,72%`, Top5 circa `54,29%`.
+## Graph Representation
 
-Il run a 60 epoch ha esaurito il budget con il miglior risultato validation all'ultima epoch. La successiva `MODEL_A_CONVERGENCE_RUN_V1`, inclusa continuation controllata, ha raggiunto `CONVERGED_BY_EARLY_STOPPING`.
+Ogni posizione è un `torch_geometric.data.Data`:
 
-Baseline ufficiale congelato: `MODEL_A_NO_TIMING_FROZEN_BASELINE`.
+```text
+Data(x, edge_index, edge_attr, y, global_features)
+```
 
-- best epoch: `162`;
-- stop epoch: `174`;
-- stop reason: `EARLY_STOPPING`;
-- final test: Top1 circa `39,62%`, Top3 circa `55,81%`, Top5 circa `62,75%`.
+- `x`: `[64, 15]`, una casella = un nodo;
+- `edge_index`: sparse PyG, non matrice di adiacenza;
+- `edge_attr`: `[E, 5]`, multilabel;
+- `global_features`: `[1, 4]`.
 
-## Documentazione
+Feature nodi:
 
-- [Architettura del progetto](generic_info/architecture/project_architecture.md): come sono organizzati moduli, pipeline, dati, training e artifact.
-- [Scelte architetturali](generic_info/architecture/architectural_choices.md): perché sono state prese le principali decisioni progettuali.
-- [Struttura repository](generic_info/architecture/repo_struct.md): mappa aggiornata di codice, CLI, documentazione e namespace Model B.
-- [Famiglia no-timing A/A2/A3](generic_info/model_a/model_a_no_timing.md): documento definitivo della fase no-timing, con A3 come baseline ufficiale finale.
-- [Streamlit Model A verification](generic_info/model_a/streamlit_model_a_verification.md): sezione UI per training umano sui puzzle, inference read-only e diagnostica Mate-in-1.
-- [Model A2 legal mask no-timing](generic_info/model_a/model_a2_legal_mask_no_timing.md): piano/protocollo della variante legal-masked senza timing.
-- [Model A3 legal move scorer no-timing](generic_info/model_a/model_a3_legal_move_scorer_no_timing.md): variante che confronta direttamente i candidati legali della posizione.
-- [Model A vs A2 evaluator](generic_info/model_a/model_a_vs_a2_evaluation.md): valutazione post-hoc raw/best-legal/masked tra i due baseline.
-- [Model B timing dataset](generic_info/model_b_timing_dataset.md): semantica, distribuzione, normalizzazione e leakage policy dei timing sintetici.
-- [Analisi TimeGNN](generic_info/timegnn/timegnn_info.md): audit della libreria esterna `TimeGNN-main/`.
-- [Guida training TimeGNN/GNN](generic_info/timegnn/timegnn_gnn_training_guide.md): note di integrazione future.
-- [Piano architettura Chess GAT](generic_info/architecture/chess_gat_architecture_plan.md): piano tecnico del modello chess-specific.
+- one-hot pezzo: pawn, knight, bishop, rook, queen, king;
+- color;
+- occupied;
+- normalized row/column;
+- attacked_by_white;
+- attacked_by_black;
+- legal_mobility;
+- is_pinned;
+- piece_value.
 
-## Struttura Repository
+Feature archi:
+
+- legal_move;
+- attack;
+- defend;
+- pin;
+- check_line.
+
+Global features:
+
+- side_to_move;
+- is_check;
+- `min(fullmove_number, 200) / 200`;
+- `min(halfmove_clock, 100) / 100`.
+
+Semantica Lichess:
+
+```text
+OriginalFEN -> apply Moves[0] -> solver FEN -> TargetMove = Moves[1]
+```
+
+I modelli predicono la prossima mossa, non l'intera linea Mate-in-N autonoma.
+
+## Model Family
+
+| Model | Sintesi | Stato |
+|---|---|---|
+| A | GAT no-timing fixed-vocabulary classifier | frozen historical baseline |
+| A1 | best-legal inference mode su Model A | historical diagnostic mode |
+| A2 | legal-masked fixed-vocabulary model | frozen |
+| A3 | legal-candidate scorer no-timing | frozen official no-timing baseline |
+| A4 | frozen A3 Top-5 + post-move GAT reranker | frozen terminal best GNN |
+| B | A3 + synthetic timing encoder | frozen timing ablation |
+
+Risultati principali:
+
+- A3 test Top1: `67.5609756097561%`;
+- A4 test end-to-end Top1: `85.4123112659698%`;
+- A4 delta vs A3: `+17.8513` pp;
+- B synthetic timing Top1: `65.9814%`, quindi sotto A3 per questa rappresentazione timing sintetica.
+
+## Struttura
 
 ```text
 src/
-  data/download/       # download Lichess puzzle e game PGN
-  data/preprocess/     # preprocessing, cleaning, parsing, split
-  graph/               # feature extraction, graph builder, PyG dataset
-  models/model_a/      # architetture no-timing A/A3
-  models/model_b/      # architettura timing-aware B
-  training/common/     # metriche e utilità condivise
-  training/model_a/    # training A/A2/A3
-  training/model_b/    # training wrapper B su protocollo A3
-  evaluation/model_a/  # evaluator A/A2/A3
-  evaluation/model_b/  # namespace futuro evaluation B
-  inference/model_a/   # inference no-timing
-  inference/model_b/   # namespace futuro inference B
-  audit/model_a/       # audit pre-training Model A
-  benchmarks/          # benchmark runtime/data loading
-  validation/          # validator rappresentazioni
-  cli/                 # entrypoint python -m
+  data/             # download, preprocessing, timing data
+  graph/            # node/edge/global features, PyG dataset, Streamlit app
+  models/           # model_a e model_b architectures
+  training/         # training loops A/A2/A3/A4/B
+  inference/        # inference adapters
+  evaluation/       # frozen evaluation and ablations
+  validation/       # representation validator
+  streamlit_app/    # Streamlit-independent UI helpers
+  cli/              # python -m entrypoints
+
+generic_info/
+  models/           # definitive frozen model documentation
+  architecture/     # repository and architecture notes
+  reference/        # project specification PDF
 ```
 
-`generic_info/` è organizzata in `architecture/`, `model_a/`, `timegnn/`, `project/` e `reference/`.
+## Comandi
 
-## Comandi Principali
-
-Pipeline completa:
+Pipeline principale:
 
 ```bash
 python3 main.py
 ```
 
-Generazione dataset PyG sharded:
-
-```bash
-./venv/bin/python -m src.graph.pyg_dataset --graphs-per-shard 1000 --overwrite
-```
-
 Validazione rappresentazioni:
 
 ```bash
-./venv/bin/python -m src.validation.representations --csv-sample 1000 --graph-sample 500 --seed 42
-```
-
-Training standard:
-
-```bash
-./venv/bin/python -m src.cli.training.train_model_a
-```
-
-Training progressivo full consigliato:
-
-```bash
-./venv/bin/python -m src.cli.training.train_model_a_progressive \
-  --device cuda \
-  --batch-size 128 \
-  --num-workers 0 \
-  --pin-memory \
-  --non-blocking \
-  --amp \
-  --max-runtime-hours 10 \
+./venv/bin/python -m src.validation.representations \
+  --csv-sample 1000 \
+  --graph-sample 500 \
   --seed 42
 ```
 
-Resume progressivo:
-
-```bash
-./venv/bin/python -m src.cli.training.train_model_a_progressive --resume --device cuda
-```
-
-Historical convergence run Model A:
-
-```bash
-./venv/bin/python -m src.cli.training.train_model_a_convergence \
-  --device cuda \
-  --batch-size 128 \
-  --num-workers 0 \
-  --pin-memory \
-  --non-blocking \
-  --amp \
-  --max-epochs 150 \
-  --early-stopping-patience 12 \
-  --lr-scheduler-factor 0.5 \
-  --lr-scheduler-patience 3 \
-  --min-learning-rate 1e-6 \
-  --seed 42
-```
-
-Historical resume convergence run:
-
-```bash
-./venv/bin/python -m src.cli.training.train_model_a_convergence --resume --device cuda
-```
-
-Historical continuation convergence run:
-
-```bash
-./venv/bin/python -m src.cli.training.train_model_a_convergence \
-  --resume \
-  --extend-max-epochs 300 \
-  --device cuda
-```
-
-Training Model A2 legal-masked no-timing:
-
-```bash
-./venv/bin/python -m src.cli.training.train_model_a2_legal_mask \
-  --device cuda \
-  --batch-size 128 \
-  --num-workers 0 \
-  --pin-memory \
-  --non-blocking \
-  --amp
-```
-
-Resume Model A2:
-
-```bash
-./venv/bin/python -m src.cli.training.train_model_a2_legal_mask --resume --device cuda
-```
-
-Training Model A3 legal-candidate scorer no-timing:
-
-```bash
-./venv/bin/python -m src.cli.training.train_model_a3_legal_scorer \
-  --device cuda \
-  --batch-size 128 \
-  --num-workers 0 \
-  --pin-memory \
-  --non-blocking \
-  --amp
-```
-
-Resume Model A3:
-
-```bash
-./venv/bin/python -m src.cli.training.train_model_a3_legal_scorer --resume --device cuda
-```
-
-Training Model B timing-aware legal-candidate scorer:
-
-```bash
-./venv/bin/python -m src.cli.data.generate_puzzle_timing_dataset --overwrite
-
-./venv/bin/python -m src.cli.training.train_model_b_timing_legal_scorer \
-  --dataset-root data/pyg_puzzles_timing \
-  --device cuda \
-  --batch-size 128 \
-  --num-workers 0 \
-  --pin-memory \
-  --non-blocking \
-  --amp
-```
-
-Model B richiede grafi con attributi timing graph-level `previous_move_time`, `original_move_time` e `time_is_synthetic`. La pipeline dedicata crea `data/pyg_puzzles_timing/` dal dataset PyG ufficiale senza rigenerare topologia o target. Il primo training ufficiale Model B è una ablation timing sintetica rispetto ad A3: Top1 A3 `67.5610%`, Top1 B synthetic timing `65.9814%`.
-
-Post-hoc Model B timing ablation:
-
-```bash
-./venv/bin/python -m src.cli.evaluation.evaluate_model_b_timing_ablation \
-  --device cuda \
-  --batch-size 128 \
-  --non-blocking \
-  --amp
-```
-
-Questo evaluator non ritrena nulla: confronta A3 ufficiale, B synthetic timing e diagnostiche B neutral timing sullo stesso test set.
-
-Aggiornamento solo della sezione real-vs-synthetic timing, usando artifact già prodotti:
-
-```bash
-./venv/bin/python -m src.cli.evaluation.evaluate_model_b_timing_ablation \
-  --timing-distribution-only
-```
-
-Post-hoc Model A vs A2 evaluation:
-
-```bash
-./venv/bin/python -m src.cli.evaluation.evaluate_model_a_vs_a2 \
-  --device cuda \
-  --batch-size 128 \
-  --num-workers 0 \
-  --pin-memory \
-  --non-blocking \
-  --amp
-```
-
-Post-hoc Model A vs A2 vs A3 evaluation:
-
-```bash
-./venv/bin/python -m src.cli.evaluation.evaluate_model_a_vs_a2_vs_a3 \
-  --device cuda \
-  --batch-size 128 \
-  --num-workers 0 \
-  --pin-memory \
-  --non-blocking \
-  --amp
-```
-
-Benchmark runtime:
-
-```bash
-./venv/bin/python -m src.benchmarks.model_a_training \
-  --batch-sizes 32,64,128,256 \
-  --num-workers 0,2,4 \
-  --warmup-batches 10 \
-  --benchmark-batches 100 \
-  --device cuda
-```
-
-Diagnostica access pattern subset progressivi, da eseguire sul server prima della prossima run lunga:
-
-```bash
-./venv/bin/python -m src.benchmarks.progressive_subset_loading \
-  --device cuda \
-  --batch-size 128 \
-  --num-workers 0 \
-  --pin-memory
-```
-
-Debugger Streamlit:
+Streamlit:
 
 ```bash
 streamlit run src/graph/debug/streamlit_graph_debugger.py
 ```
 
-Il debugger Streamlit è standalone e non deve essere importato in `main.py`.
-
-## Setup
+Model A3 evaluation:
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+./venv/bin/python -m src.cli.evaluation.evaluate_model_a_vs_a2_vs_a3 \
+  --device cuda \
+  --batch-size 128 \
+  --non-blocking \
+  --amp
 ```
 
-Se `torch` o `torch-geometric` richiedono wheel specifiche CUDA, seguire le istruzioni ufficiali per la piattaforma usata.
-
-## Dati e Artifact
-
-I dati generati sono sotto `data/`. I dataset PyG sono sharded:
-
-```text
-data/pyg/
-  manifest.json
-  train/shard_00000.pt ...
-  val/shard_00000.pt ...
-  test/shard_00000.pt ...
-```
-
-Conteggi attuali:
-
-- train: 68.958 grafi;
-- validation: 8.612 grafi;
-- test: 8.610 grafi.
-
-`artifacts/move_to_idx.json` e `artifacts/idx_to_move.json`, se versionati, fissano la vocabulary delle mosse. La vocabulary è costruita solo sul train set per evitare leakage; target OOV di validation/test vengono esclusi dalla rappresentazione PyG e conteggiati.
-
-## Test
+Model A4 terminal evaluator is already completed; do not rerun casually. The entrypoint is:
 
 ```bash
-./venv/bin/python -m pytest -q
-./venv/bin/python -m compileall -q main.py src tests
+./venv/bin/python -m src.cli.evaluation.evaluate_model_a3_vs_a4 \
+  --device cuda \
+  --batch-size 128 \
+  --non-blocking \
+  --amp \
+  --run-terminal-test
 ```
 
-Stato dell'audit corrente: `163 passed, 2 skipped`; `compileall` passa.
+Model B timing ablation:
 
-## Note Repository
+```bash
+./venv/bin/python -m src.cli.evaluation.evaluate_model_b_timing_ablation \
+  --device cuda \
+  --batch-size 128 \
+  --non-blocking \
+  --amp
+```
 
-`TimeGNN-main/` è codice esterno/vendor/reference. Non viene modificato dalla pipeline del progetto.
+## Documentazione Chiave
 
-`data/`, `artifacts/`, cache Python, `.pytest_cache`, build temporanee e file `.pt.tmp` sono ignorati in `.gitignore` perché generati o potenzialmente pesanti.
+- [Graph representation](generic_info/models/graph_representation.md)
+- [Frozen model family](generic_info/models/model_family.md)
+- [Experimental protocol](generic_info/models/experimental_protocol.md)
+- [Pre-LLM project status](generic_info/pre_llm_project_status.md)
+- [Project specification coverage](generic_info/project_specification_coverage.md)
+
+## Gitignore / Artifact Policy
+
+Dati generati e artifact pesanti non devono essere versionati:
+
+- `data/`
+- `data/pyg/`
+- `data/pyg_puzzles_timing/`
+- `lib/`
+- `__pycache__/`
+- `*.pyc`
+- `.streamlit/`
+- `graph_visualization.html`
+- file temporanei/cache.
+
+Se `artifacts/move_to_idx.json` e `artifacts/idx_to_move.json` sono versionati, fissano la vocabulary delle mosse train-only.
+
+## Prossima Fase
+
+La fase GNN è pronta per handoff. Rimangono:
+
+- costruire held-out classic puzzle set;
+- implementare protocollo LLM;
+- confrontare GNN e LLM con metriche coerenti;
+- finalizzare analisi statistica e report.
