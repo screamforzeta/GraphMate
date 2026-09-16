@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import pytest
+import torch
 
+from src.evaluation.model_a.model_a_vs_a2_vs_a3 import a3_topk_and_ranks
 from src.evaluation.model_a.model_a3_error_audit import (
     A3ErrorAuditConfig,
     discover_stockfish,
@@ -16,6 +18,7 @@ from src.evaluation.model_a.model_a3_error_audit import (
     stockfish_cache_key,
     stockfish_placeholder_summary,
     summarize_rows,
+    topk_and_row,
 )
 
 
@@ -148,6 +151,23 @@ def test_summarize_rows_topk_rank_and_error_breakdown():
     assert summary["error_target_rank_breakdown"]["6-10"]["count"] == 1
 
 
+def test_ranking_matches_official_a3_device_side_semantics():
+    """Audit ranking must match the official A3 evaluator helper."""
+
+    scores = torch.tensor([0.5, 0.5, 0.25, 0.1], dtype=torch.float32)
+    candidate_ptr = torch.tensor([0, 4], dtype=torch.long)
+    target_indices = torch.tensor([1], dtype=torch.long)
+    candidate_uci = ["a1a2", "b1b2", "c1c2", "d1d2"]
+
+    official = a3_topk_and_ranks(scores, candidate_ptr, target_indices, top_k=(1, 3, 5))
+    audit = topk_and_row(scores, candidate_ptr, candidate_uci, target_indices[0], 0)
+
+    assert audit["target_rank"] == official["ranks"][0]
+    assert audit["top1_correct"] == bool(official["correct"][1])
+    assert audit["target_in_top3"] == bool(official["correct"][3])
+    assert audit["target_in_top5"] == bool(official["correct"][5])
+
+
 def test_margin_summary():
     """Score margin summaries report robust quartiles."""
 
@@ -173,6 +193,16 @@ def test_split_summary_keeps_validation_and_test_separate():
     assert validation["parity"]["status"] == "N/A"
     assert test["split"] == "test"
     assert test["parity"]["status"] in {"PASS", "FAIL"}
+
+
+def test_parity_failure_does_not_silently_pass():
+    """Official parity remains strict and fails on changed test metrics."""
+
+    rows = [_row(1, 0.2, True)]
+    test = split_summary("test", rows, {"available": False})
+
+    assert test["parity"]["status"] == "FAIL"
+    assert test["parity"]["checks"]["n"] is False
 
 
 def test_stockfish_unavailable_fallback(monkeypatch):

@@ -103,6 +103,9 @@ def main():
     print(f"test_top3={test['topk']['top3']}")
     print(f"test_top5={test['topk']['top5']}")
     print(f"test_top10={test['topk']['top10']}")
+    print(f"test_mean_rank={test['mean_legal_target_rank']}")
+    print(f"test_median_rank={test['median_legal_target_rank']}")
+    print(f"test_illegal_top1={test['illegal_top1_rate']}")
     print(f"A3_TEST_PARITY={test['parity']['status']}")
     print(f"STOCKFISH_ANALYSIS_AVAILABLE={test['stockfish']['available']}")
     return 0
