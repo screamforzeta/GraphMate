@@ -236,8 +236,21 @@ def _as_scalar(value):
     return value
 
 
+def _optional_float_attr(graph, attribute):
+    """Return an optional graph attribute as float, preserving missing as None."""
+
+    value = getattr(graph, attribute, None)
+    if value is None:
+        return None
+    return float(_as_scalar(value))
+
+
 def _graph_metadata(graph, row):
-    """Build stable per-puzzle metadata from graph attributes and CSV row."""
+    """Build stable per-puzzle metadata from graph attributes and CSV row.
+
+    A3 graphs are intentionally no-timing graphs, so timing-only metadata is
+    optional and stays None until B synthetic rows provide it during pairing.
+    """
 
     return {
         "PuzzleId": str(row.PuzzleId),
@@ -245,10 +258,15 @@ def _graph_metadata(graph, row):
         "target_uci": str(getattr(graph, "target_move")),
         "rating": int(row.Rating),
         "MateDepth": int(row.MateDepth),
-        "previous_move_time_seconds": float(_as_scalar(graph.previous_move_time_seconds)),
-        "original_move_time_seconds": float(_as_scalar(graph.original_move_time_seconds)),
-        "previous_move_time": float(_as_scalar(graph.previous_move_time)),
-        "original_move_time": float(_as_scalar(graph.original_move_time)),
+        "previous_move_time_seconds": _optional_float_attr(
+            graph, "previous_move_time_seconds"
+        ),
+        "original_move_time_seconds": _optional_float_attr(
+            graph, "original_move_time_seconds"
+        ),
+        "previous_move_time": _optional_float_attr(graph, "previous_move_time"),
+        "original_move_time": _optional_float_attr(graph, "original_move_time"),
+        "time_is_synthetic": _optional_float_attr(graph, "time_is_synthetic"),
     }
 
 
@@ -307,7 +325,19 @@ def _merge_per_puzzle(a3_rows, synthetic_rows, neutral_rows, zero_rows=None):
     """Merge model-specific per-puzzle rows by PuzzleId and validate alignment."""
 
     merged = {}
-    for source_rows in (a3_rows, synthetic_rows, neutral_rows, zero_rows or []):
+    timing_keys = {
+        "previous_move_time_seconds",
+        "original_move_time_seconds",
+        "previous_move_time",
+        "original_move_time",
+        "time_is_synthetic",
+    }
+    for source_name, source_rows in (
+        ("A3", a3_rows),
+        ("B_SYNTHETIC_TIMING", synthetic_rows),
+        ("B_NEUTRAL_TIMING", neutral_rows),
+        ("B_ZERO_TIMING_AND_FLAG", zero_rows or []),
+    ):
         for row in source_rows:
             puzzle_id = row["PuzzleId"]
             if puzzle_id not in merged:
@@ -320,10 +350,37 @@ def _merge_per_puzzle(a3_rows, synthetic_rows, neutral_rows, zero_rows=None):
                 for key in ("FEN", "target_uci", "rating", "MateDepth"):
                     if merged[puzzle_id][key] != row[key]:
                         raise ValueError(f"Puzzle alignment mismatch for {puzzle_id}: {key}")
+            if source_name == "B_SYNTHETIC_TIMING":
+                for key in timing_keys:
+                    merged[puzzle_id][key] = row.get(key)
             for key, value in row.items():
                 if key.endswith(("_target_rank", "_top1_correct", "_prediction")):
                     merged[puzzle_id][key] = value
     return list(merged.values())
+
+
+def _validate_puzzle_alignment(a3_rows, synthetic_rows):
+    """Fail fast unless A3 and B synthetic rows refer to the same PuzzleIds."""
+
+    a3_ids = [row["PuzzleId"] for row in a3_rows]
+    synthetic_ids = [row["PuzzleId"] for row in synthetic_rows]
+    if len(a3_ids) != SHARED_TEST_N or len(synthetic_ids) != SHARED_TEST_N:
+        raise ValueError(
+            f"Shared-test N mismatch: A3={len(a3_ids)}, "
+            f"B_SYNTHETIC_TIMING={len(synthetic_ids)}, expected={SHARED_TEST_N}"
+        )
+    if set(a3_ids) != set(synthetic_ids):
+        missing_from_b = sorted(set(a3_ids) - set(synthetic_ids))[:10]
+        missing_from_a3 = sorted(set(synthetic_ids) - set(a3_ids))[:10]
+        raise ValueError(
+            "A3/B PuzzleId set mismatch. "
+            f"missing_from_b={missing_from_b}, missing_from_a3={missing_from_a3}"
+        )
+    return {
+        "same_order": a3_ids == synthetic_ids,
+        "same_set": True,
+        "n": len(a3_ids),
+    }
 
 
 def _transition_counts(rows, left_prefix, right_prefix):
@@ -763,6 +820,7 @@ def run_timing_ablation(config):
     synthetic_metrics, synthetic_rows = evaluate_model_on_dataset(
         model_b, timing_dataset, dataframe, config, "B_SYNTHETIC_TIMING", device
     )
+    alignment = _validate_puzzle_alignment(a3_rows, synthetic_rows)
     neutral_metrics, neutral_rows = evaluate_model_on_dataset(
         model_b, timing_dataset, dataframe, config, "B_NEUTRAL_TIMING", device
     )
@@ -795,6 +853,7 @@ def run_timing_ablation(config):
         "model_b_checkpoint": str(model_b_path),
         "model_a3_checkpoint_epoch": checkpoint_a3.get("epoch") if isinstance(checkpoint_a3, dict) else None,
         "model_b_checkpoint_epoch": checkpoint_b.get("epoch") if isinstance(checkpoint_b, dict) else None,
+        "shared_test_alignment": alignment,
         "official_model_performance": {
             "A3": a3_official,
             "B_SYNTHETIC_TIMING": synthetic_metrics,
