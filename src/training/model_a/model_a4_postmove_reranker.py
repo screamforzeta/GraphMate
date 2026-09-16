@@ -21,8 +21,9 @@ import time
 
 import chess
 import torch
+from torch.utils.data import DataLoader as TorchDataLoader
 from torch_geometric.data import Batch
-from torch_geometric.loader import DataLoader
+from torch_geometric.loader import DataLoader as PyGDataLoader
 
 from src.evaluation.model_a.model_a_vs_a2_vs_a3 import MODEL_A3_CHECKPOINT
 from src.evaluation.model_a.model_a_vs_a2_vs_a3 import load_eval_model_a3
@@ -293,8 +294,10 @@ def collate_a4_examples(examples):
     a3_top1 = []
     target_uci = []
     candidate_uci = []
+    candidate_counts = []
     for example in examples:
         n = len(example["candidate_uci"])
+        candidate_counts.append(n)
         graphs.extend(example["postmove_graphs"])
         features.append(example["a3_candidate_features"])
         scores.append(example["score_features"])
@@ -307,6 +310,7 @@ def collate_a4_examples(examples):
         "postmove_batch": Batch.from_data_list(graphs),
         "a3_candidate_features": torch.cat(features, dim=0),
         "score_features": torch.cat(scores, dim=0),
+        "candidate_counts": torch.tensor(candidate_counts, dtype=torch.long),
         "candidate_ptr": torch.tensor(ptr, dtype=torch.long),
         "target_indices": torch.tensor(targets, dtype=torch.long),
         "a3_top1": a3_top1,
@@ -315,15 +319,117 @@ def collate_a4_examples(examples):
     }
 
 
+def validate_a4_batch_contract(batch):
+    """Validate the canonical A4 cache/collate/trainer batch contract.
+
+    Parameters:
+        batch: Dict returned by collate_a4_examples.
+    Returns:
+        Summary with original-position and candidate counts.
+    Side effects:
+        Raises ValueError with MODEL_A4_BATCH_CONTRACT_INVALID on mismatch.
+    """
+
+    expected = {
+        "postmove_batch",
+        "a3_candidate_features",
+        "score_features",
+        "candidate_counts",
+        "candidate_ptr",
+        "target_indices",
+        "a3_top1",
+        "target_uci",
+        "candidate_uci",
+    }
+    actual = set(batch.keys()) if isinstance(batch, dict) else set()
+    missing = sorted(expected - actual)
+    if missing:
+        raise ValueError(
+            "MODEL_A4_BATCH_CONTRACT_INVALID: missing keys "
+            f"{missing}; expected={sorted(expected)} actual={sorted(actual)}"
+        )
+
+    candidate_counts = batch["candidate_counts"]
+    candidate_ptr = batch["candidate_ptr"]
+    target_indices = batch["target_indices"]
+    postmove_batch = batch["postmove_batch"]
+    total_candidates = int(candidate_counts.sum().item())
+    original_positions = int(candidate_counts.numel())
+    details = (
+        f"candidate_counts={candidate_counts.tolist()} "
+        f"postmove_graph_count={getattr(postmove_batch, 'num_graphs', None)}"
+    )
+    if candidate_ptr.numel() != original_positions + 1:
+        raise ValueError(
+            "MODEL_A4_BATCH_CONTRACT_INVALID: candidate_ptr length mismatch; "
+            + details
+        )
+    if candidate_ptr[0].item() != 0 or candidate_ptr[-1].item() != total_candidates:
+        raise ValueError(
+            "MODEL_A4_BATCH_CONTRACT_INVALID: candidate_ptr endpoints mismatch; "
+            + details
+        )
+    if not torch.equal(candidate_ptr[1:] - candidate_ptr[:-1], candidate_counts.cpu()):
+        raise ValueError(
+            "MODEL_A4_BATCH_CONTRACT_INVALID: candidate_ptr/count mismatch; "
+            + details
+        )
+    if getattr(postmove_batch, "num_graphs", None) != total_candidates:
+        raise ValueError(
+            "MODEL_A4_BATCH_CONTRACT_INVALID: postmove graph count mismatch; "
+            + details
+        )
+    if tuple(postmove_batch.global_features.shape) != (total_candidates, 4):
+        raise ValueError(
+            "MODEL_A4_BATCH_CONTRACT_INVALID: postmove global_features must "
+            f"have shape [{total_candidates},4], got "
+            f"{tuple(postmove_batch.global_features.shape)}; {details}"
+        )
+    if batch["a3_candidate_features"].shape[0] != total_candidates:
+        raise ValueError(
+            "MODEL_A4_BATCH_CONTRACT_INVALID: A3 candidate feature count mismatch; "
+            + details
+        )
+    if batch["score_features"].shape != (total_candidates, 2):
+        raise ValueError(
+            "MODEL_A4_BATCH_CONTRACT_INVALID: score feature shape mismatch; "
+            + details
+        )
+    if len(batch["candidate_uci"]) != total_candidates:
+        raise ValueError(
+            "MODEL_A4_BATCH_CONTRACT_INVALID: candidate UCI count mismatch; "
+            + details
+        )
+    if target_indices.numel() != original_positions:
+        raise ValueError(
+            "MODEL_A4_BATCH_CONTRACT_INVALID: target index count mismatch; "
+            + details
+        )
+    for index, (target, count) in enumerate(zip(target_indices.tolist(), candidate_counts.tolist())):
+        if target < 0 or target >= count:
+            raise ValueError(
+                "MODEL_A4_BATCH_CONTRACT_INVALID: target index outside group "
+                f"at position {index}; target={target} count={count}; {details}"
+            )
+    return {
+        "original_positions": original_positions,
+        "total_candidates": total_candidates,
+        "postmove_batch_num_graphs": int(postmove_batch.num_graphs),
+        "postmove_global_features_shape": tuple(postmove_batch.global_features.shape),
+    }
+
+
 def move_a4_batch_to_device(batch, device, non_blocking=False):
     """Move an A4 collated batch to device."""
 
+    validate_a4_batch_contract(batch)
     use_non_blocking = bool(non_blocking and torch.device(device).type == "cuda")
     return {
         **batch,
         "postmove_batch": batch["postmove_batch"].to(device, non_blocking=use_non_blocking),
         "a3_candidate_features": batch["a3_candidate_features"].to(device, non_blocking=use_non_blocking),
         "score_features": batch["score_features"].to(device, non_blocking=use_non_blocking),
+        "candidate_counts": batch["candidate_counts"].to(device, non_blocking=use_non_blocking),
         "candidate_ptr": batch["candidate_ptr"].to(device, non_blocking=use_non_blocking),
         "target_indices": batch["target_indices"].to(device, non_blocking=use_non_blocking),
     }
@@ -558,7 +664,7 @@ def build_a4_postmove_cache_for_split(dataset, split, config, device):
     total = 0
     rerankable = 0
     unrerankable = 0
-    loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False)
+    loader = PyGDataLoader(dataset, batch_size=config.batch_size, shuffle=False)
     with torch.no_grad():
         for batch in loader:
             original_graphs = batch.to_data_list()
@@ -597,7 +703,7 @@ def build_a4_postmove_cache_for_split(dataset, split, config, device):
                 examples.append(
                     {
                         "puzzle_id": str(getattr(graph, "puzzle_id", "")),
-                        "source_row_index": int(getattr(graph, "source_row_index", torch.tensor(-1)).item()),
+                        "source_row_index": int(torch.as_tensor(getattr(graph, "source_row_index", -1)).item()),
                         "fen": str(graph.fen),
                         "target_move": str(graph.target_move),
                         "candidate_uci": row["uci"],
@@ -664,7 +770,7 @@ def make_a4_loaders(config):
     val = A4PostMoveCacheDataset(config.cache_root, "val")
     train.total_examples = int(manifest["splits"]["train"]["total"])
     val.total_examples = int(manifest["splits"]["val"]["total"])
-    train_loader = DataLoader(
+    train_loader = TorchDataLoader(
         train,
         batch_size=config.batch_size,
         shuffle=True,
@@ -672,7 +778,7 @@ def make_a4_loaders(config):
         pin_memory=config.pin_memory,
         collate_fn=collate_a4_examples,
     )
-    val_loader = DataLoader(
+    val_loader = TorchDataLoader(
         val,
         batch_size=config.batch_size,
         shuffle=False,
@@ -743,6 +849,7 @@ def train_model_a4(config, device, smoke=False):
         min_lr=config.min_learning_rate,
     )
     train_loader, val_loader, manifest = make_a4_loaders(config)
+    validate_a4_batch_contract(next(iter(train_loader)))
     scaler = make_grad_scaler(device, amp=config.amp)
     parameters = _parameter_report(a3, model)
     best_score = -1.0
