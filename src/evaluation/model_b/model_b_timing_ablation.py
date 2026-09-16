@@ -15,6 +15,7 @@ Run:
 
 from __future__ import annotations
 
+import ast
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,6 +49,15 @@ TIMING_DATASET_ROOT = Path("data/pyg_puzzles_timing")
 NO_TIMING_DATASET_ROOT = Path("data/pyg")
 TEST_CSV = Path("data/final/puzzles/test.csv")
 GAMES_CLEAN_CSV = Path("data/processed/games/games_clean.csv")
+GAMES_FINAL_CSVS = {
+    "train": Path("data/final/games/games_train.csv"),
+    "val": Path("data/final/games/games_val.csv"),
+    "test": Path("data/final/games/games_test.csv"),
+}
+GAMES_FALLBACK_CSVS = {
+    "processed_clean": GAMES_CLEAN_CSV,
+    "processed_metadata": Path("data/processed/games/games_metadata.csv"),
+}
 
 MODEL_B_REFERENCE = {
     "n": SHARED_TEST_N,
@@ -616,41 +626,212 @@ def _quantile(ordered_values, q):
     return ordered_values[lower] * (1 - weight) + ordered_values[upper] * weight
 
 
-def _real_game_timings(path=GAMES_CLEAN_CSV):
-    """Read available parsed game move times for descriptive comparison."""
+def _parse_move_times_sequence(value):
+    """Parse one serialized MoveTimes list and classify every item.
 
-    path = Path(path)
-    if not path.exists():
-        return []
-    dataframe = pd.read_csv(path)
-    values = []
-    for value in dataframe.get("MoveTimes", []):
-        if pd.isna(value) or value in ("", "None"):
+    MoveTimes are persisted as Python list strings such as
+    "[0.0, 1.0, None]"; JSON parsing cannot read Python None, so the
+    evaluator uses ast.literal_eval and never modifies the source CSV.
+    """
+
+    stats = {
+        "raw_values": 0,
+        "valid_values": [],
+        "discarded_missing": 0,
+        "discarded_non_numeric": 0,
+        "discarded_non_finite": 0,
+        "discarded_non_positive": 0,
+        "parse_errors": 0,
+    }
+    if pd.isna(value) or str(value).strip() in ("", "None", "nan"):
+        stats["discarded_missing"] += 1
+        return stats
+    try:
+        parsed = ast.literal_eval(str(value))
+    except (SyntaxError, ValueError):
+        stats["parse_errors"] += 1
+        return stats
+    if not isinstance(parsed, (list, tuple)):
+        stats["parse_errors"] += 1
+        return stats
+    for item in parsed:
+        stats["raw_values"] += 1
+        if item is None:
+            stats["discarded_missing"] += 1
             continue
         try:
-            parsed = json.loads(str(value).replace("'", '"'))
-        except json.JSONDecodeError:
+            seconds = float(item)
+        except (TypeError, ValueError):
+            stats["discarded_non_numeric"] += 1
             continue
-        for item in parsed:
-            try:
-                seconds = float(item)
-            except (TypeError, ValueError):
-                continue
-            if seconds > 0:
-                values.append(seconds)
-    return values
+        if not math.isfinite(seconds):
+            stats["discarded_non_finite"] += 1
+            continue
+        if seconds <= 0:
+            stats["discarded_non_positive"] += 1
+            continue
+        stats["valid_values"].append(seconds)
+    return stats
+
+
+def extract_real_move_times(source_paths=None):
+    """Extract valid real move times from persisted games CSV files.
+
+    Parameters:
+        source_paths: Optional mapping label -> CSV path. Defaults to the
+            prepared final games splits.
+    Returns:
+        Dict with source status, counters, discard reasons, and seconds list.
+    Side effects:
+        Reads CSV files only.
+    """
+
+    source_paths = source_paths or GAMES_FINAL_CSVS
+    result = {
+        "status": "INCOMPLETE",
+        "source": "final_games_splits",
+        "unit": "seconds",
+        "paths_searched": {key: str(path) for key, path in source_paths.items()},
+        "paths_used": [],
+        "games_scanned": 0,
+        "games_with_timing": 0,
+        "raw_timing_values": 0,
+        "valid_timing_values": 0,
+        "discarded_values": 0,
+        "discard_reasons": {
+            "missing": 0,
+            "non_numeric": 0,
+            "non_finite": 0,
+            "non_positive": 0,
+            "parse_errors": 0,
+        },
+        "warnings": [],
+        "seconds": [],
+    }
+    existing = {key: Path(path) for key, path in source_paths.items() if Path(path).exists()}
+    if not existing:
+        result["warnings"].append("No games CSV source found.")
+        return result
+
+    for label, path in existing.items():
+        try:
+            dataframe = pd.read_csv(path, usecols=["MoveTimes"])
+        except ValueError:
+            result["warnings"].append(f"Missing MoveTimes column in {path}.")
+            continue
+        result["paths_used"].append(str(path))
+        result["games_scanned"] += len(dataframe)
+        for raw in dataframe["MoveTimes"]:
+            parsed = _parse_move_times_sequence(raw)
+            result["raw_timing_values"] += parsed["raw_values"]
+            valid_values = parsed["valid_values"]
+            if valid_values:
+                result["games_with_timing"] += 1
+                result["seconds"].extend(valid_values)
+            result["discard_reasons"]["missing"] += parsed["discarded_missing"]
+            result["discard_reasons"]["non_numeric"] += parsed["discarded_non_numeric"]
+            result["discard_reasons"]["non_finite"] += parsed["discarded_non_finite"]
+            result["discard_reasons"]["non_positive"] += parsed["discarded_non_positive"]
+            result["discard_reasons"]["parse_errors"] += parsed["parse_errors"]
+
+    result["valid_timing_values"] = len(result["seconds"])
+    result["discarded_values"] = sum(result["discard_reasons"].values())
+    if result["valid_timing_values"] > 0:
+        result["status"] = "COMPLETE"
+    else:
+        result["warnings"].append("Games sources were found but no valid MoveTimes were extracted.")
+    return result
 
 
 def _timing_distribution(rows):
     """Compare synthetic test timing against locally available real game timing."""
 
     synthetic = [float(row["original_move_time_seconds"]) for row in rows]
-    real = _real_game_timings()
+    real_audit = extract_real_move_times()
+    real = real_audit["seconds"]
+    seconds_comparison = {
+        "real": _describe(real),
+        "synthetic": _describe(synthetic),
+    }
+    log_comparison = {
+        "real": _describe([math.log1p(value) for value in real]),
+        "synthetic": _describe([math.log1p(value) for value in synthetic]),
+    }
     return {
-        "real_seconds": _describe(real),
-        "synthetic_original_seconds": _describe(synthetic),
-        "real_log1p": _describe([math.log1p(value) for value in real]),
-        "synthetic_original_log1p": _describe([math.log1p(value) for value in synthetic]),
+        "status": real_audit["status"],
+        "source": {
+            key: value
+            for key, value in real_audit.items()
+            if key != "seconds"
+        },
+        "real_seconds": seconds_comparison["real"],
+        "synthetic_original_seconds": seconds_comparison["synthetic"],
+        "real_log1p": log_comparison["real"],
+        "synthetic_original_log1p": log_comparison["synthetic"],
+        "seconds_table": {
+            "real": seconds_comparison["real"],
+            "synthetic": seconds_comparison["synthetic"],
+        },
+        "log1p_table": {
+            "real": log_comparison["real"],
+            "synthetic": log_comparison["synthetic"],
+        },
+        "ratios": _timing_distribution_ratios(seconds_comparison["real"], seconds_comparison["synthetic"]),
+        "ks": _ks_diagnostics(real, synthetic),
+        "limitation": (
+            "Real timings come from sampled Lichess games, while synthetic timings "
+            "come from puzzle test graphs. The populations are not paired; this is "
+            "a distributional plausibility comparison, not ground-truth timing accuracy."
+        ),
+    }
+
+
+def _timing_distribution_ratios(real_stats, synthetic_stats):
+    """Return simple descriptive synthetic/real ratios where defined."""
+
+    ratios = {}
+    for key in ("mean", "median", "p95"):
+        real_value = real_stats.get(key)
+        synthetic_value = synthetic_stats.get(key)
+        ratios[f"synthetic_{key}_over_real_{key}"] = (
+            synthetic_value / real_value
+            if real_value not in (None, 0) and synthetic_value is not None
+            else None
+        )
+    return ratios
+
+
+def _ks_diagnostics(real, synthetic):
+    """Return optional KS diagnostics when scipy is installed."""
+
+    try:
+        from scipy import stats
+    except ImportError:
+        return {
+            "available": False,
+            "reason": "scipy is not installed; dependency not added for this diagnostic.",
+        }
+    if not real or not synthetic:
+        return {"available": False, "reason": "real or synthetic sample is empty."}
+    seconds = stats.ks_2samp(real, synthetic)
+    log_values = stats.ks_2samp(
+        [math.log1p(value) for value in real],
+        [math.log1p(value) for value in synthetic],
+    )
+    return {
+        "available": True,
+        "seconds": {
+            "statistic": float(seconds.statistic),
+            "p_value": float(seconds.pvalue),
+        },
+        "log1p": {
+            "statistic": float(log_values.statistic),
+            "p_value": float(log_values.pvalue),
+        },
+        "interpretation_guardrail": (
+            "KS is descriptive only. Large samples and non-equivalent populations "
+            "make the p-value unsuitable as a validity verdict."
+        ),
     }
 
 
@@ -943,6 +1124,76 @@ def write_outputs(summary, paired_rows, output_dir=OUTPUT_DIR):
         "paired_rows_json": str(paired_path),
         "report_md": str(report_path),
     }
+
+
+def update_timing_distribution_only(output_dir=OUTPUT_DIR):
+    """Refresh real-vs-synthetic timing stats from existing ablation artifacts.
+
+    Parameters:
+        output_dir: Directory containing summary.json and paired_test_rows.json.
+    Returns:
+        Dict of written output paths.
+    Side effects:
+        Updates summary.json and report.md. It does not run model inference and
+        does not alter paired_test_rows.json.
+    """
+
+    output_dir = Path(output_dir)
+    summary_path = output_dir / "summary.json"
+    paired_path = output_dir / "paired_test_rows.json"
+    report_path = output_dir / "report.md"
+    if not summary_path.exists() or not paired_path.exists():
+        raise FileNotFoundError(
+            "Timing-distribution-only mode requires existing "
+            f"{summary_path} and {paired_path}."
+        )
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    paired_rows = json.loads(paired_path.read_text(encoding="utf-8"))
+    preserved_keys = {
+        "official_model_performance": summary.get("official_model_performance"),
+        "post_hoc_diagnostic_ablations": summary.get("post_hoc_diagnostic_ablations"),
+        "transitions": summary.get("transitions"),
+        "mate_depth": summary.get("mate_depth"),
+        "rating": summary.get("rating"),
+        "mcnemar": summary.get("mcnemar"),
+        "rank_delta": summary.get("rank_delta"),
+    }
+    summary["timing_distribution_vs_real_games"] = _timing_distribution(paired_rows)
+    for key, value in preserved_keys.items():
+        if summary.get(key) != value:
+            raise RuntimeError(f"Unexpected mutation outside timing distribution: {key}")
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    try:
+        report = render_report(summary)
+    except KeyError:
+        report = _render_timing_distribution_only_report(summary)
+    report_path.write_text(report, encoding="utf-8")
+    return {
+        "summary_json": str(summary_path),
+        "paired_rows_json": str(paired_path),
+        "report_md": str(report_path),
+        "timing_distribution_status": summary["timing_distribution_vs_real_games"]["status"],
+        "real_valid_n": summary["timing_distribution_vs_real_games"]["source"]["valid_timing_values"],
+    }
+
+
+def _render_timing_distribution_only_report(summary):
+    """Render a compact report when only timing-distribution fields exist."""
+
+    return "\n".join(
+        [
+            "# Model B Timing Distribution Update",
+            "",
+            "This report was generated in timing-distribution-only mode.",
+            "",
+            "## Synthetic Vs Real Timing Distribution",
+            "",
+            "```json",
+            json.dumps(summary["timing_distribution_vs_real_games"], indent=2),
+            "```",
+            "",
+        ]
+    )
 
 
 def _format_value(value):

@@ -9,6 +9,7 @@ import torch
 from src.evaluation.model_b.model_b_timing_ablation import (
     ModelBTimingAblationConfig,
     run_timing_ablation,
+    update_timing_distribution_only,
     write_outputs,
 )
 
@@ -35,6 +36,11 @@ def parse_args():
     )
     parser.add_argument("--output-dir", default="artifacts/model_b_timing_ablation")
     parser.add_argument(
+        "--timing-distribution-only",
+        action="store_true",
+        help="Update only real-vs-synthetic timing distribution from existing artifacts.",
+    )
+    parser.add_argument(
         "--skip-zero-timing-and-flag",
         action="store_true",
         help="Skip the secondary zero timing plus zero flag diagnostic.",
@@ -46,6 +52,16 @@ def main():
     """Run the read-only Model B timing ablation and write reports."""
 
     args = parse_args()
+    if args.timing_distribution_only:
+        outputs = update_timing_distribution_only(args.output_dir)
+        print("MODEL_B_TIMING_DISTRIBUTION_ONLY_COMPLETE")
+        print(f"summary_json={outputs['summary_json']}")
+        print(f"report_md={outputs['report_md']}")
+        print(f"paired_rows_json={outputs['paired_rows_json']}")
+        print(f"TIMING_DISTRIBUTION_STATUS={outputs['timing_distribution_status']}")
+        print(f"REAL_TIMING_VALID_N={outputs['real_valid_n']}")
+        return
+
     config = ModelBTimingAblationConfig(
         batch_size=args.batch_size,
         device=args.device,

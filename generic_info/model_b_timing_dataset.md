@@ -143,3 +143,99 @@ Output atteso:
 - `artifacts/model_b_timing_ablation/paired_test_rows.json`
 
 Il report separa `OFFICIAL MODEL PERFORMANCE` da `POST-HOC DIAGNOSTIC ABLATIONS`, include transition counts, breakdown per MateDepth/rating, bucket timing, McNemar, distribuzione timing sintetica vs reale e esempi di errore.
+
+## Real Game Timing Reference
+
+La source-of-truth locale per i tempi reali è la pipeline games già persistita:
+
+- `data/raw/games/sample_1000_games.pgn`: PGN campionato con commenti Lichess `[%clk ...]`.
+- `data/processed/games/games_metadata.csv`: output del parser PGN con `ClockValues` e `MoveTimes`.
+- `data/processed/games/games_clean.csv`: games validati.
+- `data/final/games/games_train.csv`, `games_val.csv`, `games_test.csv`: split finali usati come sorgente preferita per il confronto descrittivo.
+
+Semantica:
+
+- `ClockValues`: clock residuo dopo ogni ply, in secondi, estratto dai commenti PGN `[%clk H:MM:SS]`.
+- `MoveTimes`: stima del tempo di pensiero in secondi calcolata come differenza tra clock residui consecutivi: `clock[i-1] - clock[i]`.
+
+Limitazioni note:
+
+- Il primo ply non ha clock precedente.
+- Con incremento, premove, lag o clock che aumenta, la differenza può essere negativa; la pipeline la salva come `None`.
+- I valori `0.0` esistono ma non sono usati nel confronto distributional, perché la policy dell'evaluator tiene solo durate positive.
+- I tempi reali provengono da partite Lichess campionate, non dagli stessi puzzle del test set.
+
+Filtering policy dell'evaluator:
+
+- parse con `ast.literal_eval`, perché i CSV contengono liste Python serializzate con `None`;
+- flatten delle liste `MoveTimes`;
+- conversione a `float` seconds;
+- scarto di missing, non numerici, non finiti e `<= 0`;
+- nessun clipping arbitrario.
+
+Audit locale sui final games split:
+
+| Counter | Value |
+| --- | ---: |
+| games scanned | 757 |
+| games with timing | 757 |
+| raw timing values | 50,469 |
+| valid positive timing values | 25,469 |
+| discarded missing | 21,788 |
+| discarded non-positive | 3,212 |
+
+Statistiche in secondi:
+
+| Metric | Real games | Synthetic puzzle test |
+| --- | ---: | ---: |
+| N | 25,469 | 8,610 |
+| mean | 29.4984 | 16.4443 |
+| median | 11.0000 | 14.8018 |
+| std | 49.2107 | 8.0505 |
+| p05 | 1.0000 | 6.8593 |
+| p25 | 4.0000 | 10.7548 |
+| p50 | 11.0000 | 14.8018 |
+| p75 | 32.0000 | 20.2762 |
+| p95 | 116.0000 | 31.5825 |
+| p99 | 286.3200 | 43.7166 |
+| max | 432.0000 | 92.6349 |
+| skewness | 3.6122 | 1.5671 |
+
+Statistiche `log1p(seconds)`:
+
+| Metric | Real games | Synthetic puzzle test |
+| --- | ---: | ---: |
+| N | 25,469 | 8,610 |
+| mean | 2.6006 | 2.7640 |
+| median | 2.4849 | 2.7601 |
+| std | 1.2582 | 0.4339 |
+| p05 | 0.6931 | 2.0617 |
+| p25 | 1.6094 | 2.4643 |
+| p50 | 2.4849 | 2.7601 |
+| p75 | 3.4965 | 3.0576 |
+| p95 | 4.7622 | 3.4838 |
+| p99 | 5.6606 | 3.8003 |
+| max | 6.0707 | 4.5394 |
+| skewness | 0.3222 | 0.0678 |
+
+Ratio descrittivi:
+
+- synthetic mean / real mean: circa `0.5575`;
+- synthetic median / real median: circa `1.3456`;
+- synthetic p95 / real p95: circa `0.2723`.
+
+KS two-sample, se `scipy` è disponibile:
+
+- seconds statistic: `0.3399`, p-value `0.0`;
+- log1p statistic: `0.3399`, p-value `0.0`.
+
+Il KS è solo descrittivo. Con sample grandi e popolazioni non equivalenti, il p-value non è un verdetto di validità o invalidità del timing sintetico.
+
+Interpretazione prudente: synthetic v1 ha centro in log-space vicino alla mediana reale, ma è molto più stretta e con coda alta molto più corta rispetto ai tempi reali osservati nelle partite. Questo confronto è una calibrazione marginale/distributional reference, non una misura di errore per-sample.
+
+Aggiornamento solo distribuzione, senza rifare inference:
+
+```bash
+./venv/bin/python -m src.cli.evaluation.evaluate_model_b_timing_ablation \
+  --timing-distribution-only
+```
