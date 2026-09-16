@@ -215,7 +215,19 @@ Training Model B timing-aware legal-candidate scorer:
   --amp
 ```
 
-Model B richiede grafi con attributi timing graph-level `previous_move_time`, `original_move_time` e `time_is_synthetic`. La pipeline dedicata crea `data/pyg_puzzles_timing/` dal dataset PyG ufficiale senza rigenerare topologia o target. Al momento non è presente una accuracy ufficiale Model B nella repository.
+Model B richiede grafi con attributi timing graph-level `previous_move_time`, `original_move_time` e `time_is_synthetic`. La pipeline dedicata crea `data/pyg_puzzles_timing/` dal dataset PyG ufficiale senza rigenerare topologia o target. Il primo training ufficiale Model B è una ablation timing sintetica rispetto ad A3: Top1 A3 `67.5610%`, Top1 B synthetic timing `65.9814%`.
+
+Post-hoc Model B timing ablation:
+
+```bash
+./venv/bin/python -m src.cli.evaluation.evaluate_model_b_timing_ablation \
+  --device cuda \
+  --batch-size 128 \
+  --non-blocking \
+  --amp
+```
+
+Questo evaluator non ritrena nulla: confronta A3 ufficiale, B synthetic timing e diagnostiche B neutral timing sullo stesso test set.
 
 Post-hoc Model A vs A2 evaluation:
 
