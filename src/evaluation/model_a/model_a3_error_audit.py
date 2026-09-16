@@ -190,23 +190,27 @@ def enrich_quiet(features):
 
 
 def topk_and_row(scores, candidate_ptr, candidate_uci, target_index, graph_index):
-    """Return ranking details for one graph in a batched A3 output."""
+    """Return ranking details using the official A3 device-side ordering."""
 
     start = int(candidate_ptr[graph_index].item())
     end = int(candidate_ptr[graph_index + 1].item())
-    local_scores = scores[start:end].detach().float().cpu()
-    ordered = torch.argsort(local_scores, descending=True)
+    group_scores = scores[start:end].detach()
+    # Match src.evaluation.model_a.model_a_vs_a2_vs_a3.a3_topk_and_ranks:
+    # keep argsort on the score device because CPU transfer can alter tie or
+    # near-tie ordering and change one-puzzle parity.
+    ordered = torch.argsort(group_scores, descending=True)
     target_index = int(target_index)
     target_rank = int((ordered == target_index).nonzero(as_tuple=False).item()) + 1
     top_indices = ordered[: min(10, ordered.numel())].tolist()
-    top_scores = [float(local_scores[index].item()) for index in top_indices]
+    score_values = group_scores.float().cpu()
+    top_scores = [float(score_values[index].item()) for index in top_indices]
     top_moves = [candidate_uci[start + index] for index in top_indices]
     top1_score = top_scores[0]
     top2_score = top_scores[1] if len(top_scores) > 1 else None
     return {
         "legal_move_count": end - start,
         "target_rank": target_rank,
-        "target_score": float(local_scores[target_index].item()),
+        "target_score": float(score_values[target_index].item()),
         "A3_top1_move": top_moves[0],
         "A3_top1_score": top1_score,
         "top3_moves": top_moves[:3],
@@ -261,6 +265,7 @@ def summarize_rows(rows):
         f"top{k}": sum(row["target_rank"] <= k for row in rows) / n
         for k in (1, 2, 3, 4, 5, 10)
     }
+    rank_values = [int(row["target_rank"]) for row in rows]
     ranks = Counter(rank_bucket(row["target_rank"]) for row in rows)
     errors = [row for row in rows if not row["top1_correct"]]
     error_ranks = Counter(rank_bucket(row["target_rank"]) for row in errors)
@@ -276,6 +281,9 @@ def summarize_rows(rows):
     return {
         "n": n,
         "topk": topk,
+        "mean_legal_target_rank": statistics.mean(rank_values),
+        "median_legal_target_rank": statistics.median(rank_values),
+        "illegal_top1_rate": 0.0,
         "headroom_pp": {
             "top3_minus_top1": (topk["top3"] - topk["top1"]) * 100,
             "top5_minus_top1": (topk["top5"] - topk["top1"]) * 100,
@@ -578,6 +586,9 @@ def a3_parity_for_split(split_name, summary):
         "top1": abs(actual["top1"] - MODEL_A3_REFERENCE["a3_top1"]) <= 1e-12,
         "top3": abs(actual["top3"] - MODEL_A3_REFERENCE["a3_top3"]) <= 1e-12,
         "top5": abs(actual["top5"] - MODEL_A3_REFERENCE["a3_top5"]) <= 1e-12,
+        "mean_legal_target_rank": abs(summary["mean_legal_target_rank"] - MODEL_A3_REFERENCE["a3_mean_legal_rank"]) <= 1e-12,
+        "median_legal_target_rank": abs(summary["median_legal_target_rank"] - MODEL_A3_REFERENCE["a3_median_legal_rank"]) <= 1e-12,
+        "illegal_top1_rate": abs(summary["illegal_top1_rate"] - MODEL_A3_REFERENCE["a3_illegal_top1_rate"]) <= 1e-12,
         "n": summary["actual_n"] == MODEL_A3_REFERENCE["n"],
     }
     return {
@@ -614,6 +625,7 @@ def render_report(validation_summary, test_summary):
         "- Design analysis source: validation.",
         "- Final diagnostic confirmation: test.",
         "- Official target semantics remain `TargetMove = Moves[1]`.",
+        "- Ranking parity uses the official A3 device-side `torch.argsort` semantics; scores are converted to CPU only after candidate order is fixed.",
         "",
         "## Official A3 Parity",
         "",
