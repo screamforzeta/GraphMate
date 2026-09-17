@@ -101,12 +101,26 @@ def apply_pending_widget_resets(session_state, defaults=None):
 
 
 def clear_position_dependent_predictions(session_state):
-    """Clear domain prediction state after a board-position transition."""
+    """Clear next-move prediction state after a board-position transition."""
 
     session_state["model_result"] = None
     session_state["a4_result"] = None
-    session_state["reference_line_rollout"] = None
     session_state["model_prediction_fen"] = None
+
+
+def clear_model_rollout(session_state):
+    """Clear the persisted full-puzzle model attempt."""
+
+    session_state["reference_line_rollout"] = None
+    session_state["reference_line_rollout_model"] = None
+    session_state["reference_line_rollout_start_fen"] = None
+    session_state["reference_line_rollout_start_step"] = None
+
+
+def clear_revealed_hint(session_state):
+    """Clear the per-position human hint."""
+
+    session_state["revealed_next_move"] = None
 
 
 def reference_line_pairs(solution_moves):
@@ -126,6 +140,33 @@ def reference_line_pairs(solution_moves):
         reply_move = solution_moves[index + 1] if index + 1 < len(solution_moves) else None
         pairs.append((solver_move, reply_move))
     return pairs
+
+
+def remaining_solution_from_session(session):
+    """Return the remaining official line from the current session position.
+
+    Parameters:
+        session: PuzzleSession whose human_moves include accepted solver moves
+            and automatic reference replies.
+    Returns:
+        Remaining UCI moves starting at the next solver turn.
+    Side effects:
+        None.
+    """
+
+    return session.solution_moves[len(session.human_moves) :]
+
+
+def current_solver_step(session):
+    """Return the current solving-side move number, starting at 1."""
+
+    return (len(session.human_moves) // 2) + 1
+
+
+def revealed_next_move_for_session(session):
+    """Return the next required solver move for the current position."""
+
+    return session.next_expected_move()
 
 
 def run_reference_line_rollout(initial_solver_fen, solution_moves, predict_next_move):
@@ -189,6 +230,49 @@ def run_reference_line_rollout(initial_solver_fen, solution_moves, predict_next_
         "final_fen": board.fen(),
         "solver_moves_correct": sum(1 for row in rows if row["correct"]),
         "solver_moves_required": len(reference_line_pairs(solution_moves)),
+    }
+
+
+def human_attempt_summary(model_name, mate_depth, rollout):
+    """Return user-facing summary text for a full puzzle model attempt.
+
+    Parameters:
+        model_name: Display name of the model used for the attempt.
+        mate_depth: Lichess MateDepth value; number of solving-side moves.
+        rollout: Result from run_reference_line_rollout.
+    Returns:
+        Dictionary with title, result text, and detail rows.
+    Side effects:
+        None.
+    """
+
+    required = rollout["solver_moves_required"]
+    correct = rollout["solver_moves_correct"]
+    if rollout["solved"]:
+        result = (
+            f"{model_name} solved the complete Mate in {int(mate_depth)} "
+            "along the official puzzle replies."
+        )
+    elif correct == 0:
+        first = rollout["rows"][0] if rollout["rows"] else {}
+        result = (
+            f"{model_name} tried {first.get('predicted_san') or first.get('predicted_uci')}, "
+            f"but the puzzle solution starts with "
+            f"{first.get('expected_san') or first.get('expected_uci')}. "
+            "The attempt stopped on the first move."
+        )
+    else:
+        missed = correct + 1
+        result = (
+            f"{model_name} found the first {correct} moves, but missed "
+            f"move {missed} of {required}."
+        )
+    return {
+        "title": f"{model_name} tried to solve this Mate in {int(mate_depth)}",
+        "result": result,
+        "solved": rollout["solved"],
+        "correct": correct,
+        "required": required,
     }
 
 

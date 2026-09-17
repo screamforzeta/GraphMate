@@ -8,8 +8,14 @@ from src.streamlit_app.graph_metadata import graph_representation_metadata
 from src.streamlit_app.model_registry import MODEL_REGISTRY, model_table_rows
 from src.streamlit_app.puzzle_inference import (
     apply_pending_widget_resets,
+    clear_model_rollout,
     clear_position_dependent_predictions,
+    clear_revealed_hint,
+    current_solver_step,
+    human_attempt_summary,
     invalidate_prediction_if_fen_changed,
+    remaining_solution_from_session,
+    revealed_next_move_for_session,
     request_widget_reset,
     row_for_current_fen,
     run_reference_line_rollout,
@@ -180,17 +186,68 @@ def test_position_transition_clears_predictions_without_resetting_model_choice()
         "model_result": {"topk": []},
         "a4_result": {"a4_top1": "e2e4"},
         "reference_line_rollout": {"rows": []},
+        "reference_line_rollout_model": "A4 - Post-Move Reranker",
+        "reference_line_rollout_start_fen": chess.STARTING_FEN,
         "model_prediction_fen": chess.STARTING_FEN,
         "puzzle_model_choice": "A4 - Post-Move Reranker",
+        "last_user_result": {"status": "INCORRECT"},
     }
 
     clear_position_dependent_predictions(state)
 
     assert state["model_result"] is None
     assert state["a4_result"] is None
-    assert state["reference_line_rollout"] is None
     assert state["model_prediction_fen"] is None
+    assert state["reference_line_rollout"] == {"rows": []}
+    assert state["reference_line_rollout_model"] == "A4 - Post-Move Reranker"
+    assert state["reference_line_rollout_start_fen"] == chess.STARTING_FEN
     assert state["puzzle_model_choice"] == "A4 - Post-Move Reranker"
+    assert state["last_user_result"] == {"status": "INCORRECT"}
+
+
+def test_model_rollout_is_cleared_only_by_explicit_rollout_clear():
+    state = {
+        "reference_line_rollout": {"rows": [{"correct": True}]},
+        "reference_line_rollout_model": "A4 - Post-Move Reranker",
+        "reference_line_rollout_start_fen": chess.STARTING_FEN,
+        "reference_line_rollout_start_step": 1,
+    }
+
+    clear_model_rollout(state)
+
+    assert state["reference_line_rollout"] is None
+    assert state["reference_line_rollout_model"] is None
+    assert state["reference_line_rollout_start_fen"] is None
+    assert state["reference_line_rollout_start_step"] is None
+
+
+def test_reveal_next_move_follows_current_solver_progress():
+    fen = transformed_solver_fen(
+        chess.STARTING_FEN,
+        "e2e4 e7e5 g1f3 b8c6 f1b5",
+    )
+    session = PuzzleSession.create(fen, ["e7e5", "g1f3", "b8c6", "f1b5"])
+
+    assert current_solver_step(session) == 1
+    assert revealed_next_move_for_session(session) == "e7e5"
+    before_reveal_fen = session.current_fen
+    session.play_solver_move_with_reference_reply("e7e5")
+
+    assert before_reveal_fen != session.current_fen
+    assert current_solver_step(session) == 2
+    assert revealed_next_move_for_session(session) == "b8c6"
+
+
+def test_reveal_hint_state_can_clear_without_touching_model_rollout():
+    state = {
+        "revealed_next_move": {"fen": chess.STARTING_FEN, "move": "e2e4"},
+        "reference_line_rollout": {"rows": [{"correct": True}]},
+    }
+
+    clear_revealed_hint(state)
+
+    assert state["revealed_next_move"] is None
+    assert state["reference_line_rollout"] == {"rows": [{"correct": True}]}
 
 
 def test_reference_line_rollout_uses_successive_fens_without_mutating_session():
@@ -216,6 +273,72 @@ def test_reference_line_rollout_reports_failure_ply():
 
     assert rollout["solved"] is False
     assert rollout["failure_ply"] == 1
+
+
+def test_remaining_solution_from_session_offsets_current_position():
+    fen = transformed_solver_fen(
+        chess.STARTING_FEN,
+        "e2e4 e7e5 g1f3 b8c6 f1b5",
+    )
+    session = PuzzleSession.create(fen, ["e7e5", "g1f3", "b8c6", "f1b5"])
+
+    session.play_solver_move_with_reference_reply("e7e5")
+
+    assert remaining_solution_from_session(session) == ["b8c6", "f1b5"]
+
+
+def test_rollout_from_current_fen_uses_remaining_reference_offset():
+    fen = transformed_solver_fen(
+        chess.STARTING_FEN,
+        "e2e4 e7e5 g1f3 b8c6 f1b5",
+    )
+    session = PuzzleSession.create(fen, ["e7e5", "g1f3", "b8c6", "f1b5"])
+    session.play_solver_move_with_reference_reply("e7e5")
+    seen_fens = []
+
+    def predictor(position_fen):
+        seen_fens.append(position_fen)
+        return "b8c6"
+
+    rollout = run_reference_line_rollout(
+        session.current_fen,
+        remaining_solution_from_session(session),
+        predictor,
+    )
+
+    assert seen_fens == [session.current_fen]
+    assert rollout["solved"] is True
+    assert rollout["solver_moves_required"] == 1
+
+
+def test_human_attempt_summary_uses_user_friendly_failure_language():
+    fen = transformed_solver_fen(chess.STARTING_FEN, "e2e4 e7e5 g1f3")
+    rollout = run_reference_line_rollout(fen, ["e7e5", "g1f3"], lambda _fen: "c7c5")
+
+    summary = human_attempt_summary("A4", 4, rollout)
+
+    assert "solver move" not in summary["result"]
+    assert "first move" in summary["result"]
+    assert "A4 tried" in summary["result"]
+
+
+def test_human_attempt_summary_reports_partial_progress():
+    fen = transformed_solver_fen(
+        chess.STARTING_FEN,
+        "e2e4 e7e5 g1f3 b8c6 f1b5",
+    )
+    predictions = iter(["e7e5", "a7a6"])
+
+    rollout = run_reference_line_rollout(
+        fen,
+        ["e7e5", "g1f3", "b8c6", "f1b5"],
+        lambda _fen: next(predictions),
+    )
+    summary = human_attempt_summary("A4", 2, rollout)
+
+    assert rollout["solver_moves_correct"] == 1
+    assert "found the first 1 moves" in summary["result"]
+    assert "missed move 2 of 2" in summary["result"]
 
 
 def test_illegal_puzzle_session_move_raises():
