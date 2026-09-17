@@ -64,6 +64,51 @@ def invalidate_prediction_if_fen_changed(session_state, current_fen):
     return True
 
 
+def request_widget_reset(session_state, *keys):
+    """Mark widget keys to be reset before their next instantiation.
+
+    Parameters:
+        session_state: Mutable Streamlit-like state mapping.
+        keys: Widget-owned session_state keys to clear on the next rerun.
+    Returns:
+        None.
+    Side effects:
+        Stores a pending reset set under a domain-owned key.
+    """
+
+    pending = set(session_state.get("pending_widget_resets", set()))
+    pending.update(keys)
+    session_state["pending_widget_resets"] = pending
+
+
+def apply_pending_widget_resets(session_state, defaults=None):
+    """Apply queued widget resets before widgets are created.
+
+    Parameters:
+        session_state: Mutable Streamlit-like state mapping.
+        defaults: Optional mapping from widget key to reset value.
+    Returns:
+        List of reset widget keys.
+    Side effects:
+        Mutates widget-owned keys before render and clears the pending set.
+    """
+
+    defaults = defaults or {}
+    pending = list(session_state.pop("pending_widget_resets", set()))
+    for key in pending:
+        session_state[key] = defaults.get(key, "")
+    return pending
+
+
+def clear_position_dependent_predictions(session_state):
+    """Clear domain prediction state after a board-position transition."""
+
+    session_state["model_result"] = None
+    session_state["a4_result"] = None
+    session_state["reference_line_rollout"] = None
+    session_state["model_prediction_fen"] = None
+
+
 def reference_line_pairs(solution_moves):
     """Split a Lichess solution line into solver moves and reference replies.
 

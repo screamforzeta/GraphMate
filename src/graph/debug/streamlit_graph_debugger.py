@@ -93,8 +93,11 @@ from src.streamlit_app.puzzle_sequence import (
     solution_san_sequence,
 )
 from src.streamlit_app.puzzle_inference import (
+    apply_pending_widget_resets,
+    clear_position_dependent_predictions,
     current_solver_target,
     invalidate_prediction_if_fen_changed,
+    request_widget_reset,
     row_for_current_fen,
     run_reference_line_rollout,
 )
@@ -443,15 +446,12 @@ def reset_puzzle_state():
     """Clear per-puzzle user and inference state."""
 
     st.session_state["user_move"] = ""
-    st.session_state["user_move_input"] = ""
     st.session_state["last_user_result"] = None
     st.session_state["revealed_solution"] = False
-    st.session_state["model_result"] = None
-    st.session_state["a4_result"] = None
-    st.session_state["reference_line_rollout"] = None
-    st.session_state["model_prediction_fen"] = None
+    clear_position_dependent_predictions(st.session_state)
     st.session_state["puzzle_session"] = None
     st.session_state["playback_ply"] = 0
+    request_widget_reset(st.session_state, "user_move_input")
 
 
 def apply_filtered_index(new_index):
@@ -519,6 +519,13 @@ for key, default in [
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
+
+apply_pending_widget_resets(
+    st.session_state,
+    defaults={
+        "user_move_input": "",
+    },
+)
 
 selected_split = st.sidebar.selectbox(
     "Dataset Split",
@@ -1086,7 +1093,6 @@ with puzzle_tab:
     with st.expander("Advanced UCI move entry", expanded=False):
         move_input = st.text_input(
             "Raw UCI move",
-            value="",
             key="user_move_input",
         )
     model_choice_col, ask_col = st.columns([2, 1])
@@ -1192,10 +1198,8 @@ with puzzle_tab:
         result = puzzle_session.play_solver_move_with_reference_reply(selected_legal_move)
         st.session_state["user_move"] = result["move"]
         st.session_state["last_user_result"] = result
-        st.session_state["model_result"] = None
-        st.session_state["a4_result"] = None
-        st.session_state["model_prediction_fen"] = None
-        st.session_state["user_move_input"] = ""
+        clear_position_dependent_predictions(st.session_state)
+        request_widget_reset(st.session_state, "user_move_input")
         counters = st.session_state["session_counters"]
         counters["attempted"] += 1
         counters["human_correct"] += int(result["status"] == "COMPLETE")
@@ -1203,10 +1207,8 @@ with puzzle_tab:
     if undo_col.button("Undo"):
         puzzle_session.undo()
         st.session_state["last_user_result"] = None
-        st.session_state["model_result"] = None
-        st.session_state["a4_result"] = None
-        st.session_state["model_prediction_fen"] = None
-        st.session_state["user_move_input"] = ""
+        clear_position_dependent_predictions(st.session_state)
+        request_widget_reset(st.session_state, "user_move_input")
         st.rerun()
     if reveal_col.button("Reveal solution"):
         st.session_state["revealed_solution"] = True
@@ -1223,10 +1225,8 @@ with puzzle_tab:
                 result = {"move": move_to_check, "status": "ILLEGAL", "message": str(error), "auto_reply": None}
             st.session_state["user_move"] = result["move"]
             st.session_state["last_user_result"] = result
-            st.session_state["model_result"] = None
-            st.session_state["a4_result"] = None
-            st.session_state["model_prediction_fen"] = None
-            st.session_state["user_move_input"] = ""
+            clear_position_dependent_predictions(st.session_state)
+            request_widget_reset(st.session_state, "user_move_input")
             counters = st.session_state["session_counters"]
             counters["attempted"] += 1
             counters["human_correct"] += int(result["status"] == "COMPLETE")

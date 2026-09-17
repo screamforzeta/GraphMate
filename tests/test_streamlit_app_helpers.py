@@ -7,7 +7,10 @@ import pytest
 from src.streamlit_app.graph_metadata import graph_representation_metadata
 from src.streamlit_app.model_registry import MODEL_REGISTRY, model_table_rows
 from src.streamlit_app.puzzle_inference import (
+    apply_pending_widget_resets,
+    clear_position_dependent_predictions,
     invalidate_prediction_if_fen_changed,
+    request_widget_reset,
     row_for_current_fen,
     run_reference_line_rollout,
 )
@@ -159,6 +162,35 @@ def test_row_for_current_fen_and_prediction_invalidation():
     assert invalidated is True
     assert state["model_result"] is None
     assert state["a4_result"] is None
+
+
+def test_widget_reset_is_requested_and_applied_before_render():
+    state = {"user_move_input": "f7f8", "puzzle_model_choice": "A4 - Post-Move Reranker"}
+
+    request_widget_reset(state, "user_move_input")
+    applied = apply_pending_widget_resets(state, defaults={"user_move_input": ""})
+
+    assert applied == ["user_move_input"]
+    assert state["user_move_input"] == ""
+    assert state["puzzle_model_choice"] == "A4 - Post-Move Reranker"
+
+
+def test_position_transition_clears_predictions_without_resetting_model_choice():
+    state = {
+        "model_result": {"topk": []},
+        "a4_result": {"a4_top1": "e2e4"},
+        "reference_line_rollout": {"rows": []},
+        "model_prediction_fen": chess.STARTING_FEN,
+        "puzzle_model_choice": "A4 - Post-Move Reranker",
+    }
+
+    clear_position_dependent_predictions(state)
+
+    assert state["model_result"] is None
+    assert state["a4_result"] is None
+    assert state["reference_line_rollout"] is None
+    assert state["model_prediction_fen"] is None
+    assert state["puzzle_model_choice"] == "A4 - Post-Move Reranker"
 
 
 def test_reference_line_rollout_uses_successive_fens_without_mutating_session():
