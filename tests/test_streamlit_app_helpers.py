@@ -9,6 +9,8 @@ from src.streamlit_app.model_registry import MODEL_REGISTRY, model_table_rows
 from src.streamlit_app.puzzle_sequence import (
     PuzzleSession,
     filter_by_mate_depth,
+    legal_move_options,
+    move_history_rows,
     solution_moves_from_lichess_moves,
     solution_san_sequence,
     transformed_solver_fen,
@@ -22,6 +24,8 @@ def test_model_registry_contains_frozen_family_and_a1_is_diagnostic():
 
     assert keys == ["A", "A1", "A2", "A3", "A4", "B"]
     assert MODEL_REGISTRY["A1"].runnable_in_streamlit is True
+    assert MODEL_REGISTRY["A3"].display_name == "A3 - Legal Move Scorer"
+    assert MODEL_REGISTRY["B"].display_name == "B - Timing-Aware Legal Move Scorer"
     assert "not a separate architecture" in MODEL_REGISTRY["A1"].status
     assert MODEL_REGISTRY["B"].timing_used is True
 
@@ -76,6 +80,40 @@ def test_solution_san_sequence_and_puzzle_session_undo_reset():
     session.reset()
     assert session.human_moves == []
     assert session.current_fen == fen
+
+
+def test_legal_move_options_are_san_first():
+    options = legal_move_options(chess.STARTING_FEN)
+
+    e4 = next(option for option in options if option["uci"] == "e2e4")
+    assert e4["san"] == "e4"
+    assert e4["label"] == "e4 (e2e4)"
+
+
+def test_play_solver_move_auto_applies_reference_reply_and_history_rows():
+    fen = transformed_solver_fen(chess.STARTING_FEN, "e2e4 e7e5 g1f3")
+    session = PuzzleSession.create(fen, ["e7e5", "g1f3"])
+
+    result = session.play_solver_move_with_reference_reply("e7e5")
+    rows = move_history_rows(session.start_fen, session.human_moves, session.auto_reply_indices)
+
+    assert result["status"] == "COMPLETE"
+    assert result["auto_reply"] == "g1f3"
+    assert session.human_moves == ["e7e5", "g1f3"]
+    assert rows[0]["san"] == "e5"
+    assert rows[0]["source"] == "Your move"
+    assert rows[1]["san"] == "Nf3"
+    assert rows[1]["source"] == "Reference reply"
+
+
+def test_play_solver_move_rejects_wrong_move_without_mutation():
+    fen = transformed_solver_fen(chess.STARTING_FEN, "e2e4 e7e5 g1f3")
+    session = PuzzleSession.create(fen, ["e7e5", "g1f3"])
+
+    result = session.play_solver_move_with_reference_reply("c7c5")
+
+    assert result["status"] == "INCORRECT"
+    assert session.human_moves == []
 
 
 def test_illegal_puzzle_session_move_raises():
