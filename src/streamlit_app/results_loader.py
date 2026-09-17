@@ -43,3 +43,59 @@ def canonical_result_snapshot():
         "B_minus_A3_pp": -1.57955805299938,
     }
 
+
+def canonical_mate_depth_rows():
+    """Return documented A3/A4 MateDepth frozen metrics."""
+
+    rows = [
+        ("Mate in 1", None, 0.7955, 0.9393),
+        ("Mate in 2", None, 0.6978, 0.8819),
+        ("Mate in 3", None, 0.6673, 0.8459),
+        ("Mate in 4", None, 0.5873, 0.7839),
+        ("Mate in 5", None, 0.5291, 0.7427),
+    ]
+    return [
+        {
+            "Puzzle depth": depth,
+            "N": count,
+            "A3": a3,
+            "A4": a4,
+            "Improvement": a4 - a3,
+        }
+        for depth, count, a3, a4 in rows
+    ]
+
+
+def canonical_rating_rows():
+    """Return documented A3/A4 rating-band frozen metrics."""
+
+    rows = [
+        ("<1200", None, 0.8206, 0.9554),
+        ("1200-1599", None, 0.6585, 0.8690),
+        ("1600-1999", None, 0.5134, 0.7583),
+        ("2000-2399", None, 0.4316, 0.6042),
+        ("2400+", None, 0.2667, 0.4500),
+    ]
+    return [
+        {
+            "Rating": rating,
+            "N": count,
+            "A3": a3,
+            "A4": a4,
+            "Improvement": a4 - a3,
+        }
+        for rating, count, a3, a4 in rows
+    ]
+
+
+def format_metric_rows(rows):
+    """Format metric rows as percentages for Streamlit display."""
+
+    formatted = []
+    for row in rows:
+        item = row.copy()
+        for key in ("A3", "A4", "Improvement"):
+            if item.get(key) is not None:
+                item[key] = f"{item[key] * 100:.2f}%"
+        formatted.append(item)
+    return formatted
