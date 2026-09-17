@@ -63,7 +63,7 @@ from src.inference.model_a.chess_gat_inference import (
     is_legal_uci,
     is_mate_in_one_row,
     load_model_bundle,
-    move_to_san,
+    move_to_san as inference_move_to_san,
     puzzle_row_to_graph,
     run_single_inference,
     verify_target_checkmate,
@@ -87,12 +87,22 @@ from src.streamlit_app.puzzle_sequence import (
     filter_by_mate_depth,
     legal_move_options,
     move_history_rows,
+    move_to_san,
     move_to_san_label,
     solution_moves_from_lichess_moves,
     solution_san_sequence,
 )
+from src.streamlit_app.puzzle_inference import (
+    current_solver_target,
+    invalidate_prediction_if_fen_changed,
+    row_for_current_fen,
+    run_reference_line_rollout,
+)
 from src.streamlit_app.results_loader import (
     canonical_result_snapshot,
+    canonical_mate_depth_rows,
+    canonical_rating_rows,
+    format_metric_rows,
     load_frozen_results,
 )
 
@@ -433,9 +443,13 @@ def reset_puzzle_state():
     """Clear per-puzzle user and inference state."""
 
     st.session_state["user_move"] = ""
+    st.session_state["user_move_input"] = ""
     st.session_state["last_user_result"] = None
     st.session_state["revealed_solution"] = False
     st.session_state["model_result"] = None
+    st.session_state["a4_result"] = None
+    st.session_state["reference_line_rollout"] = None
+    st.session_state["model_prediction_fen"] = None
     st.session_state["puzzle_session"] = None
     st.session_state["playback_ply"] = 0
 
@@ -445,6 +459,39 @@ def apply_filtered_index(new_index):
 
     st.session_state["current_idx"] = int(new_index)
     reset_puzzle_state()
+
+
+def predict_next_move_for_fen(
+    model_name,
+    fen,
+    sample_row,
+    bundle_a,
+    bundle_a2,
+    bundle_a3,
+):
+    """Predict one move for the selected Streamlit model at a given FEN."""
+
+    if model_name.startswith("A4"):
+        result = predict_a4_from_fen(
+            fen,
+            a3_checkpoint=MODEL_A3_CHECKPOINT_PATH,
+            a4_checkpoint="artifacts/model_a4_postmove_gnn_reranker/best.pt",
+            top_k=5,
+            amp=False,
+        )
+        return result["a4_top1"], result
+    mode = READABLE_MODEL_OPTIONS[model_name]
+    row = row_for_current_fen(sample_row, fen)
+    result = run_model_mode_inference(
+        mode,
+        row=row,
+        bundle_a=bundle_a,
+        bundle_a2=bundle_a2,
+        bundle_a3=bundle_a3,
+        top_k=5,
+    )
+    predicted = result["topk"][0]["move"] if result.get("topk") else None
+    return predicted, result
 
 # =========================================================
 # LOAD DATA / SESSION DEFAULTS
@@ -595,6 +642,18 @@ if current_idx != st.session_state["current_idx"]:
     apply_filtered_index(current_idx)
 
 sample = df.iloc[current_idx]
+solution_moves = solution_moves_from_lichess_moves(sample.Moves)
+if st.session_state.get("puzzle_session") is None:
+    st.session_state["puzzle_session"] = PuzzleSession.create(sample.FEN, solution_moves)
+puzzle_session = st.session_state["puzzle_session"]
+current_fen = puzzle_session.current_fen
+current_target_move = current_solver_target(puzzle_session)
+inference_row = row_for_current_fen(
+    sample,
+    current_fen,
+    target_move=current_target_move or sample.TargetMove,
+)
+invalidate_prediction_if_fen_changed(st.session_state, current_fen)
 
 # =========================================================
 # VIEW MODE
@@ -658,7 +717,7 @@ st.title(
 # INFO
 # =========================================================
 
-solver_board_for_header = chess.Board(sample.FEN)
+solver_board_for_header = chess.Board(current_fen)
 side_to_move = "WHITE TO MOVE" if solver_board_for_header.turn == chess.WHITE else "BLACK TO MOVE"
 
 info1, info2, info3, info4 = st.columns(4)
@@ -693,11 +752,11 @@ st.caption(
 # =========================================================
 
 graph = puzzle_row_to_graph(
-    row=sample,
+    row=inference_row,
     move_to_idx=move_to_idx,
 )
 
-board = chess.Board(sample.FEN)
+board = chess.Board(current_fen)
 
 # =========================================================
 # BUILD ARROWS
@@ -1000,13 +1059,9 @@ puzzle_tab, model_tab, performance_tab, advanced_tab = st.tabs(
 
 with puzzle_tab:
     st.subheader("Try the puzzle")
-    st.write(
-        "Choose your move in chess notation. When your move matches the reference line, the app automatically plays the Lichess reference reply so you can continue solving."
-    )
-    solution_moves = solution_moves_from_lichess_moves(sample.Moves)
-    if st.session_state.get("puzzle_session") is None:
-        st.session_state["puzzle_session"] = PuzzleSession.create(sample.FEN, solution_moves)
-    puzzle_session = st.session_state["puzzle_session"]
+    top_left, top_right = st.columns(2)
+    top_left.metric("Mate", f"in {int(sample.MateDepth)}")
+    top_right.metric("Turn", side_to_move)
     html(
         chess.svg.board(
             board=chess.Board(puzzle_session.current_fen),
@@ -1015,46 +1070,167 @@ with puzzle_tab:
         ),
         height=570,
     )
-    st.caption(f"{side_to_move} from the initial puzzle position. Reference solution has {len(solution_moves)} plies.")
+    if puzzle_session.is_complete_solution():
+        st.success("Puzzle solved!")
+    else:
+        st.info(f"Your turn: {side_to_move}. Moves are shown in standard chess notation.")
     legal_options = legal_move_options(puzzle_session.current_fen)
-    if legal_options:
+    if legal_options and not puzzle_session.is_complete_solution():
         option_labels = [option["label"] for option in legal_options]
         selected_label = st.selectbox("Your move", option_labels)
         selected_legal_move = legal_options[option_labels.index(selected_label)]["uci"]
     else:
         selected_legal_move = None
-        st.info("No legal moves in current position.")
+        if not puzzle_session.is_complete_solution():
+            st.info("No legal moves in current position.")
     with st.expander("Advanced UCI move entry", expanded=False):
         move_input = st.text_input(
             "Raw UCI move",
-            value=st.session_state.get("user_move", ""),
+            value="",
             key="user_move_input",
         )
-    play_col, uci_col, undo_col, reveal_col, reset_col = st.columns(5)
+    model_choice_col, ask_col = st.columns([2, 1])
+    puzzle_model = model_choice_col.selectbox(
+        "Model",
+        list(READABLE_MODEL_OPTIONS) + ["A4 - Post-Move Reranker"],
+        index=4,
+        key="puzzle_model_choice",
+    )
+    if ask_col.button("Ask model"):
+        st.session_state["model_prediction_fen"] = puzzle_session.current_fen
+        try:
+            if puzzle_model.startswith("A4"):
+                st.session_state["a4_result"] = predict_a4_from_fen(
+                    puzzle_session.current_fen,
+                    a3_checkpoint=MODEL_A3_CHECKPOINT_PATH,
+                    a4_checkpoint="artifacts/model_a4_postmove_gnn_reranker/best.pt",
+                    top_k=5,
+                    amp=False,
+                )
+                st.session_state["model_result"] = None
+            else:
+                mode = READABLE_MODEL_OPTIONS[puzzle_model]
+                row = row_for_current_fen(
+                    sample,
+                    puzzle_session.current_fen,
+                    target_move=current_solver_target(puzzle_session) or sample.TargetMove,
+                )
+                st.session_state["model_result"] = run_model_mode_inference(
+                    mode,
+                    row=row,
+                    bundle_a=bundle,
+                    bundle_a2=bundle_a2,
+                    bundle_a3=bundle_a3,
+                    top_k=5,
+                )
+                st.session_state["a4_result"] = None
+        except Exception as error:
+            st.error(f"Model inference failed: {error}")
+
+    if st.session_state.get("model_prediction_fen") == puzzle_session.current_fen:
+        if st.session_state.get("a4_result"):
+            predicted = st.session_state["a4_result"]["a4_top1"]
+            st.write(f"{puzzle_model} suggests: `{move_to_san(puzzle_session.current_fen, predicted) or predicted}`")
+        elif st.session_state.get("model_result") and st.session_state["model_result"].get("topk"):
+            predicted = st.session_state["model_result"]["topk"][0]["move"]
+            st.write(f"{puzzle_model} suggests: `{move_to_san(puzzle_session.current_fen, predicted) or predicted}`")
+
+    if st.button("Ask model to solve along reference replies"):
+        human_fen_before_rollout = puzzle_session.current_fen
+
+        def rollout_predict(fen):
+            predicted, _ = predict_next_move_for_fen(
+                puzzle_model,
+                fen,
+                sample,
+                bundle,
+                bundle_a2,
+                bundle_a3,
+            )
+            return predicted
+
+        try:
+            st.session_state["reference_line_rollout"] = run_reference_line_rollout(
+                sample.FEN,
+                solution_moves,
+                rollout_predict,
+            )
+            assert puzzle_session.current_fen == human_fen_before_rollout
+        except Exception as error:
+            st.error(f"Reference-line attempt failed: {error}")
+
+    rollout = st.session_state.get("reference_line_rollout")
+    if rollout:
+        st.write(f"{puzzle_model} reference-line attempt")
+        rollout_rows = pd.DataFrame(rollout["rows"])
+        if not rollout_rows.empty:
+            display_rows = rollout_rows[
+                [
+                    "solver_ply",
+                    "predicted_san",
+                    "expected_san",
+                    "correct",
+                    "reference_reply_san",
+                ]
+            ].rename(
+                columns={
+                    "solver_ply": "Solver move",
+                    "predicted_san": "Model",
+                    "expected_san": "Reference",
+                    "correct": "Correct",
+                    "reference_reply_san": "Lichess reply",
+                }
+            )
+            st.dataframe(display_rows, use_container_width=True)
+        if rollout["solved"]:
+            st.success("Solved reference line.")
+        else:
+            st.warning(f"Failed at solver move {rollout['failure_ply']} of {rollout['solver_moves_required']}.")
+
+    play_col, undo_col, reset_col, reveal_col = st.columns(4)
     if play_col.button("Play move", disabled=selected_legal_move is None):
         result = puzzle_session.play_solver_move_with_reference_reply(selected_legal_move)
         st.session_state["user_move"] = result["move"]
         st.session_state["last_user_result"] = result
+        st.session_state["model_result"] = None
+        st.session_state["a4_result"] = None
+        st.session_state["model_prediction_fen"] = None
+        st.session_state["user_move_input"] = ""
         counters = st.session_state["session_counters"]
         counters["attempted"] += 1
         counters["human_correct"] += int(result["status"] == "COMPLETE")
-    if uci_col.button("Play UCI"):
-        move_to_check = move_input or selected_legal_move
-        try:
-            result = puzzle_session.play_solver_move_with_reference_reply(move_to_check)
-        except ValueError as error:
-            result = {"move": move_to_check, "status": "ILLEGAL", "message": str(error), "auto_reply": None}
-        st.session_state["user_move"] = result["move"]
-        st.session_state["last_user_result"] = result
-        counters = st.session_state["session_counters"]
-        counters["attempted"] += 1
-        counters["human_correct"] += int(result["status"] == "COMPLETE")
+        st.rerun()
     if undo_col.button("Undo"):
         puzzle_session.undo()
+        st.session_state["last_user_result"] = None
+        st.session_state["model_result"] = None
+        st.session_state["a4_result"] = None
+        st.session_state["model_prediction_fen"] = None
+        st.session_state["user_move_input"] = ""
+        st.rerun()
     if reveal_col.button("Reveal solution"):
         st.session_state["revealed_solution"] = True
     if reset_col.button("Reset answer"):
         reset_puzzle_state()
+        st.rerun()
+
+    with st.expander("Advanced UCI controls", expanded=False):
+        if st.button("Play raw UCI"):
+            move_to_check = st.session_state.get("user_move_input", "")
+            try:
+                result = puzzle_session.play_solver_move_with_reference_reply(move_to_check)
+            except ValueError as error:
+                result = {"move": move_to_check, "status": "ILLEGAL", "message": str(error), "auto_reply": None}
+            st.session_state["user_move"] = result["move"]
+            st.session_state["last_user_result"] = result
+            st.session_state["model_result"] = None
+            st.session_state["a4_result"] = None
+            st.session_state["model_prediction_fen"] = None
+            st.session_state["user_move_input"] = ""
+            counters = st.session_state["session_counters"]
+            counters["attempted"] += 1
+            counters["human_correct"] += int(result["status"] == "COMPLETE")
+            st.rerun()
 
     result = st.session_state.get("last_user_result")
     if result:
@@ -1066,15 +1242,9 @@ with puzzle_tab:
             st.error(result["message"])
         else:
             st.warning(result["message"])
-        st.write(f"Your move: `{move_to_san_label(sample.FEN, result['move']) if result['move'] else ''}`")
+        st.write(f"You played: `{result.get('san') or result.get('move')}`")
         if result.get("auto_reply"):
-            reply_index = len(puzzle_session.human_moves) - 1
-            reply_start = chess.Board(sample.FEN)
-            for move_uci in puzzle_session.human_moves[:reply_index]:
-                move = chess.Move.from_uci(move_uci)
-                if move in reply_start.legal_moves:
-                    reply_start.push(move)
-            st.write(f"Reference reply: `{move_to_san_label(reply_start.fen(), result['auto_reply'])}`")
+            st.write(f"Reference reply: `{result.get('auto_reply_san') or result['auto_reply']}`")
         st.caption(result["message"])
     st.write("Move history")
     history_rows = move_history_rows(
@@ -1120,7 +1290,7 @@ with puzzle_tab:
 
 with model_tab:
     st.subheader("Ask a frozen model")
-    st.caption("Models predict the next move only. Correctness stays hidden unless you reveal the solution or enable evaluation mode.")
+    st.caption("Prediction position: Current board. Models predict the next move only.")
     readable_names = list(READABLE_MODEL_OPTIONS) + [
         "A4 - Post-Move Reranker",
         "B - Timing-Aware Legal Move Scorer",
@@ -1154,7 +1324,7 @@ with model_tab:
             try:
                 if selected_readable_model.startswith("A4"):
                     result = predict_a4_from_fen(
-                        sample.FEN,
+                        puzzle_session.current_fen,
                         a3_checkpoint=MODEL_A3_CHECKPOINT_PATH,
                         a4_checkpoint="artifacts/model_a4_postmove_gnn_reranker/best.pt",
                         top_k=5,
@@ -1164,7 +1334,11 @@ with model_tab:
                 else:
                     result = run_model_mode_inference(
                         selected_model_mode,
-                        row=sample,
+                        row=row_for_current_fen(
+                            sample,
+                            puzzle_session.current_fen,
+                            target_move=current_solver_target(puzzle_session) or sample.TargetMove,
+                        ),
                         bundle_a=bundle,
                         bundle_a2=bundle_a2,
                         bundle_a3=bundle_a3,
@@ -1175,30 +1349,36 @@ with model_tab:
                     counters["model_top1_correct"] += int(result["top1_hit"])
                     counters["model_top3_correct"] += int(result["top3_hit"])
                     counters["model_top5_correct"] += int(result["top5_hit"])
+                st.session_state["model_prediction_fen"] = puzzle_session.current_fen
             except Exception as error:
                 st.error(f"Model inference failed: {error}")
 
-    if selected_readable_model.startswith("A4") and st.session_state.get("a4_result"):
+    prediction_matches_current = (
+        st.session_state.get("model_prediction_fen") == puzzle_session.current_fen
+    )
+    if selected_readable_model.startswith("A4") and st.session_state.get("a4_result") and prediction_matches_current:
         a4_result = st.session_state["a4_result"]
-        st.metric("Predicted move", move_to_san_label(sample.FEN, a4_result["a4_top1"]))
+        st.metric("Predicted move", move_to_san(puzzle_session.current_fen, a4_result["a4_top1"]) or a4_result["a4_top1"])
         col_a3, col_a4 = st.columns(2)
         with col_a3:
             st.write("A3 candidates sent to A4")
             a3_rows = pd.DataFrame(a4_result["a3_topk"])
-            if "move" in a3_rows:
-                a3_rows["SAN"] = [move_to_san_label(sample.FEN, move) for move in a3_rows["move"]]
+            move_col = "uci" if "uci" in a3_rows else "move"
+            if move_col in a3_rows:
+                a3_rows["Move"] = [move_to_san(puzzle_session.current_fen, move) or move for move in a3_rows[move_col]]
             st.dataframe(a3_rows, use_container_width=True)
         with col_a4:
             st.write("A4 ranking")
             a4_rows = pd.DataFrame(a4_result["a4_ranking"])
-            if "move" in a4_rows:
-                a4_rows["SAN"] = [move_to_san_label(sample.FEN, move) for move in a4_rows["move"]]
+            move_col = "uci" if "uci" in a4_rows else "move"
+            if move_col in a4_rows:
+                a4_rows["Move"] = [move_to_san(puzzle_session.current_fen, move) or move for move in a4_rows[move_col]]
             st.dataframe(a4_rows, use_container_width=True)
-    elif selected_model_mode and st.session_state.get("model_result"):
+    elif selected_model_mode and st.session_state.get("model_result") and prediction_matches_current:
         result = st.session_state["model_result"]
         top1 = result["topk"][0] if result["topk"] else None
         if top1:
-            st.metric("Predicted move", move_to_san_label(sample.FEN, top1["move"]))
+            st.metric("Predicted move", move_to_san(puzzle_session.current_fen, top1["move"]) or top1["move"])
         if show_ground_truth:
             result_cols = st.columns(4)
             result_cols[0].metric("Top-1 target match", result["top1_label"])
@@ -1248,24 +1428,20 @@ with performance_tab:
     st.info("Synthetic timing did not improve over A3 in the implemented Model B ablation.")
 
     st.write("Performance by puzzle depth")
-    mate_depth_rows = [
-        {"Puzzle depth": "Mate in 1", "Status": "available in frozen artifacts where present"},
-        {"Puzzle depth": "Mate in 2", "Status": "available in frozen artifacts where present"},
-        {"Puzzle depth": "Mate in 3", "Status": "available in frozen artifacts where present"},
-        {"Puzzle depth": "Mate in 4", "Status": "available in frozen artifacts where present"},
-        {"Puzzle depth": "Mate in 5", "Status": "available in frozen artifacts where present"},
-    ]
-    st.dataframe(pd.DataFrame(mate_depth_rows), use_container_width=True)
+    mate_depth_rows = canonical_mate_depth_rows()
+    st.dataframe(pd.DataFrame(format_metric_rows(mate_depth_rows)), use_container_width=True)
+    chart_depth = pd.DataFrame(mate_depth_rows).set_index("Puzzle depth")[["A3", "A4"]]
+    st.bar_chart(chart_depth)
 
     st.write("Performance by rating")
-    rating_rows = [
-        {"Rating band": "<1200", "Status": "available in frozen artifacts where present"},
-        {"Rating band": "1200-1599", "Status": "available in frozen artifacts where present"},
-        {"Rating band": "1600-1999", "Status": "available in frozen artifacts where present"},
-        {"Rating band": "2000-2399", "Status": "available in frozen artifacts where present"},
-        {"Rating band": "2400+", "Status": "available in frozen artifacts where present"},
-    ]
-    st.dataframe(pd.DataFrame(rating_rows), use_container_width=True)
+    rating_rows = canonical_rating_rows()
+    st.dataframe(pd.DataFrame(format_metric_rows(rating_rows)), use_container_width=True)
+    chart_rating = pd.DataFrame(rating_rows).set_index("Rating")[["A3", "A4"]]
+    st.bar_chart(chart_rating)
+    if frozen_results.get("a4_terminal") is None:
+        st.caption(
+            "Detailed frozen A4 artifact is not present locally; displayed values use the documented canonical frozen summary."
+        )
 
     with st.expander("Raw artifact availability", expanded=False):
         st.json({key: value is not None for key, value in frozen_results.items()})

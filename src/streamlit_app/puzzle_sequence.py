@@ -88,6 +88,30 @@ def move_to_san_label(fen, move_uci):
     return f"{san} ({move_uci})"
 
 
+def move_to_san(fen, move_uci):
+    """Return SAN for one legal move in the given position.
+
+    Parameters:
+        fen: Current board FEN.
+        move_uci: Candidate move in UCI notation.
+    Returns:
+        SAN string, or None when the move is not legal.
+    Side effects:
+        None.
+    """
+
+    if move_uci is None:
+        return None
+    board = chess.Board(fen)
+    try:
+        move = chess.Move.from_uci(str(move_uci))
+    except ValueError:
+        return None
+    if move not in board.legal_moves:
+        return None
+    return board.san(move)
+
+
 def legal_move_options(fen):
     """Return legal moves as SAN-first UI options.
 
@@ -103,7 +127,7 @@ def legal_move_options(fen):
     options = []
     for move in board.legal_moves:
         san = board.san(move)
-        options.append({"uci": move.uci(), "san": san, "label": f"{san} ({move.uci()})"})
+        options.append({"uci": move.uci(), "san": san, "label": san})
     return options
 
 
@@ -178,6 +202,13 @@ class PuzzleSession:
         """Return legal UCI moves for the current position."""
 
         return [move.uci() for move in chess.Board(self.current_fen).legal_moves]
+
+    def next_expected_move(self):
+        """Return the next expected reference move, if any."""
+
+        if len(self.human_moves) >= len(self.solution_moves):
+            return None
+        return self.solution_moves[len(self.human_moves)]
 
     def play(self, move_uci):
         """Apply one legal human move and advance state."""
@@ -270,13 +301,18 @@ class PuzzleSession:
                 "complete": False,
             }
 
+        fen_before = self.current_fen
+        san = chess.Board(fen_before).san(move)
         self.play(move_uci)
+        fen_after_user_move = self.current_fen
         auto_reply = None
+        auto_reply_san = None
         if len(self.human_moves) < len(self.solution_moves):
             reply_uci = self.solution_moves[len(self.human_moves)]
             reply_board = chess.Board(self.current_fen)
             reply = chess.Move.from_uci(reply_uci)
             if reply in reply_board.legal_moves:
+                auto_reply_san = reply_board.san(reply)
                 auto_reply_index = len(self.human_moves)
                 self.play(reply_uci)
                 self.auto_reply_indices = list(self.auto_reply_indices or [])
@@ -286,8 +322,13 @@ class PuzzleSession:
         complete = self.is_complete_solution()
         return {
             "move": str(move_uci),
+            "san": san,
+            "fen_before": fen_before,
+            "fen_after_user_move": fen_after_user_move,
+            "fen_after_turn": self.current_fen,
             "status": "COMPLETE" if complete else "CORRECT",
             "message": "Puzzle solved." if complete else "Correct move - keep going.",
             "auto_reply": auto_reply,
+            "auto_reply_san": auto_reply_san,
             "complete": complete,
         }
