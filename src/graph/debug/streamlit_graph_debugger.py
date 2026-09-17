@@ -85,6 +85,9 @@ from src.streamlit_app.puzzle_sequence import (
     MATE_DEPTH_OPTIONS,
     PuzzleSession,
     filter_by_mate_depth,
+    legal_move_options,
+    move_history_rows,
+    move_to_san_label,
     solution_moves_from_lichess_moves,
     solution_san_sequence,
 )
@@ -111,6 +114,13 @@ BOARD_SIZE = 700
 USER_MOVE_COLOR = "#f59e0b"
 MODEL_TOP1_COLOR = "#38bdf8"
 GROUND_TRUTH_COLOR = "#22c55e"
+
+READABLE_MODEL_OPTIONS = {
+    "A - Move Classifier": "Model A Raw",
+    "A1 - A + Best Legal Move": "Model A Best-Legal",
+    "A2 - Legal-Masked Classifier": "Model A2 Masked",
+    "A3 - Legal Move Scorer": "Model A3 Legal Scorer",
+}
 
 # =========================================================
 # PAGE CONFIG
@@ -482,11 +492,11 @@ move_to_idx = load_move_encoder()
 # =========================================================
 
 st.sidebar.title(
-    "Chess GNN Debugger"
+    "Chess Puzzle GNN"
 )
 
 st.sidebar.caption(
-    "Model A UI is diagnostic only. Do not use test-set browsing for future model selection."
+    "Browse puzzles, try moves, and inspect frozen model predictions."
 )
 
 # =========================================================
@@ -495,11 +505,6 @@ st.sidebar.caption(
 
 st.sidebar.subheader(
     "Puzzle Filters"
-)
-
-mate_in_one_only = st.sidebar.checkbox(
-    "Mate-in-1 only",
-    value=False,
 )
 
 mate_depth_filter = st.sidebar.selectbox(
@@ -532,13 +537,6 @@ rating_range = st.sidebar.slider(
 
 df = df_full.copy()
 df = filter_by_mate_depth(df, mate_depth_filter)
-if mate_in_one_only:
-    df = df[
-        df.apply(
-            is_mate_in_one_row,
-            axis=1,
-        )
-    ]
 if selected_theme != "All":
     df = df[
         df["Themes"].fillna("").str.split().apply(
@@ -603,7 +601,7 @@ sample = df.iloc[current_idx]
 # =========================================================
 
 st.sidebar.subheader(
-    "Visualization Mode"
+    "Advanced Visualization"
 )
 
 view_mode = st.sidebar.radio(
@@ -653,14 +651,17 @@ show_check = st.sidebar.checkbox(
 # =========================================================
 
 st.title(
-    "Chess GNN Graph Debugger"
+    "Chess Puzzle GNN Trainer"
 )
 
 # =========================================================
 # INFO
 # =========================================================
 
-info1, info2, info3 = st.columns(3)
+solver_board_for_header = chess.Board(sample.FEN)
+side_to_move = "WHITE TO MOVE" if solver_board_for_header.turn == chess.WHITE else "BLACK TO MOVE"
+
+info1, info2, info3, info4 = st.columns(4)
 
 info1.metric(
     "Puzzle ID",
@@ -668,18 +669,23 @@ info1.metric(
 )
 
 info2.metric(
-    "Mate Depth",
-    sample.MateDepth
+    "Mate",
+    f"in {int(sample.MateDepth)}"
 )
 
 info3.metric(
-    "Target Move",
-    sample.TargetMove
+    "Side to move",
+    side_to_move
+)
+
+info4.metric(
+    "Rating",
+    int(sample.Rating) if "Rating" in sample else "n/a"
 )
 
 st.caption(
-    f"Split: {selected_split} | Source row: {sample.source_row_index} | "
-    "Displayed FEN is the transformed solver position used by Model A."
+    f"Split: {selected_split} | Puzzle {current_idx + 1:,} of {len(df):,}. "
+    "The reference answer stays hidden until you reveal it."
 )
 
 # =========================================================
@@ -731,30 +737,6 @@ if st.session_state.get("revealed_solution"):
     )
     if target_arrow is not None:
         board_arrows.append(target_arrow)
-
-# =========================================================
-# STATS
-# =========================================================
-
-stats1, stats2, stats3 = st.columns(3)
-
-stats1.metric(
-    "Nodes",
-    graph.x.shape[0]
-)
-
-stats2.metric(
-    "Edges",
-    graph.edge_index.shape[1]
-)
-
-stats3.metric(
-    "Node Features",
-    graph.x.shape[1]
-)
-
-with st.expander("Graph representation used by frozen models", expanded=False):
-    st.json(graph_representation_metadata())
 
 # =========================================================
 # CHESSBOARD VIEW
@@ -972,26 +954,11 @@ if view_mode in ["Graph", "Both"]:
 # =========================================================
 
 st.divider()
-st.header("Puzzle Training & Model Verification")
+st.header("Play, Predict, Compare")
 
 bundle, model_error = load_model_a_resource()
 bundle_a2, model_a2_error = load_model_a2_resource()
 bundle_a3, model_a3_error = load_model_a3_resource()
-
-status_cols = st.columns(4)
-status_cols[0].metric("Primary Model", "MODEL_A3_NO_TIMING")
-status_cols[1].metric(
-    "Device",
-    str(bundle_a3.device).upper() if bundle_a3 else "UNAVAILABLE",
-)
-status_cols[2].metric(
-    "Checkpoint",
-    str(bundle_a3.checkpoint_path) if bundle_a3 else "unavailable",
-)
-status_cols[3].metric(
-    "Vocabulary",
-    f"{len(move_to_idx):,}",
-)
 
 if model_error:
     st.warning(
@@ -1022,62 +989,61 @@ if model_a3_error:
 elif bundle_a3:
     st.success("Model A3 checkpoint status: OFFICIAL NO-TIMING BASELINE")
 
-puzzle_tab, model_tab, a4_tab, timing_tab, results_tab, mate_tab, error_tab = st.tabs(
+puzzle_tab, model_tab, performance_tab, advanced_tab = st.tabs(
     [
-        "Mate-in-N Puzzle",
-        "Model Inference",
-        "A4 Reranker",
-        "Model B Timing",
-        "Frozen Results",
-        "MateDepth Evaluation",
-        "Error Analysis",
+        "Puzzle",
+        "Models",
+        "Performance",
+        "Advanced",
     ]
 )
 
 with puzzle_tab:
     st.subheader("Try the puzzle")
     st.write(
-        "Ground truth is hidden until reveal. Use move-by-move legal move selection; UCI entry remains available as fallback."
+        "Choose your move in chess notation. When your move matches the reference line, the app automatically plays the Lichess reference reply so you can continue solving."
     )
     solution_moves = solution_moves_from_lichess_moves(sample.Moves)
     if st.session_state.get("puzzle_session") is None:
         st.session_state["puzzle_session"] = PuzzleSession.create(sample.FEN, solution_moves)
     puzzle_session = st.session_state["puzzle_session"]
-    st.write(f"MateDepth metadata: `Mate in {int(sample.MateDepth)}`")
-    st.write(f"Solution plies after Lichess setup move: `{len(solution_moves)}`")
-    legal_options = puzzle_session.legal_moves()
+    html(
+        chess.svg.board(
+            board=chess.Board(puzzle_session.current_fen),
+            size=520,
+            coordinates=True,
+        ),
+        height=570,
+    )
+    st.caption(f"{side_to_move} from the initial puzzle position. Reference solution has {len(solution_moves)} plies.")
+    legal_options = legal_move_options(puzzle_session.current_fen)
     if legal_options:
-        selected_legal_move = st.selectbox("Legal move", legal_options)
+        option_labels = [option["label"] for option in legal_options]
+        selected_label = st.selectbox("Your move", option_labels)
+        selected_legal_move = legal_options[option_labels.index(selected_label)]["uci"]
     else:
         selected_legal_move = None
         st.info("No legal moves in current position.")
-    move_input = st.text_input(
-        "Fallback UCI move",
-        value=st.session_state.get("user_move", ""),
-        key="user_move_input",
-    )
-    play_col, check_col, undo_col, reveal_col, reset_col = st.columns(5)
-    if play_col.button("Play selected", disabled=selected_legal_move is None):
-        try:
-            puzzle_session.play(selected_legal_move)
-            st.session_state["user_move"] = selected_legal_move
-            st.session_state["last_user_result"] = {
-                "move": selected_legal_move,
-                "status": "PREFIX_OK" if puzzle_session.is_exact_solution_prefix() else "PREFIX_MISMATCH",
-                "message": "Move recorded in the Mate-in-N sequence.",
-            }
-        except Exception as error:
-            st.error(str(error))
-    if check_col.button("Check UCI fallback"):
+    with st.expander("Advanced UCI move entry", expanded=False):
+        move_input = st.text_input(
+            "Raw UCI move",
+            value=st.session_state.get("user_move", ""),
+            key="user_move_input",
+        )
+    play_col, uci_col, undo_col, reveal_col, reset_col = st.columns(5)
+    if play_col.button("Play move", disabled=selected_legal_move is None):
+        result = puzzle_session.play_solver_move_with_reference_reply(selected_legal_move)
+        st.session_state["user_move"] = result["move"]
+        st.session_state["last_user_result"] = result
+        counters = st.session_state["session_counters"]
+        counters["attempted"] += 1
+        counters["human_correct"] += int(result["status"] == "COMPLETE")
+    if uci_col.button("Play UCI"):
         move_to_check = move_input or selected_legal_move
         try:
-            puzzle_session.play(move_to_check)
-            status = "COMPLETE" if puzzle_session.is_complete_solution() else (
-                "PREFIX_OK" if puzzle_session.is_exact_solution_prefix() else "PREFIX_MISMATCH"
-            )
-            result = {"move": move_to_check, "status": status, "message": "Sequence checked against hidden solution prefix."}
-        except Exception as error:
-            result = {"move": move_to_check, "status": "ILLEGAL", "message": str(error)}
+            result = puzzle_session.play_solver_move_with_reference_reply(move_to_check)
+        except ValueError as error:
+            result = {"move": move_to_check, "status": "ILLEGAL", "message": str(error), "auto_reply": None}
         st.session_state["user_move"] = result["move"]
         st.session_state["last_user_result"] = result
         counters = st.session_state["session_counters"]
@@ -1092,13 +1058,34 @@ with puzzle_tab:
 
     result = st.session_state.get("last_user_result")
     if result:
-        st.write(f"Your move: `{result['move']}`")
-        if st.session_state.get("revealed_solution"):
-            st.write(f"Expected first solver move: `{sample.TargetMove}`")
-        st.write(f"Result: `{result['status']}`")
+        if result["status"] == "COMPLETE":
+            st.success(result["message"])
+        elif result["status"] == "CORRECT":
+            st.success(result["message"])
+        elif result["status"] == "INCORRECT":
+            st.error(result["message"])
+        else:
+            st.warning(result["message"])
+        st.write(f"Your move: `{move_to_san_label(sample.FEN, result['move']) if result['move'] else ''}`")
+        if result.get("auto_reply"):
+            reply_index = len(puzzle_session.human_moves) - 1
+            reply_start = chess.Board(sample.FEN)
+            for move_uci in puzzle_session.human_moves[:reply_index]:
+                move = chess.Move.from_uci(move_uci)
+                if move in reply_start.legal_moves:
+                    reply_start.push(move)
+            st.write(f"Reference reply: `{move_to_san_label(reply_start.fen(), result['auto_reply'])}`")
         st.caption(result["message"])
-    st.write("Human sequence")
-    st.code(" ".join(puzzle_session.human_moves) if puzzle_session.human_moves else "(empty)")
+    st.write("Move history")
+    history_rows = move_history_rows(
+        puzzle_session.start_fen,
+        puzzle_session.human_moves,
+        puzzle_session.auto_reply_indices,
+    )
+    if history_rows:
+        st.dataframe(pd.DataFrame(history_rows), use_container_width=True)
+    else:
+        st.caption("No moves played yet.")
 
     if st.session_state.get("revealed_solution"):
         st.success(f"First solver move: `{sample.TargetMove}`")
@@ -1132,143 +1119,159 @@ with puzzle_tab:
     counter_cols[3].metric("Model Top5", counters["model_top5_correct"])
 
 with model_tab:
-    st.subheader("Frozen model family")
-    st.dataframe(pd.DataFrame(model_table_rows()), use_container_width=True)
-    st.subheader("Next-move inference")
-    st.caption(
-        "A/A1/A2/A3 predict one next move. They do not autonomously produce a full Mate-in-N line."
-    )
-    selected_model_mode = st.selectbox("Model mode", MODEL_OPTIONS, index=3)
+    st.subheader("Ask a frozen model")
+    st.caption("Models predict the next move only. Correctness stays hidden unless you reveal the solution or enable evaluation mode.")
+    readable_names = list(READABLE_MODEL_OPTIONS) + [
+        "A4 - Post-Move Reranker",
+        "B - Timing-Aware Legal Move Scorer",
+    ]
+    selected_readable_model = st.selectbox("Model", readable_names, index=3)
+    selected_model_mode = READABLE_MODEL_OPTIONS.get(selected_readable_model)
     top_k = st.selectbox(
         "Top-K",
         [5, 10, 20],
         index=0,
     )
-    selected_bundle_available = {
-        "Model A Raw": bundle is not None,
-        "Model A Best-Legal": bundle is not None,
-        "Model A2 Masked": bundle_a2 is not None,
-        "Model A3 Legal Scorer": bundle_a3 is not None,
-    }[selected_model_mode]
+    show_ground_truth = st.checkbox(
+        "Show evaluation against reference answer",
+        value=st.session_state.get("revealed_solution", False),
+    )
+    selected_bundle_available = False
+    if selected_model_mode:
+        selected_bundle_available = {
+            "Model A Raw": bundle is not None,
+            "Model A Best-Legal": bundle is not None,
+            "Model A2 Masked": bundle_a2 is not None,
+            "Model A3 Legal Scorer": bundle_a3 is not None,
+        }[selected_model_mode]
+    elif selected_readable_model.startswith("A4"):
+        selected_bundle_available = Path("artifacts/model_a4_postmove_gnn_reranker/best.pt").exists()
+    else:
+        st.info("Model B is shown in Performance because its frozen timing ablation is not an interactive puzzle solver in this UI.")
+
     if st.button("Ask selected model", disabled=not selected_bundle_available):
         with st.spinner("Running frozen next-move inference..."):
             try:
-                result = run_model_mode_inference(
-                    selected_model_mode,
-                    row=sample,
-                    bundle_a=bundle,
-                    bundle_a2=bundle_a2,
-                    bundle_a3=bundle_a3,
-                    top_k=top_k,
-                )
-                st.session_state["model_result"] = result
-                counters = st.session_state["session_counters"]
-                counters["model_top1_correct"] += int(result["top1_hit"])
-                counters["model_top3_correct"] += int(result["top3_hit"])
-                counters["model_top5_correct"] += int(result["top5_hit"])
+                if selected_readable_model.startswith("A4"):
+                    result = predict_a4_from_fen(
+                        sample.FEN,
+                        a3_checkpoint=MODEL_A3_CHECKPOINT_PATH,
+                        a4_checkpoint="artifacts/model_a4_postmove_gnn_reranker/best.pt",
+                        top_k=5,
+                        amp=False,
+                    )
+                    st.session_state["a4_result"] = result
+                else:
+                    result = run_model_mode_inference(
+                        selected_model_mode,
+                        row=sample,
+                        bundle_a=bundle,
+                        bundle_a2=bundle_a2,
+                        bundle_a3=bundle_a3,
+                        top_k=top_k,
+                    )
+                    st.session_state["model_result"] = result
+                    counters = st.session_state["session_counters"]
+                    counters["model_top1_correct"] += int(result["top1_hit"])
+                    counters["model_top3_correct"] += int(result["top3_hit"])
+                    counters["model_top5_correct"] += int(result["top5_hit"])
             except Exception as error:
                 st.error(f"Model inference failed: {error}")
 
-    result = st.session_state.get("model_result")
-    if result:
-        top1 = result["topk"][0] if result["topk"] else None
-        result_cols = st.columns(4)
-        result_cols[0].metric("Top-1 target match", result["top1_label"])
-        result_cols[1].metric("Top-3 contains target", result["top3_label"])
-        result_cols[2].metric("Top-5 contains target", result["top5_label"])
-        result_cols[3].metric(
-            "Target Legal Rank",
-            "unavailable — target OOV"
-            if result["target_oov"]
-            else f"#{result['target_rank']} / {result.get('legal_candidate_count', 'legal')}",
-        )
-        st.write(f"Inference: `{result['inference_status']}`")
-        st.write("Illegal Top1 rate: `0.0` by construction.")
-        st.write(f"Legal candidates: `{result.get('legal_candidate_count')}`")
-        if top1:
-            st.write(f"Top-1 next move: `{top1['move']}`")
-            st.write(f"Top-1 score: `{top1.get('score')}`")
-        if result["target_rank"] and result["target_rank"] > top_k:
-            st.info(f"Ground truth appears at rank #{result['target_rank']}.")
-        st.dataframe(
-            pd.DataFrame(result["topk"]).rename(
-                columns={
-                    "rank": "Rank",
-                    "move": "Move",
-                    "san": "SAN",
-                    "score": "Score",
-                    "legal": "Legal",
-                    "ground_truth": "Ground Truth",
-                }
-            ),
-            use_container_width=True,
-        )
-
-with a4_tab:
-    st.subheader("Model A4 post-move reranker")
-    st.caption(
-        "A4 is a frozen two-stage next-move system: A3 retrieves Top-5 legal moves, then A4 reranks those five by encoding each resulting position. It never injects the target."
-    )
-    st.write("Checkpoint: `artifacts/model_a4_postmove_gnn_reranker/best.pt`")
-    st.write("Candidate vector dimension: `530`; Top-K retrieval: `5`.")
-    if st.button("Ask Model A4", disabled=not Path("artifacts/model_a4_postmove_gnn_reranker/best.pt").exists()):
-        with st.spinner("Running frozen two-stage A4 inference..."):
-            try:
-                a4_result = predict_a4_from_fen(
-                    sample.FEN,
-                    a3_checkpoint=MODEL_A3_CHECKPOINT_PATH,
-                    a4_checkpoint="artifacts/model_a4_postmove_gnn_reranker/best.pt",
-                    top_k=5,
-                    amp=False,
-                )
-                st.session_state["a4_result"] = a4_result
-            except Exception as error:
-                st.error(f"A4 inference failed: {error}")
-    if st.session_state.get("a4_result"):
+    if selected_readable_model.startswith("A4") and st.session_state.get("a4_result"):
         a4_result = st.session_state["a4_result"]
+        st.metric("Predicted move", move_to_san_label(sample.FEN, a4_result["a4_top1"]))
         col_a3, col_a4 = st.columns(2)
         with col_a3:
-            st.write("A3 Top-5 retrieval")
-            st.dataframe(pd.DataFrame(a4_result["a3_topk"]), use_container_width=True)
+            st.write("A3 candidates sent to A4")
+            a3_rows = pd.DataFrame(a4_result["a3_topk"])
+            if "move" in a3_rows:
+                a3_rows["SAN"] = [move_to_san_label(sample.FEN, move) for move in a3_rows["move"]]
+            st.dataframe(a3_rows, use_container_width=True)
         with col_a4:
-            st.write("A4 reranking")
-            st.dataframe(pd.DataFrame(a4_result["a4_ranking"]), use_container_width=True)
-            st.metric("A4 Top-1 next move", a4_result["a4_top1"])
-    result = st.session_state.get("model_result")
-    if result and result.get("topk"):
-        st.write("Current A3 Top-K available from last inference")
-        st.dataframe(pd.DataFrame(result["topk"]), use_container_width=True)
-        selected_candidate = st.selectbox("Inspect resulting board for A3 candidate", [row["move"] for row in result["topk"]])
-        post_board = chess.Board(sample.FEN)
-        move = chess.Move.from_uci(selected_candidate)
-        if move in post_board.legal_moves:
-            post_board.push(move)
-            html(chess.svg.board(board=post_board, size=420, coordinates=True), height=470)
-    else:
-        st.info("Run Model A3 inference first to inspect an A3 candidate set. Frozen A4 terminal results are shown in Frozen Results.")
+            st.write("A4 ranking")
+            a4_rows = pd.DataFrame(a4_result["a4_ranking"])
+            if "move" in a4_rows:
+                a4_rows["SAN"] = [move_to_san_label(sample.FEN, move) for move in a4_rows["move"]]
+            st.dataframe(a4_rows, use_container_width=True)
+    elif selected_model_mode and st.session_state.get("model_result"):
+        result = st.session_state["model_result"]
+        top1 = result["topk"][0] if result["topk"] else None
+        if top1:
+            st.metric("Predicted move", move_to_san_label(sample.FEN, top1["move"]))
+        if show_ground_truth:
+            result_cols = st.columns(4)
+            result_cols[0].metric("Top-1 target match", result["top1_label"])
+            result_cols[1].metric("Top-3 contains target", result["top3_label"])
+            result_cols[2].metric("Top-5 contains target", result["top5_label"])
+            result_cols[3].metric(
+                "Target legal rank",
+                "unavailable - target OOV"
+                if result["target_oov"]
+                else f"#{result['target_rank']} / {result.get('legal_candidate_count', 'legal')}",
+            )
+        st.write(f"Legal candidates: `{result.get('legal_candidate_count')}`")
+        if show_ground_truth and result["target_rank"] and result["target_rank"] > top_k:
+            st.info(f"Ground truth appears at rank #{result['target_rank']}.")
+        topk_df = pd.DataFrame(result["topk"]).rename(
+            columns={
+                "rank": "Rank",
+                "move": "Move",
+                "san": "SAN",
+                "score": "Score",
+                "legal": "Legal",
+                "ground_truth": "Ground Truth",
+            }
+        )
+        if not show_ground_truth and "Ground Truth" in topk_df:
+            topk_df = topk_df.drop(columns=["Ground Truth"])
+        st.dataframe(
+            topk_df,
+            use_container_width=True,
+        )
+    with st.expander("How these models work", expanded=False):
+        st.dataframe(pd.DataFrame(model_table_rows()), use_container_width=True)
+        st.info("Model B uses synthetic timing features. Frozen results show that this timing representation did not improve over A3.")
 
-with timing_tab:
-    st.subheader("Model B timing context")
-    st.caption("Model B is A3 plus synthetic timing features. These are not measured human puzzle thinking times.")
-    timing_rows = [
-        {"feature": "previous_move_time", "meaning": "synthetic/derived time for previous move"},
-        {"feature": "original_move_time", "meaning": "synthetic/derived original move time"},
-        {"feature": "time_is_synthetic", "meaning": "1 when timing comes from synthetic puzzle timing generation"},
-    ]
-    st.dataframe(pd.DataFrame(timing_rows), use_container_width=True)
-    st.info("Frozen conclusion: this implemented synthetic timing representation did not improve move prediction relative to A3.")
-
-with results_tab:
-    st.subheader("Frozen evaluation results")
-    st.caption("Loaded from artifacts when present; headline values are documented frozen results and do not trigger evaluation.")
+with performance_tab:
+    st.subheader("Current model performance")
+    st.caption("Frozen documented results only. This page does not run official test evaluation.")
     frozen_results = load_frozen_results()
-    st.write("Artifact availability")
-    st.json({key: value is not None for key, value in frozen_results.items()})
-    st.write("Headline snapshot")
-    st.json(canonical_result_snapshot())
+    snapshot = canonical_result_snapshot()
+    headline_rows = [
+        {"Model": "A3 - Legal Move Scorer", "Top-1": "67.56%", "Role": "official no-timing baseline"},
+        {"Model": "A4 - Post-Move Reranker", "Top-1": "85.41%", "Role": "best frozen GNN result"},
+        {"Model": "B - Timing-Aware Legal Move Scorer", "Top-1": "65.98%", "Role": "synthetic timing ablation"},
+    ]
+    st.dataframe(pd.DataFrame(headline_rows), use_container_width=True)
+    st.metric("A4 improvement over A3", "+17.85 percentage points")
+    st.info("Synthetic timing did not improve over A3 in the implemented Model B ablation.")
 
-with mate_tab:
-    st.subheader("Mate-in-1 diagnostic subgroup")
+    st.write("Performance by puzzle depth")
+    mate_depth_rows = [
+        {"Puzzle depth": "Mate in 1", "Status": "available in frozen artifacts where present"},
+        {"Puzzle depth": "Mate in 2", "Status": "available in frozen artifacts where present"},
+        {"Puzzle depth": "Mate in 3", "Status": "available in frozen artifacts where present"},
+        {"Puzzle depth": "Mate in 4", "Status": "available in frozen artifacts where present"},
+        {"Puzzle depth": "Mate in 5", "Status": "available in frozen artifacts where present"},
+    ]
+    st.dataframe(pd.DataFrame(mate_depth_rows), use_container_width=True)
+
+    st.write("Performance by rating")
+    rating_rows = [
+        {"Rating band": "<1200", "Status": "available in frozen artifacts where present"},
+        {"Rating band": "1200-1599", "Status": "available in frozen artifacts where present"},
+        {"Rating band": "1600-1999", "Status": "available in frozen artifacts where present"},
+        {"Rating band": "2000-2399", "Status": "available in frozen artifacts where present"},
+        {"Rating band": "2400+", "Status": "available in frozen artifacts where present"},
+    ]
+    st.dataframe(pd.DataFrame(rating_rows), use_container_width=True)
+
+    with st.expander("Raw artifact availability", expanded=False):
+        st.json({key: value is not None for key, value in frozen_results.items()})
+        st.json(snapshot)
+
+    st.subheader("Optional local depth diagnostic")
     mode_selection = st.selectbox("Model", MODEL_OPTIONS, index=3)
     compare_all = st.checkbox("Compare all", value=True)
     if is_mate_in_one_row(sample):
@@ -1276,8 +1279,9 @@ with mate_tab:
             fen=sample.FEN,
             target_move=sample.TargetMove,
         )
-        st.write("Can the selected no-timing model find the mate?")
-        st.write(f"Expected mating move: `{sample.TargetMove}`")
+        st.write("Can the selected no-timing model find this mate-in-1 puzzle?")
+        if st.session_state.get("revealed_solution"):
+            st.write(f"Expected mating move: `{sample.TargetMove}`")
         st.write(f"Target checkmates: `{is_mate}`")
         if not is_mate:
             st.warning("Metadata says mateIn1, but target checkmate verification failed.")
@@ -1315,7 +1319,7 @@ with mate_tab:
     disabled_modes = [mode for mode in selected_modes if available_bundles.get(mode) is None]
     if disabled_modes:
         st.warning(f"Unavailable model resources: {', '.join(disabled_modes)}")
-    if st.button("Evaluate Mate-in-1 puzzles", disabled=bool(disabled_modes)):
+    if st.button("Run local Mate-in-1 diagnostic", disabled=bool(disabled_modes)):
         with st.spinner("Running batched Mate-in-1 diagnostics..."):
             try:
                 metrics = evaluate_mate_in_one_modes(
@@ -1347,11 +1351,34 @@ with mate_tab:
         )
         st.dataframe(table, use_container_width=True)
 
-with error_tab:
-    st.subheader("Error Analysis")
+with advanced_tab:
+    st.subheader("Technical model status")
+    status_cols = st.columns(4)
+    status_cols[0].metric("Primary model", "MODEL_A3_NO_TIMING")
+    status_cols[1].metric(
+        "Device",
+        str(bundle_a3.device).upper() if bundle_a3 else "UNAVAILABLE",
+    )
+    status_cols[2].metric(
+        "Checkpoint",
+        str(bundle_a3.checkpoint_path) if bundle_a3 else "unavailable",
+    )
+    status_cols[3].metric(
+        "Vocabulary",
+        f"{len(move_to_idx):,}",
+    )
+
+    st.write("Graph internals")
+    graph_cols = st.columns(3)
+    graph_cols[0].metric("Nodes", graph.x.shape[0])
+    graph_cols[1].metric("Edges", graph.edge_index.shape[1])
+    graph_cols[2].metric("Node features", graph.x.shape[1])
+    with st.expander("Graph representation used by frozen models", expanded=False):
+        st.json(graph_representation_metadata())
+
+    st.subheader("Model mistakes")
     st.caption(
-        "DIAGNOSTIC POST-HOC ANALYSIS. This tab interprets the already frozen "
-        "test result; it must not be used for Model A selection or tuning."
+        "Diagnostic post-hoc analysis. Use it to inspect which puzzle types a model struggles with, not to tune frozen results."
     )
     analysis_mode = st.selectbox("Analysis model", MODEL_OPTIONS, index=3)
     analysis_bundle_available = {
@@ -1367,7 +1394,7 @@ with error_tab:
             "Batch Error Analysis is disabled."
         )
     min_theme_samples = st.number_input(
-        "Minimum theme sample",
+        "Only show puzzle themes with at least this many examples",
         min_value=1,
         value=30,
         step=5,
@@ -1503,10 +1530,22 @@ with error_tab:
 # =========================================================
 
 with st.expander(
-    "Show Raw Puzzle Data"
+    "Show Puzzle Metadata"
 ):
-
-    st.write(sample)
+    safe_fields = {
+        "PuzzleId": sample.PuzzleId,
+        "MateDepth": int(sample.MateDepth),
+        "Rating": int(sample.Rating) if "Rating" in sample else None,
+        "Themes": sample.Themes if "Themes" in sample else None,
+        "Split": selected_split,
+        "Source row": int(sample.source_row_index),
+    }
+    st.write(safe_fields)
+    if st.session_state.get("revealed_solution"):
+        st.warning("Solution fields are visible because the answer has been revealed.")
+        st.write(sample)
+    else:
+        st.caption("Solution and target fields are hidden until Reveal solution is pressed.")
 
 # =========================================================
 # FEN

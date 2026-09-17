@@ -34,7 +34,7 @@ class ModelMetadata:
 MODEL_REGISTRY = {
     "A": ModelMetadata(
         key="A",
-        display_name="Model A Raw",
+        display_name="A - Move Classifier",
         status="frozen historical baseline",
         runnable_in_streamlit=True,
         checkpoint_path="artifacts/convergence_training/chess_gat_no_timing/best.pt",
@@ -45,7 +45,7 @@ MODEL_REGISTRY = {
     ),
     "A1": ModelMetadata(
         key="A1",
-        display_name="Model A Best-Legal",
+        display_name="A1 - A + Best Legal Move",
         status="historical diagnostic mode, not a separate architecture",
         runnable_in_streamlit=True,
         checkpoint_path="artifacts/convergence_training/chess_gat_no_timing/best.pt",
@@ -56,7 +56,7 @@ MODEL_REGISTRY = {
     ),
     "A2": ModelMetadata(
         key="A2",
-        display_name="Model A2 Legal Mask",
+        display_name="A2 - Legal-Masked Classifier",
         status="frozen",
         runnable_in_streamlit=True,
         checkpoint_path="artifacts/model_a2_legal_mask_no_timing/best.pt",
@@ -67,7 +67,7 @@ MODEL_REGISTRY = {
     ),
     "A3": ModelMetadata(
         key="A3",
-        display_name="Model A3 Legal Scorer",
+        display_name="A3 - Legal Move Scorer",
         status="frozen official no-timing baseline",
         runnable_in_streamlit=True,
         checkpoint_path="artifacts/model_a3_legal_move_scorer_no_timing/best.pt",
@@ -78,7 +78,7 @@ MODEL_REGISTRY = {
     ),
     "A4": ModelMetadata(
         key="A4",
-        display_name="Model A4 Post-Move Reranker",
+        display_name="A4 - Post-Move Reranker",
         status="frozen",
         runnable_in_streamlit=False,
         checkpoint_path="artifacts/model_a4_postmove_gnn_reranker/best.pt",
@@ -89,7 +89,7 @@ MODEL_REGISTRY = {
     ),
     "B": ModelMetadata(
         key="B",
-        display_name="Model B Timing Legal Scorer",
+        display_name="B - Timing-Aware Legal Move Scorer",
         status="frozen",
         runnable_in_streamlit=False,
         checkpoint_path="artifacts/model_b_timing_legal_move_scorer/best.pt",
@@ -111,4 +111,3 @@ def model_table_rows():
     """Return registry rows for display and tests."""
 
     return [model.to_dict() for model in list_models()]
-
