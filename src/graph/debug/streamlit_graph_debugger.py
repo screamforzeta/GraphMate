@@ -94,9 +94,15 @@ from src.streamlit_app.puzzle_sequence import (
 )
 from src.streamlit_app.puzzle_inference import (
     apply_pending_widget_resets,
+    clear_model_rollout,
     clear_position_dependent_predictions,
+    clear_revealed_hint,
+    current_solver_step,
     current_solver_target,
+    human_attempt_summary,
     invalidate_prediction_if_fen_changed,
+    remaining_solution_from_session,
+    revealed_next_move_for_session,
     request_widget_reset,
     row_for_current_fen,
     run_reference_line_rollout,
@@ -442,13 +448,15 @@ def load_model_a3_resource():
         return None, str(error)
 
 
-def reset_puzzle_state():
+def reset_puzzle_state(clear_rollout=False):
     """Clear per-puzzle user and inference state."""
 
     st.session_state["user_move"] = ""
     st.session_state["last_user_result"] = None
-    st.session_state["revealed_solution"] = False
     clear_position_dependent_predictions(st.session_state)
+    clear_revealed_hint(st.session_state)
+    if clear_rollout:
+        clear_model_rollout(st.session_state)
     st.session_state["puzzle_session"] = None
     st.session_state["playback_ply"] = 0
     request_widget_reset(st.session_state, "user_move_input")
@@ -458,7 +466,7 @@ def apply_filtered_index(new_index):
     """Set a new puzzle index and reset per-puzzle UI state."""
 
     st.session_state["current_idx"] = int(new_index)
-    reset_puzzle_state()
+    reset_puzzle_state(clear_rollout=True)
 
 
 def predict_next_move_for_fen(
@@ -514,7 +522,7 @@ if "session_counters" not in st.session_state:
 
 for key, default in [
     ("user_move", ""),
-    ("revealed_solution", False),
+    ("revealed_next_move", None),
     ("model_result", None),
 ]:
     if key not in st.session_state:
@@ -796,9 +804,10 @@ if model_result and model_result.get("topk"):
     if model_arrow is not None:
         board_arrows.append(model_arrow)
 
-if st.session_state.get("revealed_solution"):
+revealed_hint = st.session_state.get("revealed_next_move")
+if revealed_hint and revealed_hint.get("fen") == puzzle_session.current_fen:
     target_arrow = build_move_arrow(
-        sample.TargetMove,
+        revealed_hint["move"],
         GROUND_TRUTH_COLOR,
     )
     if target_arrow is not None:
@@ -1081,6 +1090,7 @@ with puzzle_tab:
         st.success("Puzzle solved!")
     else:
         st.info(f"Your turn: {side_to_move}. Moves are shown in standard chess notation.")
+    st.markdown("#### Your move")
     legal_options = legal_move_options(puzzle_session.current_fen)
     if legal_options and not puzzle_session.is_complete_solution():
         option_labels = [option["label"] for option in legal_options]
@@ -1095,110 +1105,14 @@ with puzzle_tab:
             "Raw UCI move",
             key="user_move_input",
         )
-    model_choice_col, ask_col = st.columns([2, 1])
-    puzzle_model = model_choice_col.selectbox(
-        "Model",
-        list(READABLE_MODEL_OPTIONS) + ["A4 - Post-Move Reranker"],
-        index=4,
-        key="puzzle_model_choice",
-    )
-    if ask_col.button("Ask model"):
-        st.session_state["model_prediction_fen"] = puzzle_session.current_fen
-        try:
-            if puzzle_model.startswith("A4"):
-                st.session_state["a4_result"] = predict_a4_from_fen(
-                    puzzle_session.current_fen,
-                    a3_checkpoint=MODEL_A3_CHECKPOINT_PATH,
-                    a4_checkpoint="artifacts/model_a4_postmove_gnn_reranker/best.pt",
-                    top_k=5,
-                    amp=False,
-                )
-                st.session_state["model_result"] = None
-            else:
-                mode = READABLE_MODEL_OPTIONS[puzzle_model]
-                row = row_for_current_fen(
-                    sample,
-                    puzzle_session.current_fen,
-                    target_move=current_solver_target(puzzle_session) or sample.TargetMove,
-                )
-                st.session_state["model_result"] = run_model_mode_inference(
-                    mode,
-                    row=row,
-                    bundle_a=bundle,
-                    bundle_a2=bundle_a2,
-                    bundle_a3=bundle_a3,
-                    top_k=5,
-                )
-                st.session_state["a4_result"] = None
-        except Exception as error:
-            st.error(f"Model inference failed: {error}")
-
-    if st.session_state.get("model_prediction_fen") == puzzle_session.current_fen:
-        if st.session_state.get("a4_result"):
-            predicted = st.session_state["a4_result"]["a4_top1"]
-            st.write(f"{puzzle_model} suggests: `{move_to_san(puzzle_session.current_fen, predicted) or predicted}`")
-        elif st.session_state.get("model_result") and st.session_state["model_result"].get("topk"):
-            predicted = st.session_state["model_result"]["topk"][0]["move"]
-            st.write(f"{puzzle_model} suggests: `{move_to_san(puzzle_session.current_fen, predicted) or predicted}`")
-
-    if st.button("Ask model to solve along reference replies"):
-        human_fen_before_rollout = puzzle_session.current_fen
-
-        def rollout_predict(fen):
-            predicted, _ = predict_next_move_for_fen(
-                puzzle_model,
-                fen,
-                sample,
-                bundle,
-                bundle_a2,
-                bundle_a3,
-            )
-            return predicted
-
-        try:
-            st.session_state["reference_line_rollout"] = run_reference_line_rollout(
-                sample.FEN,
-                solution_moves,
-                rollout_predict,
-            )
-            assert puzzle_session.current_fen == human_fen_before_rollout
-        except Exception as error:
-            st.error(f"Reference-line attempt failed: {error}")
-
-    rollout = st.session_state.get("reference_line_rollout")
-    if rollout:
-        st.write(f"{puzzle_model} reference-line attempt")
-        rollout_rows = pd.DataFrame(rollout["rows"])
-        if not rollout_rows.empty:
-            display_rows = rollout_rows[
-                [
-                    "solver_ply",
-                    "predicted_san",
-                    "expected_san",
-                    "correct",
-                    "reference_reply_san",
-                ]
-            ].rename(
-                columns={
-                    "solver_ply": "Solver move",
-                    "predicted_san": "Model",
-                    "expected_san": "Reference",
-                    "correct": "Correct",
-                    "reference_reply_san": "Lichess reply",
-                }
-            )
-            st.dataframe(display_rows, use_container_width=True)
-        if rollout["solved"]:
-            st.success("Solved reference line.")
-        else:
-            st.warning(f"Failed at solver move {rollout['failure_ply']} of {rollout['solver_moves_required']}.")
-
     play_col, undo_col, reset_col, reveal_col = st.columns(4)
     if play_col.button("Play move", disabled=selected_legal_move is None):
         result = puzzle_session.play_solver_move_with_reference_reply(selected_legal_move)
         st.session_state["user_move"] = result["move"]
         st.session_state["last_user_result"] = result
         clear_position_dependent_predictions(st.session_state)
+        if result["status"] in {"CORRECT", "COMPLETE"}:
+            clear_revealed_hint(st.session_state)
         request_widget_reset(st.session_state, "user_move_input")
         counters = st.session_state["session_counters"]
         counters["attempted"] += 1
@@ -1208,10 +1122,18 @@ with puzzle_tab:
         puzzle_session.undo()
         st.session_state["last_user_result"] = None
         clear_position_dependent_predictions(st.session_state)
+        clear_revealed_hint(st.session_state)
         request_widget_reset(st.session_state, "user_move_input")
         st.rerun()
-    if reveal_col.button("Reveal solution"):
-        st.session_state["revealed_solution"] = True
+    if reveal_col.button("Reveal next move"):
+        next_move = revealed_next_move_for_session(puzzle_session)
+        if next_move:
+            st.session_state["revealed_next_move"] = {
+                "fen": puzzle_session.current_fen,
+                "solver_step": current_solver_step(puzzle_session),
+                "move": next_move,
+                "san": move_to_san(puzzle_session.current_fen, next_move),
+            }
     if reset_col.button("Reset answer"):
         reset_puzzle_state()
         st.rerun()
@@ -1226,6 +1148,8 @@ with puzzle_tab:
             st.session_state["user_move"] = result["move"]
             st.session_state["last_user_result"] = result
             clear_position_dependent_predictions(st.session_state)
+            if result["status"] in {"CORRECT", "COMPLETE"}:
+                clear_revealed_hint(st.session_state)
             request_widget_reset(st.session_state, "user_move_input")
             counters = st.session_state["session_counters"]
             counters["attempted"] += 1
@@ -1257,10 +1181,132 @@ with puzzle_tab:
     else:
         st.caption("No moves played yet.")
 
-    if st.session_state.get("revealed_solution"):
-        st.success(f"First solver move: `{sample.TargetMove}`")
+    revealed_hint = st.session_state.get("revealed_next_move")
+    if revealed_hint and revealed_hint.get("fen") == puzzle_session.current_fen:
+        st.info(f"Hint for this position: `{revealed_hint.get('san') or revealed_hint['move']}`")
+
+    st.divider()
+    st.markdown("#### Need help?")
+    model_choice_col, ask_col, attempt_col = st.columns([2, 1, 1])
+    puzzle_model = model_choice_col.selectbox(
+        "Model",
+        list(READABLE_MODEL_OPTIONS) + ["A4 - Post-Move Reranker"],
+        index=4,
+        key="puzzle_model_choice",
+    )
+    if ask_col.button("Suggest a move"):
+        st.session_state["model_prediction_fen"] = puzzle_session.current_fen
+        try:
+            if puzzle_model.startswith("A4"):
+                st.session_state["a4_result"] = predict_a4_from_fen(
+                    puzzle_session.current_fen,
+                    a3_checkpoint=MODEL_A3_CHECKPOINT_PATH,
+                    a4_checkpoint="artifacts/model_a4_postmove_gnn_reranker/best.pt",
+                    top_k=5,
+                    amp=False,
+                )
+                st.session_state["model_result"] = None
+            else:
+                mode = READABLE_MODEL_OPTIONS[puzzle_model]
+                row = row_for_current_fen(
+                    sample,
+                    puzzle_session.current_fen,
+                    target_move=current_solver_target(puzzle_session) or sample.TargetMove,
+                )
+                st.session_state["model_result"] = run_model_mode_inference(
+                    mode,
+                    row=row,
+                    bundle_a=bundle,
+                    bundle_a2=bundle_a2,
+                    bundle_a3=bundle_a3,
+                    top_k=5,
+                )
+                st.session_state["a4_result"] = None
+        except Exception as error:
+            st.error(f"Model inference failed: {error}")
+
+    if attempt_col.button(
+        "Try to solve the full puzzle",
+        help=(
+            "The model chooses each move for the solving side. Opponent replies "
+            "follow the official Lichess puzzle line."
+        ),
+    ):
+        human_fen_before_rollout = puzzle_session.current_fen
+        remaining_solution = remaining_solution_from_session(puzzle_session)
+
+        def rollout_predict(fen):
+            predicted, _ = predict_next_move_for_fen(
+                puzzle_model,
+                fen,
+                sample,
+                bundle,
+                bundle_a2,
+                bundle_a3,
+            )
+            return predicted
+
+        try:
+            st.session_state["reference_line_rollout"] = run_reference_line_rollout(
+                puzzle_session.current_fen,
+                remaining_solution,
+                rollout_predict,
+            )
+            st.session_state["reference_line_rollout_model"] = puzzle_model
+            st.session_state["reference_line_rollout_start_fen"] = puzzle_session.current_fen
+            st.session_state["reference_line_rollout_start_step"] = current_solver_step(puzzle_session)
+            assert puzzle_session.current_fen == human_fen_before_rollout
+        except Exception as error:
+            st.error(f"Full-puzzle attempt failed: {error}")
+
+    prediction_matches_current = (
+        st.session_state.get("model_prediction_fen") == puzzle_session.current_fen
+    )
+    if prediction_matches_current:
+        st.markdown("#### Model result")
+        if st.session_state.get("a4_result"):
+            predicted = st.session_state["a4_result"]["a4_top1"]
+            st.metric(f"{puzzle_model} suggests", move_to_san(puzzle_session.current_fen, predicted) or predicted)
+        elif st.session_state.get("model_result") and st.session_state["model_result"].get("topk"):
+            predicted = st.session_state["model_result"]["topk"][0]["move"]
+            st.metric(f"{puzzle_model} suggests", move_to_san(puzzle_session.current_fen, predicted) or predicted)
+
+    rollout = st.session_state.get("reference_line_rollout")
+    if rollout:
+        rollout_model = st.session_state.get("reference_line_rollout_model", puzzle_model)
+        rollout_start_step = st.session_state.get("reference_line_rollout_start_step", 1)
+        summary = human_attempt_summary(rollout_model, sample.MateDepth, rollout)
+        st.markdown("#### Full puzzle attempt")
+        st.caption(
+            f"{rollout_model} attempted this puzzle from move {rollout_start_step} "
+            f"of {int(sample.MateDepth)}."
+        )
+        st.write(summary["title"])
+        if summary["solved"]:
+            st.success(summary["result"])
+        else:
+            st.warning(summary["result"])
+        st.caption(
+            f"Mate in {int(sample.MateDepth)} means {int(sample.MateDepth)} moves by the solving side."
+        )
+        for row in rollout["rows"]:
+            if row["correct"]:
+                st.write(f"✓ Move {row['solver_ply']}: {row['predicted_san']}")
+                if row.get("reference_reply_san"):
+                    st.write(f"  Opponent: {row['reference_reply_san']}")
+            else:
+                st.write(f"✗ Move {row['solver_ply']}")
+                st.write(f"  {rollout_model} chose: {row['predicted_san'] or row['predicted_uci']}")
+                st.write(f"  Solution: {row['expected_san'] or row['expected_uci']}")
+        with st.expander("Show technical rollout details", expanded=False):
+            st.dataframe(pd.DataFrame(rollout["rows"]), use_container_width=True)
+        if st.button("Clear model attempt"):
+            clear_model_rollout(st.session_state)
+            st.rerun()
+
+    with st.expander("Give up / show full solution", expanded=False):
         if solution_moves:
-            st.write("Ground-truth solution line after setup move")
+            st.write("Full solution")
             st.dataframe(pd.DataFrame(solution_san_sequence(sample.FEN, solution_moves)), use_container_width=True)
             playback_max = len(solution_moves)
             playback_cols = st.columns(4)
@@ -1304,7 +1350,10 @@ with model_tab:
     )
     show_ground_truth = st.checkbox(
         "Show evaluation against reference answer",
-        value=st.session_state.get("revealed_solution", False),
+        value=bool(
+            st.session_state.get("revealed_next_move")
+            and st.session_state["revealed_next_move"].get("fen") == puzzle_session.current_fen
+        ),
     )
     selected_bundle_available = False
     if selected_model_mode:
@@ -1456,7 +1505,10 @@ with performance_tab:
             target_move=sample.TargetMove,
         )
         st.write("Can the selected no-timing model find this mate-in-1 puzzle?")
-        if st.session_state.get("revealed_solution"):
+        if (
+            st.session_state.get("revealed_next_move")
+            and st.session_state["revealed_next_move"].get("fen") == puzzle_session.current_fen
+        ):
             st.write(f"Expected mating move: `{sample.TargetMove}`")
         st.write(f"Target checkmates: `{is_mate}`")
         if not is_mate:
@@ -1717,11 +1769,11 @@ with st.expander(
         "Source row": int(sample.source_row_index),
     }
     st.write(safe_fields)
-    if st.session_state.get("revealed_solution"):
-        st.warning("Solution fields are visible because the answer has been revealed.")
+    if st.session_state.get("revealed_next_move"):
+        st.warning("Solution fields are visible because a hint has been revealed.")
         st.write(sample)
     else:
-        st.caption("Solution and target fields are hidden until Reveal solution is pressed.")
+        st.caption("Solution and target fields are hidden until Reveal next move is pressed.")
 
 # =========================================================
 # FEN
