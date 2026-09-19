@@ -42,7 +42,17 @@ Preflight:
 ```bash
 ./venv/bin/python -m src.cli.evaluation.benchmark_llm_chess \
   --ollama-url http://localhost:11436 \
+  --thinking-disabled \
   --preflight
+```
+
+Candidate runtime protocol:
+
+```text
+temperature = 0
+num_predict = 16
+thinking_enabled = false
+status = PENDING_FINAL_SMOKE_VALIDATION
 ```
 
 4B smoke:
@@ -51,6 +61,7 @@ Preflight:
 ./venv/bin/python -m src.cli.evaluation.benchmark_llm_chess \
   --ollama-url http://localhost:11436 \
   --model qwen_3_5_4b \
+  --thinking-disabled \
   --runtime-smoke
 ```
 
@@ -60,6 +71,7 @@ Preflight:
 ./venv/bin/python -m src.cli.evaluation.benchmark_llm_chess \
   --ollama-url http://localhost:11436 \
   --model qwen_3_5_9b \
+  --thinking-disabled \
   --runtime-smoke
 ```
 
@@ -69,6 +81,7 @@ Preflight:
 ./venv/bin/python -m src.cli.evaluation.benchmark_llm_chess \
   --ollama-url http://localhost:11436 \
   --model gpt_oss_20b \
+  --thinking-disabled \
   --runtime-smoke
 ```
 
@@ -78,5 +91,6 @@ All models, sequential:
 ./venv/bin/python -m src.cli.evaluation.benchmark_llm_chess \
   --ollama-url http://localhost:11436 \
   --all-models \
+  --thinking-disabled \
   --runtime-smoke
 ```

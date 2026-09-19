@@ -19,6 +19,7 @@ def config_identity(config):
         "prompt_hash",
         "parser_version",
         "generation_options",
+        "thinking_enabled",
     ]
     return {key: config.get(key) for key in keys}
 

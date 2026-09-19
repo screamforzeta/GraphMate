@@ -3,9 +3,9 @@ from pathlib import Path
 import pytest
 
 from src.llm.datasets import BenchmarkPuzzle, validate_heldout_classic_record
-from src.cli.evaluation.benchmark_llm_chess import selected_model_ids
+from src.cli.evaluation.benchmark_llm_chess import build_preflight, selected_model_ids
 from src.llm.model_registry import LLM_BENCHMARK_MODELS, discover_registry, verify_runtime_registry
-from src.llm.ollama_client import extract_final_content_and_thinking, resolve_endpoint
+from src.llm.ollama_client import OllamaClient, extract_final_content_and_thinking, resolve_endpoint
 from src.llm.parsing import parse_uci_response
 from src.llm.prompting import build_prompt
 from src.llm.resume import append_jsonl, assert_resume_config_matches, load_completed_keys
@@ -74,6 +74,43 @@ def test_generate_style_response_final_content_is_used():
 
     assert final == "e2e4"
     assert thinking is None
+
+
+def test_thinking_false_is_serialized_into_ollama_request(monkeypatch):
+    captured = {}
+
+    def fake_request(self, path, payload=None):
+        captured.update(payload)
+        return {"response": "e2e4"}
+
+    monkeypatch.setattr(OllamaClient, "_json_request", fake_request)
+    response = OllamaClient("http://localhost:11436").generate(
+        "qwen3.5:4b",
+        prompt="FEN:\n...\n\nReturn your move in UCI notation only.",
+        system="system",
+        thinking_enabled=False,
+    )
+
+    assert captured["think"] is False
+    assert response["request_payload"]["think"] is False
+    assert response["thinking_requested"] is False
+
+
+def test_effective_endpoint_metadata_uses_ollama_url(monkeypatch):
+    class Args:
+        endpoint = "http://localhost:11434"
+        ollama_url = "http://localhost:11436"
+        timeout = 1
+        dataset = "lichess-test"
+        thinking_enabled = False
+
+    monkeypatch.setattr(OllamaClient, "version", lambda self: {"version": "0.32.5"})
+    monkeypatch.setattr(OllamaClient, "list_models", lambda self: {"models": []})
+
+    preflight = build_preflight(Args())
+
+    assert preflight["endpoint"] == "http://localhost:11436"
+    assert preflight["ollama_url"] == "http://localhost:11436"
 
 
 def test_runtime_smoke_model_selection_is_sequential():
@@ -185,12 +222,17 @@ def test_summary_counts_and_resume_guards(tmp_path):
         "prompt_hash": "prompt",
         "parser_version": "parser",
         "generation_options": {"temperature": 0},
+        "thinking_enabled": False,
     }
     assert_resume_config_matches(config, dict(config))
     changed = dict(config)
     changed["prompt_hash"] = "other"
     with pytest.raises(ValueError):
         assert_resume_config_matches(config, changed)
+    changed_thinking = dict(config)
+    changed_thinking["thinking_enabled"] = True
+    with pytest.raises(ValueError):
+        assert_resume_config_matches(config, changed_thinking)
 
     path = tmp_path / "raw_predictions.jsonl"
     append_jsonl(path, {"run_id": "r1", "model_id": "m", "puzzle_id": "p", "protocol": "next-move"})
