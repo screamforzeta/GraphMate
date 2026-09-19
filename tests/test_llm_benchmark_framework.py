@@ -3,8 +3,17 @@ from pathlib import Path
 import pytest
 
 from src.llm.datasets import BenchmarkPuzzle, validate_heldout_classic_record
-from src.cli.evaluation.benchmark_llm_chess import build_preflight, selected_model_ids
-from src.llm.model_registry import LLM_BENCHMARK_MODELS, discover_registry, verify_runtime_registry
+from src.cli.evaluation.benchmark_llm_chess import (
+    build_preflight,
+    run_runtime_calibration,
+    selected_model_ids,
+)
+from src.llm.model_registry import (
+    LLM_BENCHMARK_MODELS,
+    discover_registry,
+    generation_config_for_model,
+    verify_runtime_registry,
+)
 from src.llm.ollama_client import OllamaClient, extract_final_content_and_thinking, resolve_endpoint
 from src.llm.parsing import parse_uci_response
 from src.llm.prompting import build_prompt
@@ -96,6 +105,19 @@ def test_thinking_false_is_serialized_into_ollama_request(monkeypatch):
     assert response["thinking_requested"] is False
 
 
+def test_model_specific_thinking_configuration():
+    qwen = generation_config_for_model("qwen_3_5_4b")
+    gpt_oss = generation_config_for_model("gpt_oss_20b", num_predict_override=64)
+
+    assert qwen["think"] is False
+    assert qwen["options"]["num_predict"] == 16
+    assert qwen["status"] == "RUNTIME_VALIDATED"
+    assert gpt_oss["think"] == "low"
+    assert gpt_oss["think"] is not False
+    assert gpt_oss["options"]["num_predict"] == 64
+    assert gpt_oss["thinking_mode"] == "low"
+
+
 def test_effective_endpoint_metadata_uses_ollama_url(monkeypatch):
     class Args:
         endpoint = "http://localhost:11434"
@@ -111,6 +133,10 @@ def test_effective_endpoint_metadata_uses_ollama_url(monkeypatch):
 
     assert preflight["endpoint"] == "http://localhost:11436"
     assert preflight["ollama_url"] == "http://localhost:11436"
+    assert preflight["runtime_ready"]["qwen_3_5_4b"] is True
+    assert preflight["runtime_ready"]["qwen_3_5_9b"] is True
+    assert preflight["runtime_ready"]["gpt_oss_20b"] is False
+    assert preflight["ready_for_official_benchmark"] is False
 
 
 def test_runtime_smoke_model_selection_is_sequential():
@@ -223,6 +249,7 @@ def test_summary_counts_and_resume_guards(tmp_path):
         "parser_version": "parser",
         "generation_options": {"temperature": 0},
         "thinking_enabled": False,
+        "model_generation_config": {"think": False, "num_predict": 16},
     }
     assert_resume_config_matches(config, dict(config))
     changed = dict(config)
@@ -233,6 +260,10 @@ def test_summary_counts_and_resume_guards(tmp_path):
     changed_thinking["thinking_enabled"] = True
     with pytest.raises(ValueError):
         assert_resume_config_matches(config, changed_thinking)
+    changed_model_config = dict(config)
+    changed_model_config["model_generation_config"] = {"think": "low", "num_predict": 64}
+    with pytest.raises(ValueError):
+        assert_resume_config_matches(config, changed_model_config)
 
     path = tmp_path / "raw_predictions.jsonl"
     append_jsonl(path, {"run_id": "r1", "model_id": "m", "puzzle_id": "p", "protocol": "next-move"})
@@ -251,3 +282,42 @@ def test_heldout_classic_schema():
     )
     with pytest.raises(ValueError):
         validate_heldout_classic_record({"puzzle_id": "bad"})
+
+
+def test_gpt_oss_calibration_stops_on_parseable_content_not_correctness(monkeypatch):
+    calls = []
+
+    class Args:
+        model = "gpt_oss_20b"
+        endpoint = "http://localhost:11434"
+        ollama_url = "http://localhost:11436"
+        timeout = 1
+
+    def fake_generate(self, model, prompt, system, options=None, think=None):
+        calls.append(options["num_predict"])
+        if options["num_predict"] < 64:
+            return {
+                "final_content": "",
+                "thinking": "still thinking e2e4",
+                "thinking_requested": think,
+                "thinking_returned": True,
+                "metadata": {"eval_count": options["num_predict"], "done_reason": "length"},
+                "latency_seconds": 0.1,
+            }
+        return {
+            "final_content": "d2d4",
+            "thinking": "done",
+            "thinking_requested": think,
+            "thinking_returned": True,
+            "metadata": {"eval_count": options["num_predict"], "done_reason": "stop"},
+            "latency_seconds": 0.1,
+        }
+
+    monkeypatch.setattr(OllamaClient, "generate", fake_generate)
+    registry = {"gpt_oss_20b": LLM_BENCHMARK_MODELS["gpt_oss_20b"]}
+
+    result = run_runtime_calibration(Args(), registry)
+
+    assert calls == [32, 64]
+    assert result["selected_budget"] == 64
+    assert result["trials"][-1]["parse_status"] == "LEGAL_BUT_WRONG"

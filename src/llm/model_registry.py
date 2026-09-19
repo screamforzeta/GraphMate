@@ -14,6 +14,13 @@ LLM_BENCHMARK_MODELS = {
         "context_length": 262144,
         "embedding_length": 2560,
         "capabilities": ["vision", "completion", "tools", "thinking"],
+        "generation_config": {
+            "temperature": 0,
+            "num_predict": 16,
+            "thinking_mode": "disabled",
+            "think": False,
+            "status": "RUNTIME_VALIDATED",
+        },
     },
     "qwen_3_5_9b": {
         "benchmark_id": "qwen_3_5_9b",
@@ -25,6 +32,13 @@ LLM_BENCHMARK_MODELS = {
         "context_length": 262144,
         "embedding_length": 4096,
         "capabilities": ["vision", "completion", "tools", "thinking"],
+        "generation_config": {
+            "temperature": 0,
+            "num_predict": 16,
+            "thinking_mode": "disabled",
+            "think": False,
+            "status": "RUNTIME_VALIDATED",
+        },
     },
     "gpt_oss_20b": {
         "benchmark_id": "gpt_oss_20b",
@@ -36,6 +50,13 @@ LLM_BENCHMARK_MODELS = {
         "context_length": 131072,
         "embedding_length": 2880,
         "capabilities": ["completion", "tools", "thinking"],
+        "generation_config": {
+            "temperature": 0,
+            "num_predict": None,
+            "thinking_mode": "low",
+            "think": "low",
+            "status": "PENDING_RUNTIME_CALIBRATION",
+        },
     },
 }
 
@@ -78,4 +99,21 @@ def verify_runtime_registry(ollama_models):
             "actual_digest": discovered.get(model_id, {}).get("runtime_digest"),
         }
         for model_id, expected in LLM_BENCHMARK_MODELS.items()
+    }
+
+
+def generation_config_for_model(model_id, num_predict_override=None):
+    """Return the frozen or candidate generation config for one model."""
+
+    config = LLM_BENCHMARK_MODELS[model_id]["generation_config"].copy()
+    if num_predict_override is not None:
+        config["num_predict"] = int(num_predict_override)
+    options = {"temperature": config["temperature"]}
+    if config.get("num_predict") is not None:
+        options["num_predict"] = int(config["num_predict"])
+    return {
+        "options": options,
+        "think": config["think"],
+        "thinking_mode": config["thinking_mode"],
+        "status": config["status"],
     }

@@ -20,6 +20,7 @@ def config_identity(config):
         "parser_version",
         "generation_options",
         "thinking_enabled",
+        "model_generation_config",
     ]
     return {key: config.get(key) for key in keys}
 
