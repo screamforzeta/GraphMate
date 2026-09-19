@@ -25,9 +25,19 @@ Generation configuration:
 }
 ```
 
-Status: `PENDING_RUNTIME_VALIDATION`.
+Thinking setting:
 
-The three server2 models advertise `thinking`. Runtime smoke must verify whether `num_predict = 16` leaves enough budget for a final UCI answer. The strict parser only sees final answer content, never thinking/reasoning content.
+```json
+{
+  "thinking_enabled": false
+}
+```
+
+Status: `PENDING_FINAL_SMOKE_VALIDATION`.
+
+The first server2 smoke showed `num_predict=16` with default thinking enabled is invalid for all three models: generation ended with `done_reason=length`, non-empty truncated thinking, and empty final content. The candidate primary protocol explicitly requests thinking disabled while keeping `temperature=0` and `num_predict=16`.
+
+The strict parser only sees final answer content, never thinking/reasoning content. Runs with thinking enabled and disabled are different benchmark configurations and cannot be resumed into each other.
 
 Official execution must be resumable and must refuse unsafe resume when prompt hash, parser version, dataset fingerprint, model tag, or generation options differ.
 

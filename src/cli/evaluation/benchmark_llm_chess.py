@@ -13,6 +13,7 @@ from src.llm.model_registry import LLM_BENCHMARK_MODELS, discover_registry, veri
 from src.llm.ollama_client import (
     DEFAULT_GENERATION_OPTIONS,
     DEFAULT_OLLAMA_ENDPOINT,
+    DEFAULT_THINKING_ENABLED,
     GENERATION_CONFIG_STATUS,
     OllamaClient,
     resolve_endpoint,
@@ -67,7 +68,7 @@ def build_preflight(args):
         "ollama_reachable": reachable,
         "ollama_error": error,
         "ollama_version": version,
-        "endpoint": args.endpoint,
+        "endpoint": endpoint,
         "ollama_url": endpoint,
         "discovered_registry": registry,
         "frozen_registry": LLM_BENCHMARK_MODELS,
@@ -84,6 +85,7 @@ def build_preflight(args):
         "prompt_hash": prompt_hash(),
         "parser_version": PARSER_VERSION,
         "generation_options": DEFAULT_GENERATION_OPTIONS,
+        "thinking_enabled": args.thinking_enabled,
         "generation_config_status": GENERATION_CONFIG_STATUS,
         "dataset": args.dataset,
         "dataset_n": dataset_n,
@@ -142,11 +144,13 @@ def run_runtime_smoke(args, registry):
             registry[model_id]["ollama_model"],
             prompt=prompt["user"],
             system=prompt["system"],
+            thinking_enabled=args.thinking_enabled,
         )
         warm = client.generate(
             registry[model_id]["ollama_model"],
             prompt=prompt["user"],
             system=prompt["system"],
+            thinking_enabled=args.thinking_enabled,
         )
         scored = score_next_move(warm.get("final_content"), puzzle.initial_solver_fen, puzzle.target_move)
         metadata = warm.get("metadata", {})
@@ -158,6 +162,8 @@ def run_runtime_smoke(args, registry):
                 "digest": registry[model_id]["digest"],
                 "raw_final_content": warm.get("final_content"),
                 "raw_thinking": warm.get("thinking"),
+                "thinking_requested": warm.get("thinking_requested"),
+                "thinking_returned": warm.get("thinking_returned"),
                 "score": scored,
                 "cold_latency_seconds": cold.get("latency_seconds"),
                 "warm_latency_seconds": warm.get("latency_seconds"),
@@ -167,6 +173,9 @@ def run_runtime_smoke(args, registry):
                 "eval_count": metadata.get("eval_count"),
                 "eval_duration": metadata.get("eval_duration"),
                 "done_reason": metadata.get("done_reason"),
+                "num_predict": DEFAULT_GENERATION_OPTIONS["num_predict"],
+                "parse_status": scored["outcome"],
+                "legal_status": scored["legal"],
                 "num_predict_16_compatible": bool(warm.get("final_content")),
                 "error": warm.get("error") or cold.get("error"),
             }
@@ -188,7 +197,12 @@ def run_reference_line_smoke(args, registry):
 
     def predict(fen):
         prompt = build_prompt(fen)
-        response = client.generate(registry[model_id]["ollama_model"], prompt["user"], prompt["system"])
+        response = client.generate(
+            registry[model_id]["ollama_model"],
+            prompt["user"],
+            prompt["system"],
+            thinking_enabled=args.thinking_enabled,
+        )
         return response.get("final_content")
 
     return {
@@ -217,6 +231,9 @@ def main(argv=None):
     parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--runtime-smoke", action="store_true")
+    parser.add_argument("--thinking-enabled", dest="thinking_enabled", action="store_true")
+    parser.add_argument("--thinking-disabled", dest="thinking_enabled", action="store_false")
+    parser.set_defaults(thinking_enabled=DEFAULT_THINKING_ENABLED)
     parser.add_argument("--run-benchmark", action="store_true")
     args = parser.parse_args(argv)
 

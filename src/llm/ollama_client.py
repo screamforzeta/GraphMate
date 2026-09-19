@@ -14,7 +14,8 @@ DEFAULT_GENERATION_OPTIONS = {
     "temperature": 0,
     "num_predict": 16,
 }
-GENERATION_CONFIG_STATUS = "PENDING_RUNTIME_VALIDATION"
+DEFAULT_THINKING_ENABLED = False
+GENERATION_CONFIG_STATUS = "PENDING_FINAL_SMOKE_VALIDATION"
 
 
 def resolve_endpoint(cli_endpoint=None):
@@ -69,7 +70,7 @@ class OllamaClient:
 
         return self._json_request("/api/tags")
 
-    def generate(self, model, prompt, system, options=None):
+    def generate(self, model, prompt, system, options=None, thinking_enabled=DEFAULT_THINKING_ENABLED):
         """Generate one deterministic response and return text plus metadata."""
 
         options = dict(DEFAULT_GENERATION_OPTIONS | (options or {}))
@@ -80,6 +81,7 @@ class OllamaClient:
             "system": system,
             "stream": False,
             "options": options,
+            "think": bool(thinking_enabled),
         }
         try:
             response = self._json_request("/api/generate", payload)
@@ -92,7 +94,10 @@ class OllamaClient:
             "response": extract_final_content_and_thinking(response)[0],
             "final_content": extract_final_content_and_thinking(response)[0],
             "thinking": extract_final_content_and_thinking(response)[1],
+            "thinking_requested": bool(thinking_enabled),
+            "thinking_returned": bool(extract_final_content_and_thinking(response)[1]),
             "metadata": response,
+            "request_payload": payload,
             "latency_seconds": elapsed,
             "error": error,
         }
