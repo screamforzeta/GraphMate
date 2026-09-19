@@ -7,11 +7,13 @@ from src.cli.evaluation.benchmark_llm_chess import (
     build_preflight,
     run_runtime_calibration,
     selected_model_ids,
+    validate_official_run_preconditions,
 )
 from src.llm.model_registry import (
     LLM_BENCHMARK_MODELS,
     discover_registry,
     generation_config_for_model,
+    official_model_ready,
     verify_runtime_registry,
 )
 from src.llm.ollama_client import OllamaClient, extract_final_content_and_thinking, resolve_endpoint
@@ -107,7 +109,7 @@ def test_thinking_false_is_serialized_into_ollama_request(monkeypatch):
 
 def test_model_specific_thinking_configuration():
     qwen = generation_config_for_model("qwen_3_5_4b")
-    gpt_oss = generation_config_for_model("gpt_oss_20b", num_predict_override=64)
+    gpt_oss = generation_config_for_model("gpt_oss_20b")
 
     assert qwen["think"] is False
     assert qwen["options"]["num_predict"] == 16
@@ -116,6 +118,7 @@ def test_model_specific_thinking_configuration():
     assert gpt_oss["think"] is not False
     assert gpt_oss["options"]["num_predict"] == 64
     assert gpt_oss["thinking_mode"] == "low"
+    assert gpt_oss["status"] == "RUNTIME_VALIDATED"
 
 
 def test_effective_endpoint_metadata_uses_ollama_url(monkeypatch):
@@ -133,10 +136,70 @@ def test_effective_endpoint_metadata_uses_ollama_url(monkeypatch):
 
     assert preflight["endpoint"] == "http://localhost:11436"
     assert preflight["ollama_url"] == "http://localhost:11436"
-    assert preflight["runtime_ready"]["qwen_3_5_4b"] is True
-    assert preflight["runtime_ready"]["qwen_3_5_9b"] is True
+    assert preflight["runtime_ready"]["qwen_3_5_4b"] is False
+    assert preflight["runtime_ready"]["qwen_3_5_9b"] is False
     assert preflight["runtime_ready"]["gpt_oss_20b"] is False
     assert preflight["ready_for_official_benchmark"] is False
+
+
+def test_official_readiness_true_when_all_tags_and_digests_match():
+    models = [
+        {
+            "name": model["ollama_model"],
+            "digest": model["digest"],
+            "size": model["size"],
+        }
+        for model in LLM_BENCHMARK_MODELS.values()
+    ]
+    verification = verify_runtime_registry(models)
+
+    assert all(official_model_ready(model_id, verification) for model_id in LLM_BENCHMARK_MODELS)
+
+
+def test_preflight_ready_for_official_when_all_checks_pass(monkeypatch):
+    class Args:
+        endpoint = "http://localhost:11434"
+        ollama_url = "http://localhost:11436"
+        timeout = 1
+        dataset = "lichess-test"
+        thinking_enabled = False
+
+    models = [
+        {
+            "name": model["ollama_model"],
+            "digest": model["digest"],
+            "size": model["size"],
+        }
+        for model in LLM_BENCHMARK_MODELS.values()
+    ]
+    monkeypatch.setattr(OllamaClient, "version", lambda self: {"version": "0.32.5"})
+    monkeypatch.setattr(OllamaClient, "list_models", lambda self: {"models": models})
+
+    preflight = build_preflight(Args())
+
+    assert preflight["runtime_ready"] == {
+        "qwen_3_5_4b": True,
+        "qwen_3_5_9b": True,
+        "gpt_oss_20b": True,
+    }
+    assert preflight["ready_for_official_benchmark"] is True
+
+
+def test_official_guard_refuses_digest_mismatch():
+    preflight = {
+        "ollama_reachable": True,
+        "parser_tests_pass": True,
+        "dataset_fingerprint": "abc",
+        "registry_verification": {
+            "qwen_3_5_4b": {
+                "found": True,
+                "digest_match": False,
+            }
+        },
+    }
+
+    with pytest.raises(RuntimeError, match="digest mismatch"):
+        validate_official_run_preconditions(["qwen_3_5_4b"], preflight)
 
 
 def test_runtime_smoke_model_selection_is_sequential():
@@ -242,11 +305,17 @@ def test_summary_counts_and_resume_guards(tmp_path):
         "run_id": "r1",
         "model_id": "m",
         "ollama_model": "tag",
+        "model_digest": "digest",
         "dataset": "lichess-test",
         "protocol": "next-move",
         "dataset_fingerprint": "abc",
+        "prompt_version": "llm_chess_uci_v1",
         "prompt_hash": "prompt",
         "parser_version": "parser",
+        "temperature": 0,
+        "think": False,
+        "thinking_mode": "disabled",
+        "num_predict": 16,
         "generation_options": {"temperature": 0},
         "thinking_enabled": False,
         "model_generation_config": {"think": False, "num_predict": 16},

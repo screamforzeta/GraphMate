@@ -51,7 +51,7 @@ Candidate runtime protocol:
 ```text
 qwen_3_5_4b: temperature=0, num_predict=16, think=false, status=RUNTIME_VALIDATED
 qwen_3_5_9b: temperature=0, num_predict=16, think=false, status=RUNTIME_VALIDATED
-gpt_oss_20b: temperature=0, think=low, num_predict=PENDING_RUNTIME_CALIBRATION
+gpt_oss_20b: temperature=0, think=low, num_predict=64, status=RUNTIME_VALIDATED
 ```
 
 4B smoke:
@@ -91,6 +91,35 @@ GPT-OSS calibration:
   --ollama-url http://localhost:11436 \
   --model gpt_oss_20b \
   --runtime-calibrate
+```
+
+Official benchmark commands, to be run only after final preflight passes:
+
+```bash
+./venv/bin/python -m src.cli.evaluation.benchmark_llm_chess \
+  --ollama-url http://localhost:11436 \
+  --model qwen_3_5_4b \
+  --dataset lichess-test \
+  --protocol next-move \
+  --run-benchmark
+```
+
+```bash
+./venv/bin/python -m src.cli.evaluation.benchmark_llm_chess \
+  --ollama-url http://localhost:11436 \
+  --model qwen_3_5_9b \
+  --dataset lichess-test \
+  --protocol next-move \
+  --run-benchmark
+```
+
+```bash
+./venv/bin/python -m src.cli.evaluation.benchmark_llm_chess \
+  --ollama-url http://localhost:11436 \
+  --model gpt_oss_20b \
+  --dataset lichess-test \
+  --protocol next-move \
+  --run-benchmark
 ```
 
 All models, sequential:

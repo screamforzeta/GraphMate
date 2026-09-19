@@ -13,6 +13,7 @@ from src.llm.model_registry import (
     LLM_BENCHMARK_MODELS,
     discover_registry,
     generation_config_for_model,
+    official_model_ready,
     verify_runtime_registry,
 )
 from src.llm.ollama_client import (
@@ -113,17 +114,33 @@ def build_preflight(args):
         "ready_for_official_benchmark": (
             reachable
             and parser_tests_pass()
-            and all(value["found"] and value["digest_match"] for value in verification.values())
-            and all(
-                model["generation_config"]["status"] == "RUNTIME_VALIDATED"
-                for model in LLM_BENCHMARK_MODELS.values()
-            )
+            and all(official_model_ready(model_id, verification) for model_id in LLM_BENCHMARK_MODELS)
         ),
         "runtime_ready": {
-            model_id: model["generation_config"]["status"] == "RUNTIME_VALIDATED"
-            for model_id, model in LLM_BENCHMARK_MODELS.items()
+            model_id: official_model_ready(model_id, verification)
+            for model_id in LLM_BENCHMARK_MODELS
         },
     }
+
+
+def validate_official_run_preconditions(model_ids, preflight):
+    """Fail closed when official benchmark prerequisites are not satisfied."""
+
+    if not preflight.get("ollama_reachable"):
+        raise RuntimeError("Official benchmark refused: Ollama endpoint is not reachable.")
+    if not preflight.get("parser_tests_pass"):
+        raise RuntimeError("Official benchmark refused: parser self-tests failed.")
+    for model_id in model_ids:
+        verification = preflight["registry_verification"].get(model_id, {})
+        if not verification.get("found"):
+            raise RuntimeError(f"Official benchmark refused: model missing: {model_id}.")
+        if not verification.get("digest_match"):
+            raise RuntimeError(f"Official benchmark refused: digest mismatch for {model_id}.")
+        if not official_model_ready(model_id, preflight["registry_verification"]):
+            raise RuntimeError(f"Official benchmark refused: frozen generation config invalid for {model_id}.")
+    if not preflight.get("dataset_fingerprint"):
+        raise RuntimeError("Official benchmark refused: dataset fingerprint missing.")
+    return True
 
 
 def smoke_fixture():
@@ -343,7 +360,8 @@ def main(argv=None):
             )
             print(json.dumps({"NON_OFFICIAL_SMOKE_TEST": outputs, "REFERENCE_LINE": reference_line}, indent=2, sort_keys=True))
         return 0
-    raise SystemExit("Official benchmark execution is intentionally disabled in this implementation pass.")
+    validate_official_run_preconditions(selected_model_ids(args), preflight)
+    raise SystemExit("Official benchmark execution is intentionally disabled in this protocol-freeze pass.")
 
 
 if __name__ == "__main__":
