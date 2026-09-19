@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -5,8 +6,12 @@ import pytest
 from src.llm.datasets import BenchmarkPuzzle, validate_heldout_classic_record
 from src.cli.evaluation.benchmark_llm_chess import (
     build_preflight,
+    load_official_records,
+    prepare_official_artifacts,
+    run_official_next_move_benchmark,
     run_runtime_calibration,
     selected_model_ids,
+    summarize_official_records,
     validate_official_run_preconditions,
 )
 from src.llm.model_registry import (
@@ -390,3 +395,201 @@ def test_gpt_oss_calibration_stops_on_parseable_content_not_correctness(monkeypa
     assert calls == [32, 64]
     assert result["selected_budget"] == 64
     assert result["trials"][-1]["parse_status"] == "LEGAL_BUT_WRONG"
+
+
+def official_preflight_fixture():
+    models = [
+        {
+            "name": model["ollama_model"],
+            "digest": model["digest"],
+            "size": model["size"],
+        }
+        for model in LLM_BENCHMARK_MODELS.values()
+    ]
+    return {
+        "ollama_reachable": True,
+        "parser_tests_pass": True,
+        "dataset": "lichess-test",
+        "dataset_n": 5,
+        "dataset_fingerprint": "899767ec8fed16622f7a9d36bd1d230eb4d409547c5902894531ec8a795e77ff",
+        "endpoint": "http://localhost:11436",
+        "ollama_version": {"version": "0.32.5"},
+        "discovered_registry": discover_registry(models),
+        "registry_verification": verify_runtime_registry(models),
+    }
+
+
+def official_args_fixture(tmp_path, resume=False):
+    return type(
+        "Args",
+        (),
+        {
+            "model": "qwen_3_5_4b",
+            "all_models": False,
+            "dataset": "lichess-test",
+            "protocol": "next-move",
+            "endpoint": "http://localhost:11434",
+            "ollama_url": "http://localhost:11436",
+            "timeout": 1,
+            "limit": None,
+            "offset": 0,
+            "output_dir": str(tmp_path / "official"),
+            "resume": resume,
+            "thinking_enabled": False,
+        },
+    )()
+
+
+def official_puzzles_fixture():
+    return [
+        BenchmarkPuzzle("p-correct", START_FEN, "e2e4", ["e2e4"], mate_depth=1, rating=1500),
+        BenchmarkPuzzle("p-wrong", START_FEN, "e2e4", ["e2e4"], mate_depth=1, rating=1600),
+        BenchmarkPuzzle("p-illegal", START_FEN, "e2e4", ["e2e4"], mate_depth=2, rating=1700),
+        BenchmarkPuzzle("p-parse", START_FEN, "e2e4", ["e2e4"], mate_depth=2, rating=1800),
+        BenchmarkPuzzle("p-runtime", START_FEN, "e2e4", ["e2e4"], mate_depth=3, rating=1900),
+    ]
+
+
+def test_official_execution_cannot_start_if_preflight_fails(tmp_path):
+    args = official_args_fixture(tmp_path)
+    preflight = official_preflight_fixture()
+    preflight["ollama_reachable"] = False
+
+    with pytest.raises(RuntimeError, match="not reachable"):
+        run_official_next_move_benchmark(args, preflight)
+
+
+def test_official_next_move_execution_records_taxonomy_and_summary(monkeypatch, tmp_path):
+    args = official_args_fixture(tmp_path)
+    preflight = official_preflight_fixture()
+    calls = []
+    seen_payloads = []
+
+    monkeypatch.setattr(
+        "src.cli.evaluation.benchmark_llm_chess.load_lichess_test",
+        lambda *args, **kwargs: official_puzzles_fixture(),
+    )
+
+    def fake_generate(self, model, prompt, system, options=None, think=None):
+        calls.append(prompt)
+        seen_payloads.append({"options": options, "think": think})
+        index = len(calls)
+        if index == 1:
+            content = "e2e4"
+        elif index == 2:
+            content = "d2d4"
+        elif index == 3:
+            content = "e2e5"
+        elif index == 4:
+            content = "The move is e2e4."
+        else:
+            raise TimeoutError("boom")
+        return {
+            "final_content": content,
+            "thinking": "hidden research field",
+            "thinking_requested": think,
+            "thinking_returned": True,
+            "metadata": {"done_reason": "stop"},
+            "request_payload": {"options": options, "think": think},
+            "latency_seconds": 0.01,
+            "error": None,
+        }
+
+    monkeypatch.setattr(OllamaClient, "generate", fake_generate)
+
+    result = run_official_next_move_benchmark(args, preflight)
+    output_dir = Path(result[0]["output_dir"])
+    records = load_official_records(output_dir / "predictions.jsonl")
+    summary = json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))
+
+    assert len(calls) == 5
+    assert [record["outcome"] for record in records] == [
+        "CORRECT",
+        "WRONG_LEGAL_MOVE",
+        "ILLEGAL_MOVE",
+        "PARSE_ERROR",
+        "RUNTIME_ERROR",
+    ]
+    assert records[0]["raw_final_content"] == "e2e4"
+    assert records[0]["raw_thinking"] == "hidden research field"
+    assert records[0]["parsed_san"] == "e4"
+    assert records[-1]["correct"] is False
+    assert summary["N"] == 5
+    assert summary["correct"] == 1
+    assert summary["wrong_legal"] == 1
+    assert summary["illegal"] == 1
+    assert summary["parse_errors"] == 1
+    assert summary["runtime_errors"] == 1
+    assert summary["top1_exact_canonical_accuracy"] == 0.2
+    assert seen_payloads[0]["options"] == generation_config_for_model("qwen_3_5_4b")["options"]
+    assert seen_payloads[0]["think"] == generation_config_for_model("qwen_3_5_4b")["think"]
+
+
+def test_official_resume_skips_completed_records(monkeypatch, tmp_path):
+    args = official_args_fixture(tmp_path)
+    preflight = official_preflight_fixture()
+    calls = []
+
+    monkeypatch.setattr(
+        "src.cli.evaluation.benchmark_llm_chess.load_lichess_test",
+        lambda *args, **kwargs: official_puzzles_fixture()[:2],
+    )
+    monkeypatch.setattr(
+        OllamaClient,
+        "generate",
+        lambda self, model, prompt, system, options=None, think=None: calls.append(prompt)
+        or {
+            "final_content": "e2e4",
+            "thinking": None,
+            "metadata": {},
+            "request_payload": {"options": options, "think": think},
+            "latency_seconds": 0.01,
+            "error": None,
+        },
+    )
+
+    run_official_next_move_benchmark(args, preflight)
+    args_resume = official_args_fixture(tmp_path, resume=True)
+    run_official_next_move_benchmark(args_resume, preflight)
+
+    assert len(calls) == 2
+
+
+def test_official_resume_identity_mismatch_fails_closed(tmp_path):
+    args = official_args_fixture(tmp_path)
+    preflight = official_preflight_fixture()
+    registry_entry = preflight["discovered_registry"]["qwen_3_5_4b"]
+    _, paths = prepare_official_artifacts(args, preflight, "qwen_3_5_4b", registry_entry)
+    manifest = json.loads(paths["manifest"].read_text(encoding="utf-8"))
+    manifest["identity"]["prompt_hash"] = "changed"
+    paths["manifest"].write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Resume config mismatch"):
+        prepare_official_artifacts(
+            official_args_fixture(tmp_path, resume=True),
+            preflight,
+            "qwen_3_5_4b",
+            registry_entry,
+        )
+
+
+def test_official_artifact_rejects_non_official_jsonl(tmp_path):
+    path = tmp_path / "mixed.jsonl"
+    append_jsonl(path, {"run_label": "NON_OFFICIAL", "puzzle_id": "x"})
+
+    with pytest.raises(ValueError, match="non-official"):
+        load_official_records(path)
+
+
+def test_official_summary_counts_equal_n():
+    records = [
+        {"outcome": "CORRECT", "correct": True, "latency_seconds": 0.1, "mate_depth": 1, "rating": 1500},
+        {"outcome": "WRONG_LEGAL_MOVE", "correct": False, "latency_seconds": 0.2, "mate_depth": 1, "rating": 1500},
+        {"outcome": "PARSE_ERROR", "correct": False, "latency_seconds": 0.3, "mate_depth": 2, "rating": 1800},
+    ]
+
+    summary = summarize_official_records(records, "qwen_3_5_4b")
+
+    assert summary["N"] == 3
+    assert sum(summary["outcome_counts"].values()) == 3
+    assert summary["accuracy_by_mate_depth"]["1"]["accuracy"] == 0.5
