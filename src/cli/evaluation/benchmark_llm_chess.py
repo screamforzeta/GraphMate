@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import socket
+import statistics
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,10 +28,16 @@ from src.llm.ollama_client import (
 )
 from src.llm.parsing import PARSER_VERSION
 from src.llm.prompting import PROMPT_TEMPLATE_VERSION, build_prompt, prompt_hash
+from src.llm.resume import append_jsonl, assert_resume_config_matches, load_completed_keys
 from src.llm.scoring import evaluate_reference_line, score_next_move
 
 
 GPT_OSS_CALIBRATION_BUDGETS = [32, 64, 128, 256]
+DEFAULT_SMOKE_OUTPUT_DIR = "artifacts/llm_benchmark/smoke"
+DEFAULT_OFFICIAL_OUTPUT_ROOT = "artifacts/llm_benchmark/official"
+OFFICIAL_DATASET_PATHS = {
+    "lichess-test": Path("data/final/puzzles/test.csv"),
+}
 
 
 def parser_tests_pass():
@@ -141,6 +149,307 @@ def validate_official_run_preconditions(model_ids, preflight):
     if not preflight.get("dataset_fingerprint"):
         raise RuntimeError("Official benchmark refused: dataset fingerprint missing.")
     return True
+
+
+def official_output_dir(args, model_id):
+    """Return the deterministic output directory for one official run."""
+
+    root = (
+        Path(DEFAULT_OFFICIAL_OUTPUT_ROOT)
+        if args.output_dir == DEFAULT_SMOKE_OUTPUT_DIR
+        else Path(args.output_dir)
+    )
+    return root / args.protocol.replace("-", "_") / model_id
+
+
+def official_run_identity(args, preflight, model_id, registry_entry):
+    """Build the frozen identity used for manifest and resume checks."""
+
+    model_config = generation_config_for_model(model_id)
+    return {
+        "run_id": (
+            f"OFFICIAL_{args.protocol}_{args.dataset}_{model_id}_"
+            f"{preflight['dataset_fingerprint'][:12]}"
+        ),
+        "run_label": "OFFICIAL",
+        "model_id": model_id,
+        "ollama_model": registry_entry["ollama_model"],
+        "model_digest": registry_entry["digest"],
+        "dataset": args.dataset,
+        "protocol": args.protocol,
+        "dataset_fingerprint": preflight["dataset_fingerprint"],
+        "dataset_n": preflight["dataset_n"],
+        "prompt_version": PROMPT_TEMPLATE_VERSION,
+        "prompt_hash": prompt_hash(),
+        "parser_version": PARSER_VERSION,
+        "temperature": model_config["options"]["temperature"],
+        "think": model_config["think"],
+        "thinking_mode": model_config["thinking_mode"],
+        "num_predict": model_config["options"]["num_predict"],
+        "generation_options": model_config["options"],
+        "thinking_enabled": args.thinking_enabled,
+        "model_generation_config": model_config,
+    }
+
+
+def load_official_records(path):
+    """Load existing official JSONL records and reject mixed artifacts."""
+
+    path = Path(path)
+    if not path.exists():
+        return []
+    records = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            if record.get("run_label") != "OFFICIAL":
+                raise ValueError("Official benchmark refused: JSONL contains non-official records.")
+            records.append(record)
+    return records
+
+
+def write_json(path, payload):
+    """Write one stable JSON artifact."""
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def prepare_official_artifacts(args, preflight, model_id, registry_entry):
+    """Create or validate manifest, JSONL, and summary paths for a run."""
+
+    output_dir = official_output_dir(args, model_id)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "output_dir": output_dir,
+        "manifest": output_dir / "manifest.json",
+        "predictions": output_dir / "predictions.jsonl",
+        "summary": output_dir / "summary.json",
+    }
+    identity = official_run_identity(args, preflight, model_id, registry_entry)
+    if paths["manifest"].exists():
+        existing_manifest = json.loads(paths["manifest"].read_text(encoding="utf-8"))
+        assert_resume_config_matches(existing_manifest["identity"], identity)
+    elif paths["predictions"].exists() and not args.resume:
+        raise RuntimeError("Official benchmark refused: predictions exist without --resume.")
+    else:
+        manifest = {
+            "run_label": "OFFICIAL",
+            "status": "STARTED",
+            "start_timestamp": datetime.now(timezone.utc).isoformat(),
+            "end_timestamp": None,
+            "hostname": socket.gethostname(),
+            "ollama_endpoint": preflight["endpoint"],
+            "ollama_version": preflight["ollama_version"],
+            "identity": identity,
+            "paths": {
+                "predictions": str(paths["predictions"]),
+                "summary": str(paths["summary"]),
+            },
+        }
+        write_json(paths["manifest"], manifest)
+    if paths["predictions"].exists() and not args.resume:
+        raise RuntimeError("Official benchmark refused: predictions exist without --resume.")
+    load_official_records(paths["predictions"])
+    return identity, paths
+
+
+def official_outcome(scored, runtime_error=None):
+    """Map internal scorer status to the frozen official taxonomy."""
+
+    if runtime_error:
+        return "RUNTIME_ERROR"
+    if scored["outcome"] == "LEGAL_BUT_WRONG":
+        return "WRONG_LEGAL_MOVE"
+    return scored["outcome"]
+
+
+def rating_bucket(rating):
+    """Return a coarse rating bucket for summary aggregation."""
+
+    if rating is None:
+        return "unknown"
+    rating = int(rating)
+    lower = (rating // 200) * 200
+    return f"{lower}-{lower + 199}"
+
+
+def summarize_official_records(records, model_id):
+    """Aggregate official next-move records without fabricating Top-K metrics."""
+
+    total = len(records)
+    counts = {
+        "CORRECT": 0,
+        "WRONG_LEGAL_MOVE": 0,
+        "ILLEGAL_MOVE": 0,
+        "PARSE_ERROR": 0,
+        "RUNTIME_ERROR": 0,
+    }
+    latencies = []
+    by_mate_depth = {}
+    by_rating_bucket = {}
+    for record in records:
+        counts[record["outcome"]] = counts.get(record["outcome"], 0) + 1
+        if record.get("latency_seconds") is not None:
+            latencies.append(float(record["latency_seconds"]))
+        mate_key = str(record.get("mate_depth"))
+        rating_key = rating_bucket(record.get("rating"))
+        for bucket, key in ((by_mate_depth, mate_key), (by_rating_bucket, rating_key)):
+            bucket.setdefault(key, {"N": 0, "correct": 0})
+            bucket[key]["N"] += 1
+            bucket[key]["correct"] += int(bool(record.get("correct")))
+    for bucket in (by_mate_depth, by_rating_bucket):
+        for stats in bucket.values():
+            stats["accuracy"] = stats["correct"] / stats["N"] if stats["N"] else None
+    return {
+        "run_label": "OFFICIAL",
+        "model_id": model_id,
+        "N": total,
+        "correct": counts["CORRECT"],
+        "wrong_legal": counts["WRONG_LEGAL_MOVE"],
+        "illegal": counts["ILLEGAL_MOVE"],
+        "parse_errors": counts["PARSE_ERROR"],
+        "runtime_errors": counts["RUNTIME_ERROR"],
+        "top1_exact_canonical_accuracy": counts["CORRECT"] / total if total else None,
+        "mean_latency_seconds": statistics.fmean(latencies) if latencies else None,
+        "median_latency_seconds": statistics.median(latencies) if latencies else None,
+        "accuracy_by_mate_depth": by_mate_depth,
+        "accuracy_by_rating_bucket": by_rating_bucket,
+        "outcome_counts": counts,
+    }
+
+
+def progress_line(processed, total, started, records):
+    """Format a compact terminal progress line for long official runs."""
+
+    elapsed = time.perf_counter() - started
+    latencies = [row["latency_seconds"] for row in records if row.get("latency_seconds") is not None]
+    mean_latency = statistics.fmean(latencies) if latencies else 0.0
+    remaining = max(total - processed, 0)
+    eta = remaining * mean_latency if mean_latency else None
+    counts = {}
+    for row in records:
+        counts[row["outcome"]] = counts.get(row["outcome"], 0) + 1
+    percentage = (processed / total * 100.0) if total else 100.0
+    eta_text = f"{eta:.1f}s" if eta is not None else "unknown"
+    return (
+        f"processed={processed}/{total} ({percentage:.1f}%) "
+        f"elapsed={elapsed:.1f}s mean_latency={mean_latency:.3f}s "
+        f"eta={eta_text} outcomes={counts}"
+    )
+
+
+def run_official_next_move_benchmark(args, preflight):
+    """Execute the frozen official next-move benchmark with incremental JSONL."""
+
+    if args.protocol != "next-move":
+        raise RuntimeError("Official benchmark currently supports only protocol=next-move.")
+    model_ids = selected_model_ids(args)
+    validate_official_run_preconditions(model_ids, preflight)
+    dataset_path = OFFICIAL_DATASET_PATHS.get(args.dataset)
+    if dataset_path is None:
+        raise RuntimeError(f"Official benchmark refused: unsupported dataset {args.dataset}.")
+
+    endpoint = resolve_endpoint(args.ollama_url or args.endpoint)
+    client = OllamaClient(endpoint, timeout=args.timeout)
+    results = []
+    for model_id in model_ids:
+        registry_entry = preflight["discovered_registry"][model_id]
+        identity, paths = prepare_official_artifacts(args, preflight, model_id, registry_entry)
+        puzzles = load_lichess_test(dataset_path, limit=args.limit, offset=args.offset)
+        completed = load_completed_keys(paths["predictions"])
+        records = load_official_records(paths["predictions"])
+        generation_config = generation_config_for_model(model_id)
+        total = len(puzzles)
+        started = time.perf_counter()
+        print(
+            f"OFFICIAL next-move {model_id}: starting/resuming {len(records)}/{total}",
+            flush=True,
+        )
+        for index, puzzle in enumerate(puzzles, 1):
+            key = (identity["run_id"], model_id, puzzle.puzzle_id, args.protocol)
+            if key in completed:
+                continue
+            prompt = build_prompt(puzzle.initial_solver_fen)
+            runtime_error = None
+            try:
+                response = client.generate(
+                    registry_entry["ollama_model"],
+                    prompt=prompt["user"],
+                    system=prompt["system"],
+                    options=generation_config["options"],
+                    think=generation_config["think"],
+                )
+                runtime_error = response.get("error")
+            except Exception as exc:
+                response = {
+                    "final_content": "",
+                    "thinking": None,
+                    "thinking_requested": generation_config["think"],
+                    "thinking_returned": False,
+                    "metadata": {},
+                    "request_payload": None,
+                    "latency_seconds": None,
+                    "error": str(exc),
+                }
+                runtime_error = str(exc)
+            scored = score_next_move(
+                response.get("final_content"),
+                puzzle.initial_solver_fen,
+                puzzle.target_move,
+            )
+            outcome = official_outcome(scored, runtime_error=runtime_error)
+            record = {
+                "run_label": "OFFICIAL",
+                "run_id": identity["run_id"],
+                "model_id": model_id,
+                "ollama_model": registry_entry["ollama_model"],
+                "model_digest": registry_entry["digest"],
+                "dataset": args.dataset,
+                "protocol": args.protocol,
+                "dataset_fingerprint": preflight["dataset_fingerprint"],
+                "puzzle_index": args.offset + index - 1,
+                "puzzle_id": puzzle.puzzle_id,
+                "fen": puzzle.initial_solver_fen,
+                "target_move": puzzle.target_move,
+                "mate_depth": puzzle.mate_depth,
+                "rating": puzzle.rating,
+                "raw_final_content": response.get("final_content"),
+                "raw_thinking": response.get("thinking"),
+                "parsed_uci": scored["parsed_uci"],
+                "parsed_san": scored["parsed_san"],
+                "parse_success": False if runtime_error else scored["parse_success"],
+                "legal": False if runtime_error else scored["legal"],
+                "correct": False if runtime_error else scored["correct"],
+                "outcome": outcome,
+                "latency_seconds": response.get("latency_seconds"),
+                "runtime_error": runtime_error,
+                "generation_metadata": response.get("metadata", {}),
+                "generation_config": generation_config,
+                "request_payload": response.get("request_payload"),
+                "prompt_version": PROMPT_TEMPLATE_VERSION,
+                "prompt_hash": prompt_hash(),
+                "parser_version": PARSER_VERSION,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            append_jsonl(paths["predictions"], record)
+            records.append(record)
+            completed.add(key)
+            if len(records) == total or len(records) % 50 == 0:
+                print(progress_line(len(records), total, started, records), flush=True)
+        summary = summarize_official_records(records, model_id)
+        write_json(paths["summary"], summary)
+        manifest = json.loads(paths["manifest"].read_text(encoding="utf-8"))
+        manifest["status"] = "COMPLETED" if summary["N"] == total else "PARTIAL"
+        manifest["end_timestamp"] = datetime.now(timezone.utc).isoformat()
+        manifest["summary"] = summary
+        write_json(paths["manifest"], manifest)
+        print(json.dumps({"OFFICIAL_SUMMARY": summary}, indent=2, sort_keys=True), flush=True)
+        results.append({"model_id": model_id, "output_dir": str(paths["output_dir"]), "summary": summary})
+    return results
 
 
 def smoke_fixture():
@@ -324,7 +633,7 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--offset", type=int, default=0)
-    parser.add_argument("--output-dir", default="artifacts/llm_benchmark/smoke")
+    parser.add_argument("--output-dir", default=DEFAULT_SMOKE_OUTPUT_DIR)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--preflight", action="store_true")
@@ -360,8 +669,9 @@ def main(argv=None):
             )
             print(json.dumps({"NON_OFFICIAL_SMOKE_TEST": outputs, "REFERENCE_LINE": reference_line}, indent=2, sort_keys=True))
         return 0
-    validate_official_run_preconditions(selected_model_ids(args), preflight)
-    raise SystemExit("Official benchmark execution is intentionally disabled in this protocol-freeze pass.")
+    result = run_official_next_move_benchmark(args, preflight)
+    print(json.dumps({"OFFICIAL_BENCHMARK": result}, indent=2, sort_keys=True))
+    return 0
 
 
 if __name__ == "__main__":
