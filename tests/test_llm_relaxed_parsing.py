@@ -3,7 +3,7 @@ import json
 import pytest
 
 from src.cli.evaluation.evaluate_llm_relaxed import evaluate_predictions
-from src.llm.relaxed_parsing import RELAXED_PARSER_VERSION, relaxed_parse_move
+from src.llm.relaxed_parsing import RELAXED_PARSER_STATUS, RELAXED_PARSER_VERSION, relaxed_parse_move
 
 
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -13,6 +13,7 @@ CAPTURE_FEN = "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2"
 CHECKMATE_FEN = "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2"
 PROMOTION_FEN = "k7/4P3/8/8/8/8/8/7K w - - 0 1"
 DISAMBIGUATED_KNIGHT_FEN = "4k3/8/8/8/8/8/8/1N2KN2 w - - 0 1"
+ROOK_B8_FEN = "1R2k3/8/8/8/8/8/8/4K3 w - - 0 1"
 
 
 def assert_parsed(raw, fen, uci, method=None):
@@ -27,47 +28,54 @@ def assert_parsed(raw, fen, uci, method=None):
 
 
 def test_relaxed_exact_uci_legal_and_promotion_uci():
-    assert_parsed("e2e4", START_FEN, "e2e4", "STRICT_UCI")
-    assert_parsed("e7e8q", PROMOTION_FEN, "e7e8q", "STRICT_UCI")
+    assert RELAXED_PARSER_STATUS == "PRE_FREEZE_PENDING_SERVER_AUDIT"
+    assert_parsed("e2e4", START_FEN, "e2e4", "EXACT_UCI")
+    assert_parsed("e7e8q", PROMOTION_FEN, "e7e8q", "EXACT_UCI")
 
 
 def test_relaxed_exact_uci_illegal_is_not_reinterpreted():
     parsed = relaxed_parse_move("e2e5", START_FEN)
 
     assert parsed.parse_status == "ILLEGAL_MOVE"
-    assert parsed.parse_method == "STRICT_UCI"
+    assert parsed.parse_method == "EXACT_UCI"
     assert parsed.parsed_uci == "e2e5"
     assert parsed.is_legal is False
 
 
 def test_relaxed_exact_san_pawn_piece_capture_checkmate_promotion_castling():
-    assert_parsed("e4", START_FEN, "e2e4", "SAN")
-    assert_parsed("Nf3", START_FEN, "g1f3", "SAN")
-    assert_parsed("exd5", CAPTURE_FEN, "e4d5", "SAN")
-    assert_parsed("Qh4#", CHECKMATE_FEN, "d8h4", "SAN")
-    assert_parsed("e8=Q+", PROMOTION_FEN, "e7e8q", "SAN")
-    assert_parsed("O-O", CASTLE_FEN, "e1g1", "SAN")
+    assert_parsed("e4", START_FEN, "e2e4", "EXACT_SAN_RECHECK")
+    assert_parsed("Nf3", START_FEN, "g1f3", "EXACT_SAN_RECHECK")
+    assert_parsed("exd5", CAPTURE_FEN, "e4d5", "EXACT_SAN_RECHECK")
+    assert_parsed("Qh4#", CHECKMATE_FEN, "d8h4", "EXACT_SAN_RECHECK")
+    assert_parsed("e8=Q+", PROMOTION_FEN, "e7e8q", "EXACT_SAN_RECHECK")
+    assert_parsed("O-O", CASTLE_FEN, "e1g1", "EXACT_SAN_RECHECK")
 
 
-def test_relaxed_safe_san_normalization_annotations_punctuation_and_castling_zero():
-    assert_parsed("Nf3!", START_FEN, "g1f3", "NORMALIZED_SAN")
-    assert_parsed("Nf3.", START_FEN, "g1f3", "SAN")
-    assert_parsed("0-0", CASTLE_FEN, "e1g1", "NORMALIZED_SAN")
+def test_relaxed_castling_queenside_and_no_san_repair():
+    assert_parsed("O-O-O", CASTLE_FEN, "e1c1", "EXACT_SAN_RECHECK")
+
+    assert relaxed_parse_move("Nf3!", START_FEN).parse_status == "UNRECOVERABLE"
+    assert relaxed_parse_move("Nf3.", START_FEN).parse_status == "UNRECOVERABLE"
+    assert relaxed_parse_move("0-0", CASTLE_FEN).parse_status == "UNRECOVERABLE"
 
 
-def test_relaxed_safe_uci_normalization_and_coordinate_capture():
-    assert_parsed("e2-e4", START_FEN, "e2e4", "NORMALIZED_UCI")
-    assert_parsed("e2 e4", START_FEN, "e2e4", "NORMALIZED_UCI")
-    assert_parsed("e4xd5", CAPTURE_FEN, "e4d5", "NORMALIZED_UCI")
+def test_relaxed_piece_source_destination_rule():
+    assert_parsed("Nb8-c6", BLACK_START_FEN, "b8c6", "PIECE_SOURCE_DESTINATION")
+    assert_parsed("Nb8c6", BLACK_START_FEN, "b8c6", "PIECE_SOURCE_DESTINATION")
+    assert_parsed("Rb8-b7", ROOK_B8_FEN, "b8b7", "PIECE_SOURCE_DESTINATION")
 
 
-def test_relaxed_unique_text_wrapper_and_ambiguous_multiple_moves():
-    assert_parsed("The best move is Nf3", START_FEN, "g1f3", "TEXT_WRAPPED_MOVE")
-    ambiguous = relaxed_parse_move("Nf3 or e4", START_FEN)
+def test_relaxed_piece_source_destination_rejects_inconsistency():
+    assert relaxed_parse_move("Rb8-c6", BLACK_START_FEN).parse_status == "UNRECOVERABLE"
+    assert relaxed_parse_move("Nb7-c5", BLACK_START_FEN).parse_status == "UNRECOVERABLE"
+    assert relaxed_parse_move("Nb8-a8", BLACK_START_FEN).parse_status == "UNRECOVERABLE"
 
-    assert ambiguous.parse_status == "AMBIGUOUS"
-    assert ambiguous.parsed_uci is None
-    assert ambiguous.ambiguity_count == 2
+
+def test_relaxed_rejects_substrings_prose_and_multiple_options():
+    for raw in ["garbageNf3garbage", "abcRa8xyz", "bRc8", "qf5", "The best move is Nf3", "Nf3 or Qh5"]:
+        parsed = relaxed_parse_move(raw, START_FEN)
+        assert parsed.parse_status == "UNRECOVERABLE"
+        assert parsed.parsed_uci is None
 
 
 def test_relaxed_malformed_unrecoverable_and_empty():
@@ -79,14 +87,24 @@ def test_relaxed_malformed_unrecoverable_and_empty():
 
 
 def test_relaxed_black_to_move_and_position_dependence():
-    assert_parsed("e5", BLACK_START_FEN, "e7e5", "SAN")
+    assert_parsed("e5", BLACK_START_FEN, "e7e5", "EXACT_SAN_RECHECK")
     white = relaxed_parse_move("e5", START_FEN)
 
     assert white.parse_status == "UNRECOVERABLE"
 
 
 def test_relaxed_disambiguated_san():
-    assert_parsed("Nbd2", DISAMBIGUATED_KNIGHT_FEN, "b1d2", "SAN")
+    assert_parsed("Nbd2", DISAMBIGUATED_KNIGHT_FEN, "b1d2", "EXACT_SAN_RECHECK")
+
+
+def test_relaxed_previous_unsafe_regressions_do_not_extract_inner_tokens():
+    knight = relaxed_parse_move("Nb8-c6", START_FEN)
+    rook = relaxed_parse_move("Rb8-b7", "4k2r/8/8/8/8/8/8/4K3 w - - 0 1")
+
+    assert knight.parse_status == "UNRECOVERABLE"
+    assert knight.parsed_uci != "c7c6"
+    assert rook.parse_status == "UNRECOVERABLE"
+    assert rook.parsed_uci != "h8b8"
 
 
 def test_relaxed_target_independence_by_signature_and_behavior():
@@ -107,7 +125,7 @@ def test_relaxed_evaluator_writes_separate_artifacts_and_summary(tmp_path):
             "fen": START_FEN,
             "target_move": "e2e4",
             "outcome": "PARSE_ERROR",
-            "raw_final_content": "The best move is e4",
+            "raw_final_content": "e4",
             "mate_depth": 1,
             "rating": 1500,
         },
@@ -147,13 +165,14 @@ def test_relaxed_evaluator_writes_separate_artifacts_and_summary(tmp_path):
     assert result["summary"]["N"] == 3
     assert result["summary"]["strict"]["parse_errors"] == 2
     assert result["summary"]["relaxed"]["correct"] == 2
-    assert result["summary"]["relaxed"]["ambiguous"] == 1
+    assert result["summary"]["relaxed"]["ambiguous"] == 0
+    assert result["summary"]["relaxed"]["parse_errors"] == 1
     assert result["summary"]["recovered_correct_from_strict_parse_error"] == 1
     assert result["parser_coverage"]["categorized_records"] == 3
     assert result["parser_coverage"]["categorized_rate"] == 1.0
     assert relaxed_rows[0]["strict_outcome"] == "PARSE_ERROR"
     assert relaxed_rows[0]["relaxed_outcome"] == "CORRECT"
-    assert relaxed_rows[0]["relaxed_parse_method"] == "TEXT_WRAPPED_MOVE"
+    assert relaxed_rows[0]["relaxed_parse_method"] == "EXACT_SAN_RECHECK"
 
 
 def test_relaxed_evaluator_refuses_to_overwrite_existing_analysis(tmp_path):

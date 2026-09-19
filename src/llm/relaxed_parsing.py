@@ -1,8 +1,8 @@
-"""Position-aware relaxed parsing for post-hoc LLM chess move analysis.
+"""Frozen secondary parser for post-hoc LLM chess move analysis.
 
-The parser is a secondary analysis tool. It uses only the raw model text and
-the current FEN to recover unambiguous chess moves when notation is valid or
-safely normalizable. It never uses target moves or future puzzle metadata.
+`relaxed_chess_move_v1` accepts only whole-string, deterministic chess move
+notations. It uses raw model output plus the current FEN, never target moves or
+benchmark correctness, and never extracts arbitrary inner substrings.
 """
 
 from __future__ import annotations
@@ -12,24 +12,26 @@ from dataclasses import asdict, dataclass, field
 
 import chess
 
-from src.llm.parsing import UCI_PATTERN, parse_uci_response
+from src.llm.parsing import UCI_PATTERN
 
 
 RELAXED_PARSER_VERSION = "relaxed_chess_move_v1"
-TRAILING_TEXT_PUNCTUATION = ".。;:"
-ANNOTATION_PATTERN = re.compile(r"([!?]+)$")
-UCI_HYPHEN_PATTERN = re.compile(r"^([a-h][1-8])[-\s]([a-h][1-8])(?:=?([qrbnQRBN]))?$")
-MALFORMED_COORD_CAPTURE_PATTERN = re.compile(r"^([a-h][1-8])x([a-h][1-8])(?:=?([qrbnQRBN]))?[+#]?$")
-TEXT_CANDIDATE_PATTERN = re.compile(
-    r"(?:[a-h][1-8][-\s]?[a-h][1-8](?:=?[qrbnQRBN])?|"
-    r"[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=?[QRBN])?[+#]?[!?]*|"
-    r"O-O-O|O-O|0-0-0|0-0)"
+RELAXED_PARSER_STATUS = "PRE_FREEZE_PENDING_SERVER_AUDIT"
+PIECE_SOURCE_DESTINATION_PATTERN = re.compile(
+    r"^(?P<piece>[KQRBN])(?P<src>[a-h][1-8])(?P<sep>[-x]?)(?P<dst>[a-h][1-8])(?P<suffix>[+#]?)$"
 )
+PIECE_SYMBOLS = {
+    "K": chess.KING,
+    "Q": chess.QUEEN,
+    "R": chess.ROOK,
+    "B": chess.BISHOP,
+    "N": chess.KNIGHT,
+}
 
 
 @dataclass(frozen=True)
 class RelaxedParseResult:
-    """Structured result for relaxed chess move parsing."""
+    """Structured result for one relaxed parser decision."""
 
     raw_content: str
     normalized_content: str
@@ -44,201 +46,174 @@ class RelaxedParseResult:
     failure_reason: str | None = None
     diagnostics: dict = field(default_factory=dict)
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """Return a JSON-serializable representation."""
 
         return asdict(self)
 
 
-def normalize_outer_text(raw_content):
-    """Apply safe outer-text normalization without changing move semantics."""
+def normalize_outer_text(raw_content: str | None) -> tuple[str, list[str]]:
+    """Normalize only transport-level wrapping, not chess notation semantics."""
 
     raw = "" if raw_content is None else str(raw_content)
     text = raw.replace("\r\n", "\n").replace("\r", "\n").strip()
-    diagnostics = []
-    if (
-        (text.startswith("```") and text.endswith("```"))
-        or (text.startswith("`") and text.endswith("`") and text.count("`") == 2)
-    ):
-        text = text.strip("`").strip()
-        diagnostics.append("removed_surrounding_backticks")
+    diagnostics = ["strip_whitespace"] if text != raw else []
+    if text.startswith("```") and text.endswith("```"):
+        inner = text[3:-3].strip()
+        if "\n" not in inner:
+            text = inner
+            diagnostics.append("removed_single_token_code_fence")
+    elif text.startswith("`") and text.endswith("`") and text.count("`") == 2:
+        text = text[1:-1].strip()
+        diagnostics.append("removed_single_token_code_span")
     if len(text) >= 2 and text[0] == text[-1] and text[0] in {'"', "'"}:
         text = text[1:-1].strip()
         diagnostics.append("removed_surrounding_quotes")
-    stripped = text.rstrip(TRAILING_TEXT_PUNCTUATION).strip()
-    if stripped != text:
-        text = stripped
-        diagnostics.append("removed_trailing_text_punctuation")
     return text, diagnostics
 
 
-def safe_san_variants(text):
-    """Yield deterministic SAN notation variants for one normalized token."""
-
-    variants = []
-    castle = text.replace("0-0-0", "O-O-O").replace("0-0", "O-O")
-    if castle != text:
-        variants.append((castle, "zero_castling_to_letter_o"))
-    annotation_stripped = ANNOTATION_PATTERN.sub("", text)
-    if annotation_stripped != text:
-        variants.append((annotation_stripped, "removed_san_annotation_glyphs"))
-    castle_then_annotation = ANNOTATION_PATTERN.sub("", castle)
-    if castle_then_annotation != text and castle_then_annotation != castle:
-        variants.append((castle_then_annotation, "normalized_castling_and_annotations"))
-    seen = set()
-    for variant, rule in variants:
-        if variant and variant not in seen:
-            seen.add(variant)
-            yield variant, rule
-
-
-def safe_uci_variants(text):
-    """Yield deterministic UCI-equivalent coordinate variants."""
-
-    match = UCI_HYPHEN_PATTERN.fullmatch(text)
-    if match:
-        promotion = (match.group(3) or "").lower()
-        yield f"{match.group(1)}{match.group(2)}{promotion}", "coordinate_separator_removed"
-    match = MALFORMED_COORD_CAPTURE_PATTERN.fullmatch(text)
-    if match:
-        promotion = (match.group(3) or "").lower()
-        yield f"{match.group(1)}{match.group(2)}{promotion}", "coordinate_capture_source_destination"
-
-
-def legal_move_result(raw_content, normalized_content, board, move, method, candidate, diagnostics=None):
+def successful_result(
+    raw: str,
+    normalized: str,
+    board: chess.Board,
+    move: chess.Move,
+    method: str,
+    diagnostics: dict | None = None,
+) -> RelaxedParseResult:
     """Build a successful parse result for one legal move."""
 
     return RelaxedParseResult(
-        raw_content="" if raw_content is None else str(raw_content),
-        normalized_content=normalized_content,
+        raw_content=raw,
+        normalized_content=normalized,
         parse_status="PARSED",
         parse_method=method,
-        candidate_notation=candidate,
+        candidate_notation=normalized,
         parsed_uci=move.uci(),
         parsed_san=board.san(move),
         is_legal=True,
-        ambiguity_count=0,
         candidate_count=1,
         diagnostics=diagnostics or {},
     )
 
 
-def parse_san_candidate(raw_content, normalized_content, board, candidate, method, diagnostics=None):
-    """Parse one candidate as exact SAN and return a result or None."""
+def parse_exact_uci(raw: str, normalized: str, board: chess.Board, diagnostics: dict) -> RelaxedParseResult | None:
+    """Apply whole-string exact UCI parsing."""
+
+    if not UCI_PATTERN.fullmatch(normalized):
+        return None
+    try:
+        move = chess.Move.from_uci(normalized)
+    except ValueError as exc:
+        return RelaxedParseResult(
+            raw,
+            normalized,
+            "UNRECOVERABLE",
+            "EXACT_UCI",
+            candidate_notation=normalized,
+            failure_reason=f"invalid_uci:{exc}",
+            diagnostics=diagnostics,
+        )
+    if move not in board.legal_moves:
+        return RelaxedParseResult(
+            raw,
+            normalized,
+            "ILLEGAL_MOVE",
+            "EXACT_UCI",
+            candidate_notation=normalized,
+            parsed_uci=normalized,
+            failure_reason="syntactically_valid_uci_illegal",
+            candidate_count=1,
+            diagnostics=diagnostics,
+        )
+    return successful_result(raw, normalized, board, move, "EXACT_UCI", diagnostics)
+
+
+def parse_exact_san(raw: str, normalized: str, board: chess.Board, diagnostics: dict) -> RelaxedParseResult | None:
+    """Apply whole-string exact SAN parsing via python-chess."""
 
     try:
-        move = board.parse_san(candidate)
+        move = board.parse_san(normalized)
     except ValueError:
         return None
-    if method == "SAN" and board.san(move) != candidate:
+    if board.san(move) != normalized:
         return None
-    return legal_move_result(raw_content, normalized_content, board, move, method, candidate, diagnostics)
+    return successful_result(raw, normalized, board, move, "EXACT_SAN_RECHECK", diagnostics)
 
 
-def parse_uci_candidate(raw_content, normalized_content, board, candidate, method, diagnostics=None):
-    """Parse one candidate as UCI and preserve illegal-UCI diagnostics."""
+def parse_piece_source_destination(
+    raw: str,
+    normalized: str,
+    board: chess.Board,
+    diagnostics: dict,
+) -> RelaxedParseResult | None:
+    """Parse whole-string piece + source + optional separator + destination."""
 
-    if not UCI_PATTERN.fullmatch(candidate):
+    match = PIECE_SOURCE_DESTINATION_PATTERN.fullmatch(normalized)
+    if not match:
         return None
-    strict = parse_uci_response(candidate, board.fen())
-    if strict.legal:
-        return legal_move_result(
-            raw_content,
-            normalized_content,
-            board,
-            chess.Move.from_uci(candidate),
-            method,
-            candidate,
-            diagnostics,
+    piece_symbol = match.group("piece")
+    source = match.group("src")
+    destination = match.group("dst")
+    separator = match.group("sep")
+    source_square = chess.parse_square(source)
+    destination_square = chess.parse_square(destination)
+    piece = board.piece_at(source_square)
+    rule_diagnostics = diagnostics | {"separator": separator or "", "source": source, "destination": destination}
+    if not piece or piece.color != board.turn or piece.piece_type != PIECE_SYMBOLS[piece_symbol]:
+        return RelaxedParseResult(
+            raw,
+            normalized,
+            "UNRECOVERABLE",
+            "PIECE_SOURCE_DESTINATION",
+            candidate_notation=normalized,
+            failure_reason="piece_prefix_or_source_mismatch",
+            diagnostics=rule_diagnostics,
         )
-    return RelaxedParseResult(
-        raw_content="" if raw_content is None else str(raw_content),
-        normalized_content=normalized_content,
-        parse_status="ILLEGAL_MOVE",
-        parse_method=method,
-        candidate_notation=candidate,
-        parsed_uci=candidate,
-        parsed_san=None,
-        is_legal=False,
-        ambiguity_count=0,
-        candidate_count=1,
-        failure_reason="syntactically_valid_uci_illegal",
-        diagnostics=diagnostics or {},
-    )
-
-
-def parse_atomic_notation(raw_content, normalized_content, board, text):
-    """Parse one isolated move-like string without text-wrapper extraction."""
-
-    result = parse_uci_candidate(raw_content, normalized_content, board, text, "STRICT_UCI")
-    if result is not None:
-        return result
-    result = parse_san_candidate(raw_content, normalized_content, board, text, "SAN")
-    if result is not None:
-        return result
-    for variant, rule in safe_san_variants(text):
-        result = parse_san_candidate(
-            raw_content,
-            normalized_content,
-            board,
-            variant,
-            "NORMALIZED_SAN",
-            {"recovery_rule": rule, "source_notation": text},
+    move = chess.Move(source_square, destination_square)
+    if move not in board.legal_moves:
+        return RelaxedParseResult(
+            raw,
+            normalized,
+            "UNRECOVERABLE",
+            "PIECE_SOURCE_DESTINATION",
+            candidate_notation=normalized,
+            parsed_uci=move.uci(),
+            failure_reason="explicit_piece_source_destination_illegal",
+            candidate_count=1,
+            diagnostics=rule_diagnostics,
         )
-        if result is not None:
-            return result
-    for variant, rule in safe_uci_variants(text):
-        result = parse_uci_candidate(
-            raw_content,
-            normalized_content,
-            board,
-            variant,
-            "NORMALIZED_UCI",
-            {"recovery_rule": rule, "source_notation": text},
+    if separator == "x" and not board.is_capture(move):
+        return RelaxedParseResult(
+            raw,
+            normalized,
+            "UNRECOVERABLE",
+            "PIECE_SOURCE_DESTINATION",
+            candidate_notation=normalized,
+            parsed_uci=move.uci(),
+            failure_reason="capture_separator_without_capture",
+            candidate_count=1,
+            diagnostics=rule_diagnostics,
         )
-        if result is not None and result.is_legal:
-            return result
-    return None
+    return successful_result(raw, normalized, board, move, "PIECE_SOURCE_DESTINATION", rule_diagnostics)
 
 
-def unique_legal_candidates(raw_content, normalized_content, board, candidates):
-    """Return unique legal parse results for candidate strings."""
-
-    results = []
-    seen_uci = set()
-    for candidate in candidates:
-        parsed = parse_atomic_notation(raw_content, normalized_content, board, candidate)
-        if parsed and parsed.is_legal and parsed.parsed_uci not in seen_uci:
-            seen_uci.add(parsed.parsed_uci)
-            results.append(parsed)
-    return results
-
-
-def extract_text_candidates(text):
-    """Extract plausible move expressions from text without fuzzy ranking."""
-
-    candidates = []
-    seen = set()
-    for match in TEXT_CANDIDATE_PATTERN.finditer(text):
-        candidate = match.group(0).strip()
-        if candidate and candidate not in seen:
-            seen.add(candidate)
-            candidates.append(candidate)
-    return candidates
-
-
-def relaxed_parse_move(raw_final_content, fen):
-    """Parse an LLM chess move response using relaxed, target-independent rules."""
+def relaxed_parse_move(raw_final_content: str | None, fen: str) -> RelaxedParseResult:
+    """Parse a model response as one deterministic legal chess move."""
 
     raw = "" if raw_final_content is None else str(raw_final_content)
-    normalized, normalization_steps = normalize_outer_text(raw)
-    diagnostics = {"normalization_steps": normalization_steps}
+    normalized, steps = normalize_outer_text(raw)
+    diagnostics = {
+        "normalization_steps": steps,
+        "target_used": False,
+        "substring_extraction": False,
+        "parser_status": RELAXED_PARSER_STATUS,
+    }
     if not normalized:
         return RelaxedParseResult(
-            raw_content=raw,
-            normalized_content=normalized,
-            parse_status="EMPTY",
-            parse_method="EMPTY",
+            raw,
+            normalized,
+            "EMPTY",
+            "EMPTY",
             failure_reason="empty_after_normalization",
             diagnostics=diagnostics,
         )
@@ -246,54 +221,22 @@ def relaxed_parse_move(raw_final_content, fen):
         board = chess.Board(fen)
     except ValueError as exc:
         return RelaxedParseResult(
-            raw_content=raw,
-            normalized_content=normalized,
-            parse_status="UNRECOVERABLE",
-            parse_method="UNRECOVERABLE",
+            raw,
+            normalized,
+            "UNRECOVERABLE",
+            "UNRECOVERABLE",
             failure_reason=f"invalid_fen:{exc}",
             diagnostics=diagnostics,
         )
-    direct = parse_atomic_notation(raw, normalized, board, normalized)
-    if direct is not None:
-        return direct
-    candidates = extract_text_candidates(normalized)
-    legal_candidates = unique_legal_candidates(raw, normalized, board, candidates)
-    if len(legal_candidates) == 1:
-        parsed = legal_candidates[0]
-        return RelaxedParseResult(
-            raw_content=raw,
-            normalized_content=normalized,
-            parse_status="PARSED",
-            parse_method="TEXT_WRAPPED_MOVE",
-            candidate_notation=parsed.candidate_notation,
-            parsed_uci=parsed.parsed_uci,
-            parsed_san=parsed.parsed_san,
-            is_legal=True,
-            ambiguity_count=0,
-            candidate_count=len(candidates),
-            diagnostics={"text_candidates": candidates, **diagnostics},
-        )
-    if len(legal_candidates) > 1:
-        return RelaxedParseResult(
-            raw_content=raw,
-            normalized_content=normalized,
-            parse_status="AMBIGUOUS",
-            parse_method="AMBIGUOUS",
-            ambiguity_count=len(legal_candidates),
-            candidate_count=len(candidates),
-            failure_reason="multiple_legal_move_candidates",
-            diagnostics={
-                "text_candidates": candidates,
-                "legal_candidate_uci": [candidate.parsed_uci for candidate in legal_candidates],
-                **diagnostics,
-            },
-        )
+    for parser in (parse_exact_uci, parse_exact_san, parse_piece_source_destination):
+        result = parser(raw, normalized, board, diagnostics)
+        if result is not None:
+            return result
     return RelaxedParseResult(
-        raw_content=raw,
-        normalized_content=normalized,
-        parse_status="UNRECOVERABLE",
-        parse_method="UNRECOVERABLE",
-        candidate_count=len(candidates),
-        failure_reason="no_unique_legal_move",
-        diagnostics={"text_candidates": candidates, **diagnostics},
+        raw,
+        normalized,
+        "UNRECOVERABLE",
+        "UNRECOVERABLE",
+        failure_reason="no_whole_string_deterministic_rule",
+        diagnostics=diagnostics,
     )
