@@ -65,9 +65,9 @@ def test_audit_cli_outputs_artifacts_without_target_accuracy(tmp_path):
     rows = [
         {
             "puzzle_id": "p1",
-            "fen": ROOK_FEN,
+            "fen": START_FEN,
             "target_move": "a7a8",
-            "raw_final_content": "Ra7a6",
+            "raw_final_content": "e2-e4",
             "outcome": "PARSE_ERROR",
         },
         {
@@ -86,7 +86,7 @@ def test_audit_cli_outputs_artifacts_without_target_accuracy(tmp_path):
     model_audit = result["model_audits"][0]
     proposed = result["proposed_recovery_rules"]
 
-    assert model_audit["unrecoverable_count"] == 1
+    assert model_audit["unrecoverable_count"] == 2
     assert model_audit["deterministically_recoverable_count"] == 1
     assert (tmp_path / "audit" / "qwen_3_5_4b_audit.json").exists()
     assert (tmp_path / "audit" / "text_wrapper_audit.json").exists()

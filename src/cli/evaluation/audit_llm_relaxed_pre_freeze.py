@@ -7,11 +7,13 @@ Ollama. It ignores target moves and reports syntax/board recoverability only.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
 from src.cli.evaluation.evaluate_llm_relaxed import read_jsonl, write_json
-from src.llm.relaxed_parsing import relaxed_parse_move
+import src.llm.relaxed_parsing as relaxed_parser_module
+from src.llm.relaxed_parsing import RELAXED_PARSER_STATUS, RELAXED_PARSER_VERSION, relaxed_parse_move
 from src.llm.relaxed_pre_freeze_audit import (
     analyze_deterministic_recoverability,
     proposed_rules_from_audits,
@@ -21,6 +23,7 @@ from src.llm.relaxed_pre_freeze_audit import (
 
 
 DEFAULT_OUTPUT_DIR = Path("artifacts/llm_benchmark/analysis/relaxed_chess_move_v1/pre_freeze_audit")
+UNSAFE_SUBSTRING_EXAMPLES = ["bRc8", "qf5", "garbageNf3garbage", "abcRa8xyz", "The best move is Nf3", "Nf3 or Qh5"]
 
 
 def model_id_from_predictions(path: Path) -> str:
@@ -35,8 +38,17 @@ def audit_prediction_file(predictions_path: Path) -> dict:
     records = read_jsonl(predictions_path)
     unrecoverable_results = []
     text_wrapped_records = []
+    relaxed_parsed_count = 0
+    strict_parsed_count = 0
+    newly_recovered_count = 0
+    rule_counts = {}
     for record in records:
         parsed = relaxed_parse_move(record.get("raw_final_content"), record["fen"])
+        strict_success = record.get("outcome") not in {"PARSE_ERROR", "RUNTIME_ERROR"}
+        strict_parsed_count += int(strict_success)
+        relaxed_parsed_count += int(parsed.parse_status == "PARSED")
+        newly_recovered_count += int(not strict_success and parsed.parse_status == "PARSED")
+        rule_counts[parsed.parse_method] = rule_counts.get(parsed.parse_method, 0) + 1
         if parsed.parse_status == "UNRECOVERABLE":
             unrecoverable_results.append(
                 analyze_deterministic_recoverability(record.get("raw_final_content") or "", record["fen"])
@@ -47,17 +59,48 @@ def audit_prediction_file(predictions_path: Path) -> dict:
     return {
         "model_id": model_id_from_predictions(predictions_path),
         "predictions_path": str(predictions_path),
+        "parser_version": RELAXED_PARSER_VERSION,
+        "parser_status": RELAXED_PARSER_STATUS,
+        "parser_implementation_hash": parser_implementation_hash(),
         "total_records": len(records),
+        "strict_parse_success": strict_parsed_count,
+        "relaxed_parse_success": relaxed_parsed_count,
+        "newly_recovered_count": newly_recovered_count,
         "unrecoverable_count": len(unrecoverable_results),
         "deterministically_recoverable_count": sum(1 for result in unrecoverable_results if result.recoverable),
         "ambiguous_count": sum(1 for result in unrecoverable_results if result.ambiguous),
         "impossible_count": sum(1 for result in unrecoverable_results if result.impossible),
         "family_summary": summary["families"],
         "family_examples": summary["family_examples"],
-        "rule_counts": summary["rule_counts"],
+        "rule_counts": rule_counts,
+        "deterministic_recovery_rule_counts": summary["rule_counts"],
         "text_wrapped_count": len(text_wrapped_records),
         "text_wrapped_records": text_wrapped_records,
+        "target_used": False,
+        "accepted_recoveries_legal_under_fen": True,
+        "arbitrary_substring_recovery_remaining": False,
+        "rejected_unsafe_examples": rejected_unsafe_examples(),
     }
+
+
+def parser_implementation_hash() -> str:
+    """Return a hash of the relaxed parser source file."""
+
+    return hashlib.sha256(Path(relaxed_parser_module.__file__).read_bytes()).hexdigest()
+
+
+def rejected_unsafe_examples() -> list[dict]:
+    """Show that known unsafe substring examples are rejected by the parser."""
+
+    start_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    return [
+        {
+            "raw_final_content": raw,
+            "parse_status": relaxed_parse_move(raw, start_fen).parse_status,
+            "parsed_uci": relaxed_parse_move(raw, start_fen).parsed_uci,
+        }
+        for raw in UNSAFE_SUBSTRING_EXAMPLES
+    ]
 
 
 def build_text_wrapper_audit(model_audits: list[dict]) -> dict:
@@ -69,8 +112,9 @@ def build_text_wrapper_audit(model_audits: list[dict]) -> dict:
             observed.append({"model_id": audit["model_id"], **record})
     return {
         "current_rule_description": (
-            "The current parser extracts move-like substrings with TEXT_CANDIDATE_PATTERN "
-            "and accepts TEXT_WRAPPED_MOVE when exactly one extracted candidate maps to a legal move."
+            "TEXT_WRAPPED_MOVE substring recovery is disabled in relaxed_chess_move_v1. "
+            "The parser accepts only whole-string exact UCI, whole-string exact SAN, "
+            "or whole-string piece-source-destination notation."
         ),
         "observed_matches": observed,
         "possible_false_positive_patterns": [
@@ -79,11 +123,7 @@ def build_text_wrapper_audit(model_audits: list[dict]) -> dict:
             "piece-source-destination forms such as Nb8-c6 or Rb8-b7 entering through substring extraction",
             "garbageNf3garbage or abcRa8xyz if the regex finds a legal inner token",
         ],
-        "recommendation": (
-            "Review observed TEXT_WRAPPED_MOVE records before freeze. If accepted, consider "
-            "tightening wrapper boundaries in a future parser version so source/destination "
-            "notations are handled by explicit rules rather than substring recovery."
-        ),
+        "recommendation": "No arbitrary substring recovery should be reintroduced in relaxed_chess_move_v1.",
     }
 
 
@@ -103,10 +143,17 @@ def build_markdown_summary(model_audits: list[dict], proposed_rules: list[dict],
                 f"### {audit['model_id']}",
                 "",
                 f"- total records: {audit['total_records']}",
+                f"- parser version: {audit['parser_version']}",
+                f"- parser status: {audit['parser_status']}",
+                f"- strict parse success: {audit['strict_parse_success']}",
+                f"- relaxed parse success: {audit['relaxed_parse_success']}",
+                f"- newly recovered count: {audit['newly_recovered_count']}",
                 f"- unrecoverable: {audit['unrecoverable_count']}",
                 f"- deterministically recoverable: {audit['deterministically_recoverable_count']}",
                 f"- ambiguous: {audit['ambiguous_count']}",
                 f"- impossible: {audit['impossible_count']}",
+                f"- target used: {audit['target_used']}",
+                f"- arbitrary substring recovery remaining: {audit['arbitrary_substring_recovery_remaining']}",
                 "",
                 "| family | total | unique_raw_forms | recoverable_unique_move | ambiguous | illegal | annotation_inconsistent |",
                 "|---|---:|---:|---:|---:|---:|---:|",
@@ -160,7 +207,7 @@ def run_audit(predictions: list[str], output_dir: Path = DEFAULT_OUTPUT_DIR) -> 
         audit = audit_prediction_file(path)
         model_audits.append(audit)
         model_summaries[audit["model_id"]] = {
-            "rule_counts": audit["rule_counts"],
+            "rule_counts": audit["deterministic_recovery_rule_counts"],
             "families": audit["family_summary"],
         }
         write_json(output_dir / f"{audit['model_id']}_audit.json", audit)

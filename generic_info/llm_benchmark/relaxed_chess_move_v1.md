@@ -55,49 +55,49 @@ artifacts/llm_benchmark/analysis/relaxed_chess_move_v1/<model_id>/
 
 Non sovrascrive gli artifact ufficiali.
 
-## Stages Di Parsing
+## Stato
 
-1. Safe outer normalization
+`RELAXED_PARSER_STATUS = PRE_FREEZE_PENDING_SERVER_AUDIT`
+
+Lo status deve diventare `FROZEN` solo dopo il pre-freeze audit sui prediction ufficiali Qwen 4B/9B. Da quel momento, ogni modifica semantica dovrà usare una nuova versione, ad esempio `relaxed_chess_move_v2`.
+
+## Regole Di Parsing
+
+1. Safe outer normalization minimale
    - strip whitespace;
    - normalizzazione CR/LF;
    - rimozione di backtick markdown solo se racchiudono tutta la risposta;
    - rimozione di quote esterne solo se racchiudono tutta la risposta;
-   - rimozione di punteggiatura testuale finale sicura.
+   - nessuna normalizzazione di notazione scacchistica.
 
-2. Strict UCI
+2. `EXACT_UCI`
    - accetta UCI canonico come `e2e4`, `g1f3`, `e7e8q`;
    - se sintatticamente UCI ma illegale, registra `ILLEGAL_MOVE`;
-   - non reinterpreta UCI illegale come SAN.
+   - non cerca UCI come substring dentro testo arbitrario.
 
-3. Exact SAN
+3. `EXACT_SAN_RECHECK`
    - usa `python-chess` position-aware;
-   - accetta solo SAN canonica per evitare permissività eccessiva;
+   - parse della risposta intera;
+   - accetta solo SAN canonica;
    - esempi: `Nf3`, `exd5`, `Qh4#`, `e8=Q+`, `O-O`.
 
-4. Safe SAN normalization
-   - `0-0 -> O-O`;
-   - `0-0-0 -> O-O-O`;
-   - rimozione annotation glyph finali: `!`, `?`, `!!`, `??`, `!?`, `?!`;
-   - valida solo se la SAN risultante identifica una mossa legale unica.
+4. `PIECE_SOURCE_DESTINATION`
+   - accetta solo una risposta intera del tipo `Nb8c6`, `Nb8-c6`, `Ra8-a7`;
+   - richiede prefisso pezzo, source square e destination square;
+   - verifica che il source contenga il pezzo indicato del side-to-move;
+   - verifica che la mossa source-destination sia legale;
+   - se il separatore è `x`, verifica che sia davvero una cattura;
+   - non gestisce promozioni e non le indovina.
 
-5. Safe UCI normalization
-   - `e2-e4 -> e2e4`;
-   - `e2 e4 -> e2e4`;
-   - `e7-e8=Q -> e7e8q`;
-   - malformed coordinate capture esplicita, ad esempio `e4xd5`, solo se origine/destinazione producono una mossa legale unica.
-
-6. Text wrapper recovery
-   - recupera una risposta testuale solo se contiene esattamente una singola mossa legalmente interpretabile;
-   - esempi recuperabili: `The best move is Nf3`, `My move: e2e4`;
-   - esempi ambigui: `Nf3 or Qh5`, `I considered Nf3 but Qh5 is better`.
+`TEXT_WRAPPED_MOVE` è disabilitato. Il parser non recupera prose come `The best move is Nf3`, non sceglie fra opzioni come `Nf3 or Qh5`, e non accetta substring interne come `garbageNf3garbage`, `bRc8` o `qf5`.
 
 ## Ambiguità
 
-Se più di una mossa legale plausibile è presente:
+Il parser frozen non enumera opzioni da prose o substring. Se una risposta non corrisponde a una delle regole intere sopra:
 
-- `parse_status = AMBIGUOUS`
+- `parse_status = UNRECOVERABLE`
 - `parsed_uci = null`
-- nessuna scelta viene fatta, anche se una candidata coincide con il target.
+- nessuna scelta viene fatta.
 
 ## Summary
 
@@ -143,6 +143,15 @@ Freeze parser:
 
 ```bash
 ./venv/bin/python -m pytest tests/test_llm_relaxed_parsing.py -q
+```
+
+Pre-freeze audit finale:
+
+```bash
+./venv/bin/python -m src.cli.evaluation.audit_llm_relaxed_pre_freeze \
+  --predictions artifacts/llm_benchmark/official/next_move/qwen_3_5_4b/predictions.jsonl \
+  --predictions artifacts/llm_benchmark/official/next_move/qwen_3_5_9b/predictions.jsonl \
+  --output-dir artifacts/llm_benchmark/analysis/relaxed_chess_move_v1/pre_freeze_audit
 ```
 
 Il parser può essere considerato frozen solo se:
