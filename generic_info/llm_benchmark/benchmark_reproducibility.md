@@ -42,13 +42,22 @@ GPT-OSS setting:
   "thinking_mode": "low",
   "think": "low",
   "temperature": 0,
-  "num_predict": null
+  "num_predict": 64
 }
 ```
 
-GPT-OSS status: `PENDING_RUNTIME_CALIBRATION`.
+GPT-OSS status: `RUNTIME_VALIDATED`.
 
-The first server2 smoke showed `num_predict=16` with default thinking enabled is invalid for all three models: generation ended with `done_reason=length`, non-empty truncated thinking, and empty final content. Qwen supports `think=false`; GPT-OSS supports reasoning levels and cannot fully disable reasoning. The candidate GPT-OSS protocol therefore uses the minimum supported reasoning effort, `think="low"`, and must calibrate `num_predict` on non-official fixtures.
+The first server2 smoke showed `num_predict=16` with default thinking enabled is invalid for all three models: generation ended with `done_reason=length`, non-empty truncated thinking, and empty final content. Qwen supports `think=false`; GPT-OSS supports reasoning levels and cannot fully disable reasoning. The frozen GPT-OSS protocol therefore uses the minimum supported reasoning effort, `think="low"`.
+
+GPT-OSS calibration was run only on non-official fixtures before any official Lichess inference:
+
+- candidate budgets: `[32, 64, 128, 256]`
+- `32`: failed, `done_reason=length`, final content `e`, parse error
+- `64`: succeeded, `done_reason=stop`, `eval_count=37`, final content `e2e4`
+- selected budget: `64`
+
+Chess correctness was not used to choose the budget.
 
 The strict parser only sees final answer content, never thinking/reasoning content. Runs with thinking enabled and disabled are different benchmark configurations and cannot be resumed into each other.
 

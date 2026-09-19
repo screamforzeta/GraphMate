@@ -52,10 +52,10 @@ LLM_BENCHMARK_MODELS = {
         "capabilities": ["completion", "tools", "thinking"],
         "generation_config": {
             "temperature": 0,
-            "num_predict": None,
+            "num_predict": 64,
             "thinking_mode": "low",
             "think": "low",
-            "status": "PENDING_RUNTIME_CALIBRATION",
+            "status": "RUNTIME_VALIDATED",
         },
     },
 }
@@ -117,3 +117,20 @@ def generation_config_for_model(model_id, num_predict_override=None):
         "thinking_mode": config["thinking_mode"],
         "status": config["status"],
     }
+
+
+def official_model_ready(model_id, runtime_verification):
+    """Return whether one model passes frozen official-run readiness checks."""
+
+    model = LLM_BENCHMARK_MODELS[model_id]
+    verification = runtime_verification.get(model_id, {})
+    config = generation_config_for_model(model_id)
+    return (
+        bool(verification.get("found"))
+        and bool(verification.get("digest_match"))
+        and model["generation_config"]["status"] == "RUNTIME_VALIDATED"
+        and config["options"].get("temperature") == model["generation_config"]["temperature"]
+        and config["options"].get("num_predict") == model["generation_config"]["num_predict"]
+        and config["think"] == model["generation_config"]["think"]
+        and config["thinking_mode"] == model["generation_config"]["thinking_mode"]
+    )
