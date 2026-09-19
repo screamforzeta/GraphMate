@@ -86,11 +86,11 @@ def test_audit_cli_outputs_artifacts_without_target_accuracy(tmp_path):
     model_audit = result["model_audits"][0]
     proposed = result["proposed_recovery_rules"]
 
-    assert model_audit["unrecoverable_count"] == 2
-    assert model_audit["deterministically_recoverable_count"] == 1
+    assert model_audit["unrecoverable_count"] == 1
+    assert model_audit["deterministically_recoverable_count"] == 0
     assert (tmp_path / "audit" / "qwen_3_5_4b_audit.json").exists()
     assert (tmp_path / "audit" / "text_wrapper_audit.json").exists()
     assert (tmp_path / "audit" / "proposed_recovery_rules.json").exists()
     assert (tmp_path / "audit" / "pre_freeze_summary.md").exists()
     assert not any("accuracy" in key for key in model_audit)
-    assert any(rule["rule_id"] == "piece_source_destination" for rule in proposed)
+    assert any(rule["rule_id"] == "source_separator_destination" for rule in proposed)
