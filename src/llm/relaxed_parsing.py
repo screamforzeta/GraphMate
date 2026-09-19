@@ -16,9 +16,12 @@ from src.llm.parsing import UCI_PATTERN
 
 
 RELAXED_PARSER_VERSION = "relaxed_chess_move_v1"
-RELAXED_PARSER_STATUS = "PRE_FREEZE_PENDING_SERVER_AUDIT"
+RELAXED_PARSER_STATUS = "FROZEN"
 PIECE_SOURCE_DESTINATION_PATTERN = re.compile(
     r"^(?P<piece>[KQRBN])(?P<src>[a-h][1-8])(?P<sep>[-x]?)(?P<dst>[a-h][1-8])(?P<suffix>[+#]?)$"
+)
+SOURCE_SEPARATOR_DESTINATION_PATTERN = re.compile(
+    r"^(?P<src>[a-h][1-8])(?P<sep>[-x])(?P<dst>[a-h][1-8])$"
 )
 PIECE_SYMBOLS = {
     "K": chess.KING,
@@ -197,6 +200,93 @@ def parse_piece_source_destination(
     return successful_result(raw, normalized, board, move, "PIECE_SOURCE_DESTINATION", rule_diagnostics)
 
 
+def parse_source_separator_destination(
+    raw: str,
+    normalized: str,
+    board: chess.Board,
+    diagnostics: dict,
+) -> RelaxedParseResult | None:
+    """Parse whole-string source + '-'/'x' + destination notation."""
+
+    match = SOURCE_SEPARATOR_DESTINATION_PATTERN.fullmatch(normalized)
+    if not match:
+        return None
+    source = match.group("src")
+    destination = match.group("dst")
+    separator = match.group("sep")
+    source_square = chess.parse_square(source)
+    destination_square = chess.parse_square(destination)
+    rule_diagnostics = diagnostics | {"separator": separator, "source": source, "destination": destination}
+    all_source_destination_candidates = [
+        move
+        for move in board.legal_moves
+        if move.from_square == source_square
+        and move.to_square == destination_square
+    ]
+    if len(all_source_destination_candidates) > 1:
+        return RelaxedParseResult(
+            raw,
+            normalized,
+            "AMBIGUOUS",
+            "SOURCE_SEPARATOR_DESTINATION",
+            candidate_notation=normalized,
+            ambiguity_count=len(all_source_destination_candidates),
+            candidate_count=len(all_source_destination_candidates),
+            failure_reason="multiple_legal_moves_match_source_destination",
+            diagnostics=rule_diagnostics | {"candidate_uci": [move.uci() for move in all_source_destination_candidates]},
+        )
+    candidates = [move for move in all_source_destination_candidates if move.promotion is None]
+    if len(candidates) > 1:
+        return RelaxedParseResult(
+            raw,
+            normalized,
+            "AMBIGUOUS",
+            "SOURCE_SEPARATOR_DESTINATION",
+            candidate_notation=normalized,
+            ambiguity_count=len(candidates),
+            candidate_count=len(candidates),
+            failure_reason="multiple_legal_moves_match_source_destination",
+            diagnostics=rule_diagnostics | {"candidate_uci": [move.uci() for move in candidates]},
+        )
+    if not candidates:
+        return RelaxedParseResult(
+            raw,
+            normalized,
+            "UNRECOVERABLE",
+            "SOURCE_SEPARATOR_DESTINATION",
+            candidate_notation=normalized,
+            failure_reason="no_legal_move_matches_source_destination",
+            diagnostics=rule_diagnostics,
+        )
+    move = candidates[0]
+    is_capture = board.is_capture(move)
+    if separator == "-" and is_capture:
+        return RelaxedParseResult(
+            raw,
+            normalized,
+            "UNRECOVERABLE",
+            "SOURCE_SEPARATOR_DESTINATION",
+            candidate_notation=normalized,
+            parsed_uci=move.uci(),
+            candidate_count=1,
+            failure_reason="dash_separator_used_for_capture",
+            diagnostics=rule_diagnostics,
+        )
+    if separator == "x" and not is_capture:
+        return RelaxedParseResult(
+            raw,
+            normalized,
+            "UNRECOVERABLE",
+            "SOURCE_SEPARATOR_DESTINATION",
+            candidate_notation=normalized,
+            parsed_uci=move.uci(),
+            candidate_count=1,
+            failure_reason="capture_separator_without_capture",
+            diagnostics=rule_diagnostics,
+        )
+    return successful_result(raw, normalized, board, move, "SOURCE_SEPARATOR_DESTINATION", rule_diagnostics)
+
+
 def relaxed_parse_move(raw_final_content: str | None, fen: str) -> RelaxedParseResult:
     """Parse a model response as one deterministic legal chess move."""
 
@@ -228,7 +318,12 @@ def relaxed_parse_move(raw_final_content: str | None, fen: str) -> RelaxedParseR
             failure_reason=f"invalid_fen:{exc}",
             diagnostics=diagnostics,
         )
-    for parser in (parse_exact_uci, parse_exact_san, parse_piece_source_destination):
+    for parser in (
+        parse_exact_uci,
+        parse_exact_san,
+        parse_piece_source_destination,
+        parse_source_separator_destination,
+    ):
         result = parser(raw, normalized, board, diagnostics)
         if result is not None:
             return result

@@ -57,9 +57,9 @@ Non sovrascrive gli artifact ufficiali.
 
 ## Stato
 
-`RELAXED_PARSER_STATUS = PRE_FREEZE_PENDING_SERVER_AUDIT`
+`RELAXED_PARSER_STATUS = FROZEN`
 
-Lo status deve diventare `FROZEN` solo dopo il pre-freeze audit sui prediction ufficiali Qwen 4B/9B. Da quel momento, ogni modifica semantica dovrà usare una nuova versione, ad esempio `relaxed_chess_move_v2`.
+Ogni modifica semantica futura deve usare una nuova versione, ad esempio `relaxed_chess_move_v2`.
 
 ## Regole Di Parsing
 
@@ -89,7 +89,27 @@ Lo status deve diventare `FROZEN` solo dopo il pre-freeze audit sui prediction u
    - se il separatore è `x`, verifica che sia davvero una cattura;
    - non gestisce promozioni e non le indovina.
 
+5. `SOURCE_SEPARATOR_DESTINATION`
+   - accetta solo una risposta intera del tipo `e2-e4` oppure `e5xf6`;
+   - richiede source square e destination square espliciti;
+   - il separatore deve essere esattamente `-` oppure `x`;
+   - `-` è accettato solo se la mossa legale non è una cattura;
+   - `x` è accettato solo se la mossa legale è una cattura;
+   - la coppia source/destination deve identificare esattamente una mossa legale;
+   - promozioni ambigue senza pezzo di promozione esplicito sono rifiutate;
+   - nessuna informazione sul target viene usata.
+
 `TEXT_WRAPPED_MOVE` è disabilitato. Il parser non recupera prose come `The best move is Nf3`, non sceglie fra opzioni come `Nf3 or Qh5`, e non accetta substring interne come `garbageNf3garbage`, `bRc8` o `qf5`.
+
+## SAN Canonica
+
+`EXACT_SAN_RECHECK` mantiene il guard canonico:
+
+```python
+board.san(board.parse_san(raw)) == raw
+```
+
+Questo è intenzionale. `python-chess` può accettare SAN non canoniche o semanticamente imprecise, ad esempio check/capture/mate marker falsi o mancanti. `relaxed_chess_move_v1` normalizza solo rappresentazioni deterministiche approvate; non ripara errori semantici nella notazione prodotta dal modello.
 
 ## Ambiguità
 

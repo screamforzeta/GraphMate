@@ -12,6 +12,7 @@ CASTLE_FEN = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"
 CAPTURE_FEN = "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2"
 CHECKMATE_FEN = "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2"
 PROMOTION_FEN = "k7/4P3/8/8/8/8/8/7K w - - 0 1"
+PROMOTION_AMBIGUOUS_FEN = "4k3/P7/8/8/8/8/8/4K3 w - - 0 1"
 DISAMBIGUATED_KNIGHT_FEN = "4k3/8/8/8/8/8/8/1N2KN2 w - - 0 1"
 ROOK_B8_FEN = "1R2k3/8/8/8/8/8/8/4K3 w - - 0 1"
 
@@ -28,7 +29,7 @@ def assert_parsed(raw, fen, uci, method=None):
 
 
 def test_relaxed_exact_uci_legal_and_promotion_uci():
-    assert RELAXED_PARSER_STATUS == "PRE_FREEZE_PENDING_SERVER_AUDIT"
+    assert RELAXED_PARSER_STATUS == "FROZEN"
     assert_parsed("e2e4", START_FEN, "e2e4", "EXACT_UCI")
     assert_parsed("e7e8q", PROMOTION_FEN, "e7e8q", "EXACT_UCI")
 
@@ -69,6 +70,38 @@ def test_relaxed_piece_source_destination_rejects_inconsistency():
     assert relaxed_parse_move("Rb8-c6", BLACK_START_FEN).parse_status == "UNRECOVERABLE"
     assert relaxed_parse_move("Nb7-c5", BLACK_START_FEN).parse_status == "UNRECOVERABLE"
     assert relaxed_parse_move("Nb8-a8", BLACK_START_FEN).parse_status == "UNRECOVERABLE"
+
+
+def test_relaxed_source_separator_destination_rule():
+    quiet = assert_parsed("e2-e4", START_FEN, "e2e4", "SOURCE_SEPARATOR_DESTINATION")
+    capture = assert_parsed("e4xd5", CAPTURE_FEN, "e4d5", "SOURCE_SEPARATOR_DESTINATION")
+
+    assert quiet.diagnostics["separator"] == "-"
+    assert capture.diagnostics["separator"] == "x"
+
+
+def test_relaxed_source_separator_destination_rejects_bad_capture_semantics():
+    dash_capture = relaxed_parse_move("e4-d5", CAPTURE_FEN)
+    x_non_capture = relaxed_parse_move("e2xe4", START_FEN)
+    illegal = relaxed_parse_move("e2-e5", START_FEN)
+    ambiguous_promotion = relaxed_parse_move("a7-a8", PROMOTION_AMBIGUOUS_FEN)
+
+    assert dash_capture.parse_status == "UNRECOVERABLE"
+    assert dash_capture.failure_reason == "dash_separator_used_for_capture"
+    assert x_non_capture.parse_status == "UNRECOVERABLE"
+    assert x_non_capture.failure_reason == "capture_separator_without_capture"
+    assert illegal.parse_status == "UNRECOVERABLE"
+    assert ambiguous_promotion.parse_status == "AMBIGUOUS"
+
+
+def test_relaxed_permissive_noncanonical_san_remains_rejected():
+    false_check = relaxed_parse_move("Nf3+", START_FEN)
+    missing_check = relaxed_parse_move("Qf8#", "5k2/8/8/8/8/8/8/5Q1K w - - 0 1")
+    omitted_capture = relaxed_parse_move("Qf6+", "4k3/8/5r2/8/8/8/8/4K2Q w - - 0 1")
+
+    assert false_check.parse_status == "UNRECOVERABLE"
+    assert missing_check.parse_status == "UNRECOVERABLE"
+    assert omitted_capture.parse_status == "UNRECOVERABLE"
 
 
 def test_relaxed_rejects_substrings_prose_and_multiple_options():
