@@ -25,7 +25,7 @@ Generation configuration:
 }
 ```
 
-Thinking setting:
+Qwen thinking setting:
 
 ```json
 {
@@ -33,9 +33,22 @@ Thinking setting:
 }
 ```
 
-Status: `PENDING_FINAL_SMOKE_VALIDATION`.
+Qwen status: `RUNTIME_VALIDATED`.
 
-The first server2 smoke showed `num_predict=16` with default thinking enabled is invalid for all three models: generation ended with `done_reason=length`, non-empty truncated thinking, and empty final content. The candidate primary protocol explicitly requests thinking disabled while keeping `temperature=0` and `num_predict=16`.
+GPT-OSS setting:
+
+```json
+{
+  "thinking_mode": "low",
+  "think": "low",
+  "temperature": 0,
+  "num_predict": null
+}
+```
+
+GPT-OSS status: `PENDING_RUNTIME_CALIBRATION`.
+
+The first server2 smoke showed `num_predict=16` with default thinking enabled is invalid for all three models: generation ended with `done_reason=length`, non-empty truncated thinking, and empty final content. Qwen supports `think=false`; GPT-OSS supports reasoning levels and cannot fully disable reasoning. The candidate GPT-OSS protocol therefore uses the minimum supported reasoning effort, `think="low"`, and must calibrate `num_predict` on non-official fixtures.
 
 The strict parser only sees final answer content, never thinking/reasoning content. Runs with thinking enabled and disabled are different benchmark configurations and cannot be resumed into each other.
 

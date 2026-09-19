@@ -9,7 +9,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from src.llm.datasets import dataset_fingerprint, load_lichess_test
-from src.llm.model_registry import LLM_BENCHMARK_MODELS, discover_registry, verify_runtime_registry
+from src.llm.model_registry import (
+    LLM_BENCHMARK_MODELS,
+    discover_registry,
+    generation_config_for_model,
+    verify_runtime_registry,
+)
 from src.llm.ollama_client import (
     DEFAULT_GENERATION_OPTIONS,
     DEFAULT_OLLAMA_ENDPOINT,
@@ -21,6 +26,9 @@ from src.llm.ollama_client import (
 from src.llm.parsing import PARSER_VERSION
 from src.llm.prompting import PROMPT_TEMPLATE_VERSION, build_prompt, prompt_hash
 from src.llm.scoring import evaluate_reference_line, score_next_move
+
+
+GPT_OSS_CALIBRATION_BUDGETS = [32, 64, 128, 256]
 
 
 def parser_tests_pass():
@@ -85,6 +93,10 @@ def build_preflight(args):
         "prompt_hash": prompt_hash(),
         "parser_version": PARSER_VERSION,
         "generation_options": DEFAULT_GENERATION_OPTIONS,
+        "model_generation_configs": {
+            model_id: model["generation_config"]
+            for model_id, model in LLM_BENCHMARK_MODELS.items()
+        },
         "thinking_enabled": args.thinking_enabled,
         "generation_config_status": GENERATION_CONFIG_STATUS,
         "dataset": args.dataset,
@@ -102,7 +114,15 @@ def build_preflight(args):
             reachable
             and parser_tests_pass()
             and all(value["found"] and value["digest_match"] for value in verification.values())
+            and all(
+                model["generation_config"]["status"] == "RUNTIME_VALIDATED"
+                for model in LLM_BENCHMARK_MODELS.values()
+            )
         ),
+        "runtime_ready": {
+            model_id: model["generation_config"]["status"] == "RUNTIME_VALIDATED"
+            for model_id, model in LLM_BENCHMARK_MODELS.items()
+        },
     }
 
 
@@ -140,17 +160,23 @@ def run_runtime_smoke(args, registry):
         if model_id not in registry:
             outputs.append({"model_id": model_id, "error": "model_not_discovered"})
             continue
+        gen_config = generation_config_for_model(model_id)
+        if gen_config["options"].get("num_predict") is None:
+            outputs.append({"model_id": model_id, "error": "num_predict_pending_calibration"})
+            continue
         cold = client.generate(
             registry[model_id]["ollama_model"],
             prompt=prompt["user"],
             system=prompt["system"],
-            thinking_enabled=args.thinking_enabled,
+            options=gen_config["options"],
+            think=gen_config["think"],
         )
         warm = client.generate(
             registry[model_id]["ollama_model"],
             prompt=prompt["user"],
             system=prompt["system"],
-            thinking_enabled=args.thinking_enabled,
+            options=gen_config["options"],
+            think=gen_config["think"],
         )
         scored = score_next_move(warm.get("final_content"), puzzle.initial_solver_fen, puzzle.target_move)
         metadata = warm.get("metadata", {})
@@ -163,7 +189,9 @@ def run_runtime_smoke(args, registry):
                 "raw_final_content": warm.get("final_content"),
                 "raw_thinking": warm.get("thinking"),
                 "thinking_requested": warm.get("thinking_requested"),
+                "thinking_mode": gen_config["thinking_mode"],
                 "thinking_returned": warm.get("thinking_returned"),
+                "generation_config": gen_config,
                 "score": scored,
                 "cold_latency_seconds": cold.get("latency_seconds"),
                 "warm_latency_seconds": warm.get("latency_seconds"),
@@ -173,7 +201,7 @@ def run_runtime_smoke(args, registry):
                 "eval_count": metadata.get("eval_count"),
                 "eval_duration": metadata.get("eval_duration"),
                 "done_reason": metadata.get("done_reason"),
-                "num_predict": DEFAULT_GENERATION_OPTIONS["num_predict"],
+                "num_predict": gen_config["options"].get("num_predict"),
                 "parse_status": scored["outcome"],
                 "legal_status": scored["legal"],
                 "num_predict_16_compatible": bool(warm.get("final_content")),
@@ -201,7 +229,8 @@ def run_reference_line_smoke(args, registry):
             registry[model_id]["ollama_model"],
             prompt["user"],
             prompt["system"],
-            thinking_enabled=args.thinking_enabled,
+            options=generation_config_for_model(model_id)["options"],
+            think=generation_config_for_model(model_id)["think"],
         )
         return response.get("final_content")
 
@@ -209,6 +238,59 @@ def run_reference_line_smoke(args, registry):
         "label": "NON_OFFICIAL_REFERENCE_LINE_SMOKE",
         "model_id": model_id,
         "result": evaluate_reference_line(puzzle, predict),
+    }
+
+
+def run_runtime_calibration(args, registry):
+    """Run non-official GPT-OSS num_predict calibration on smoke fixtures."""
+
+    model_id = args.model
+    if model_id != "gpt_oss_20b":
+        return {"label": "NON_OFFICIAL_RUNTIME_CALIBRATION", "error": "calibration_only_for_gpt_oss_20b"}
+    if model_id not in registry:
+        return {"label": "NON_OFFICIAL_RUNTIME_CALIBRATION", "error": "model_not_discovered"}
+    endpoint = resolve_endpoint(args.ollama_url or args.endpoint)
+    client = OllamaClient(endpoint, timeout=args.timeout)
+    puzzle = smoke_fixture()
+    prompt = build_prompt(puzzle.initial_solver_fen)
+    trials = []
+    selected_budget = None
+    for budget in GPT_OSS_CALIBRATION_BUDGETS:
+        gen_config = generation_config_for_model(model_id, num_predict_override=budget)
+        response = client.generate(
+            registry[model_id]["ollama_model"],
+            prompt["user"],
+            prompt["system"],
+            options=gen_config["options"],
+            think=gen_config["think"],
+        )
+        scored = score_next_move(response.get("final_content"), puzzle.initial_solver_fen, puzzle.target_move)
+        trial = {
+            "label": "NON_OFFICIAL_RUNTIME_CALIBRATION",
+            "model_id": model_id,
+            "num_predict": budget,
+            "thinking_requested": response.get("thinking_requested"),
+            "thinking_returned": response.get("thinking_returned"),
+            "raw_thinking": response.get("thinking"),
+            "raw_final_content": response.get("final_content"),
+            "eval_count": response.get("metadata", {}).get("eval_count"),
+            "done_reason": response.get("metadata", {}).get("done_reason"),
+            "parse_status": scored["outcome"],
+            "legal_status": scored["legal"],
+            "wall_latency": response.get("latency_seconds"),
+            "calibration_success": scored["parse_success"],
+        }
+        trials.append(trial)
+        if scored["parse_success"]:
+            selected_budget = budget
+            break
+    return {
+        "label": "NON_OFFICIAL_RUNTIME_CALIBRATION",
+        "model_id": model_id,
+        "criterion": "first syntactically parseable final UCI response; chess correctness ignored",
+        "candidate_budgets": GPT_OSS_CALIBRATION_BUDGETS,
+        "selected_budget": selected_budget,
+        "trials": trials,
     }
 
 
@@ -231,6 +313,7 @@ def main(argv=None):
     parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--runtime-smoke", action="store_true")
+    parser.add_argument("--runtime-calibrate", action="store_true")
     parser.add_argument("--thinking-enabled", dest="thinking_enabled", action="store_true")
     parser.add_argument("--thinking-disabled", dest="thinking_enabled", action="store_false")
     parser.set_defaults(thinking_enabled=DEFAULT_THINKING_ENABLED)
@@ -240,7 +323,16 @@ def main(argv=None):
     preflight = build_preflight(args)
     print(json.dumps(preflight, indent=2, sort_keys=True))
     if not args.run_benchmark:
-        if (args.smoke or args.runtime_smoke) and preflight["ollama_reachable"]:
+        if args.runtime_calibrate and preflight["ollama_reachable"]:
+            calibration = run_runtime_calibration(args, preflight["discovered_registry"])
+            output_dir = Path(args.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "non_official_runtime_calibration.json").write_text(
+                json.dumps(calibration, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            print(json.dumps({"NON_OFFICIAL_RUNTIME_CALIBRATION": calibration}, indent=2, sort_keys=True))
+        elif (args.smoke or args.runtime_smoke) and preflight["ollama_reachable"]:
             outputs = run_runtime_smoke(args, preflight["discovered_registry"])
             reference_line = run_reference_line_smoke(args, preflight["discovered_registry"])
             output_dir = Path(args.output_dir)

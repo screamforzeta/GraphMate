@@ -49,10 +49,9 @@ Preflight:
 Candidate runtime protocol:
 
 ```text
-temperature = 0
-num_predict = 16
-thinking_enabled = false
-status = PENDING_FINAL_SMOKE_VALIDATION
+qwen_3_5_4b: temperature=0, num_predict=16, think=false, status=RUNTIME_VALIDATED
+qwen_3_5_9b: temperature=0, num_predict=16, think=false, status=RUNTIME_VALIDATED
+gpt_oss_20b: temperature=0, think=low, num_predict=PENDING_RUNTIME_CALIBRATION
 ```
 
 4B smoke:
@@ -83,6 +82,15 @@ status = PENDING_FINAL_SMOKE_VALIDATION
   --model gpt_oss_20b \
   --thinking-disabled \
   --runtime-smoke
+```
+
+GPT-OSS calibration:
+
+```bash
+./venv/bin/python -m src.cli.evaluation.benchmark_llm_chess \
+  --ollama-url http://localhost:11436 \
+  --model gpt_oss_20b \
+  --runtime-calibrate
 ```
 
 All models, sequential:
