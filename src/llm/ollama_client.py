@@ -6,6 +6,7 @@ import time
 import urllib.error
 import urllib.request
 import json
+import os
 
 
 DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434"
@@ -13,15 +14,36 @@ DEFAULT_GENERATION_OPTIONS = {
     "temperature": 0,
     "num_predict": 16,
 }
+GENERATION_CONFIG_STATUS = "PENDING_RUNTIME_VALIDATION"
+
+
+def resolve_endpoint(cli_endpoint=None):
+    """Resolve Ollama endpoint with CLI > environment > default precedence."""
+
+    return (cli_endpoint or os.environ.get("OLLAMA_URL") or DEFAULT_OLLAMA_ENDPOINT).rstrip("/")
+
+
+def extract_final_content_and_thinking(response):
+    """Return final answer content and separate thinking text from Ollama JSON."""
+
+    message = response.get("message") if isinstance(response, dict) else None
+    if isinstance(message, dict):
+        final_content = message.get("content")
+        thinking = message.get("thinking") or message.get("reasoning")
+    else:
+        final_content = response.get("response") if isinstance(response, dict) else None
+        thinking = None
+    thinking = thinking or (response.get("thinking") if isinstance(response, dict) else None)
+    return final_content or "", thinking
 
 
 class OllamaClient:
     """Minimal Ollama HTTP client without cloud dependencies."""
 
-    def __init__(self, endpoint=DEFAULT_OLLAMA_ENDPOINT, timeout=120):
+    def __init__(self, endpoint=None, timeout=120):
         """Store endpoint and timeout for later requests."""
 
-        self.endpoint = endpoint.rstrip("/")
+        self.endpoint = resolve_endpoint(endpoint)
         self.timeout = timeout
 
     def _json_request(self, path, payload=None):
@@ -67,9 +89,10 @@ class OllamaClient:
             error = str(exc)
         elapsed = time.perf_counter() - started
         return {
-            "response": response.get("response"),
+            "response": extract_final_content_and_thinking(response)[0],
+            "final_content": extract_final_content_and_thinking(response)[0],
+            "thinking": extract_final_content_and_thinking(response)[1],
             "metadata": response,
             "latency_seconds": elapsed,
             "error": error,
         }
-

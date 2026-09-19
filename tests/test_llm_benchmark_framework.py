@@ -3,7 +3,9 @@ from pathlib import Path
 import pytest
 
 from src.llm.datasets import BenchmarkPuzzle, validate_heldout_classic_record
-from src.llm.model_registry import discover_registry
+from src.cli.evaluation.benchmark_llm_chess import selected_model_ids
+from src.llm.model_registry import LLM_BENCHMARK_MODELS, discover_registry, verify_runtime_registry
+from src.llm.ollama_client import extract_final_content_and_thinking, resolve_endpoint
 from src.llm.parsing import parse_uci_response
 from src.llm.prompting import build_prompt
 from src.llm.resume import append_jsonl, assert_resume_config_matches, load_completed_keys
@@ -17,15 +19,67 @@ PROMOTION_FEN = "4k3/4P3/8/8/8/8/8/4K3 w - - 0 1"
 def test_discover_registry_uses_actual_ollama_tags():
     registry = discover_registry(
         [
-            {"name": "qwen3.5:4b", "size": 1},
-            {"name": "qwen3.5:9b", "size": 2},
-            {"name": "gpt-oss:20b", "size": 3},
+            {
+                "name": "qwen3.5:4b",
+                "digest": LLM_BENCHMARK_MODELS["qwen_3_5_4b"]["digest"],
+                "size": 3389983735,
+            },
+            {
+                "name": "qwen3.5:9b",
+                "digest": LLM_BENCHMARK_MODELS["qwen_3_5_9b"]["digest"],
+                "size": 6594474711,
+            },
+            {
+                "name": "gpt-oss:20b",
+                "digest": LLM_BENCHMARK_MODELS["gpt_oss_20b"]["digest"],
+                "size": 13793441244,
+            },
         ]
     )
 
     assert registry["qwen_3_5_4b"]["ollama_model"] == "qwen3.5:4b"
+    assert registry["qwen_3_5_4b"]["digest_match"] is True
     assert registry["qwen_3_5_9b"]["ollama_model"] == "qwen3.5:9b"
     assert registry["gpt_oss_20b"]["ollama_model"] == "gpt-oss:20b"
+
+
+def test_registry_digest_mismatch_is_detected():
+    verification = verify_runtime_registry([{"name": "qwen3.5:4b", "digest": "wrong"}])
+
+    assert verification["qwen_3_5_4b"]["found"] is True
+    assert verification["qwen_3_5_4b"]["digest_match"] is False
+    assert verification["qwen_3_5_9b"]["found"] is False
+
+
+def test_endpoint_resolution_cli_env_default(monkeypatch):
+    monkeypatch.setenv("OLLAMA_URL", "http://localhost:11436")
+
+    assert resolve_endpoint("http://example.test:1") == "http://example.test:1"
+    assert resolve_endpoint(None) == "http://localhost:11436"
+
+
+def test_thinking_is_separated_from_final_content_and_not_parsed():
+    final, thinking = extract_final_content_and_thinking(
+        {"message": {"thinking": "I should play e2e4", "content": ""}}
+    )
+    parsed = parse_uci_response(final, START_FEN)
+
+    assert thinking == "I should play e2e4"
+    assert final == ""
+    assert parsed.status == "PARSE_ERROR"
+
+
+def test_generate_style_response_final_content_is_used():
+    final, thinking = extract_final_content_and_thinking({"response": "e2e4"})
+
+    assert final == "e2e4"
+    assert thinking is None
+
+
+def test_runtime_smoke_model_selection_is_sequential():
+    args = type("Args", (), {"all_models": True, "model": "qwen_3_5_4b"})()
+
+    assert selected_model_ids(args) == ["qwen_3_5_4b", "qwen_3_5_9b", "gpt_oss_20b"]
 
 
 def test_prompt_has_no_target_or_metadata_leakage():

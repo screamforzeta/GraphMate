@@ -42,3 +42,19 @@ Rejected:
 
 Every parsed move is validated against `chess.Board(fen).legal_moves`.
 
+## Thinking Separation
+
+For thinking-capable Ollama models, only the designated final answer field is passed to `strict_uci_v1`.
+
+If a response contains:
+
+```json
+{
+  "message": {
+    "thinking": "... e2e4 ...",
+    "content": ""
+  }
+}
+```
+
+then the parser receives an empty string and records `PARSE_ERROR`. Moves are never rescued from thinking/reasoning content.
