@@ -33,9 +33,19 @@ Completato:
 
 Non ancora completato:
 
-- held-out classic puzzle benchmark;
+- import/freeze del dataset esterno held-out classic Mate-in-N;
 - protocollo LLM;
 - confronto finale GNN-vs-LLM.
+
+Infrastruttura held-out già presente:
+
+- builder generico per dataset classic Mate-in-N;
+- importer YACPDB da export/cache locale;
+- client YACPDB smoke per query/fetch/raw-cache con limite esplicito;
+- normalizzazione YACPDB `algebraic` -> FEN per directmate ortodossi;
+- key extraction strutturale che evita set play e tries;
+- availability scan per directmate YACPDB `#1`..`#10`;
+- validazione della key move senza engine e senza inferenza.
 
 ## Graph Representation
 
@@ -108,6 +118,7 @@ Risultati principali:
 ```text
 src/
   data/             # download, preprocessing, timing data
+    heldout_sources/ # import sorgenti esterne classic, incluso YACPDB
   graph/            # node/edge/global features, PyG dataset, Streamlit app
   models/           # model_a e model_b architectures
   training/         # training loops A/A2/A3/A4/B
@@ -116,6 +127,11 @@ src/
   validation/       # representation validator
   streamlit_app/    # Streamlit-independent UI helpers
   cli/              # python -m entrypoints
+
+data/heldout_classic/
+  raw/              # sorgenti esterne pubbliche, non Lichess
+  processed/        # righe rifiutate/quarantena
+  final/            # CSV canonico + manifest quando validato
 
 generic_info/
   models/           # definitive frozen model documentation
@@ -177,6 +193,53 @@ Model B timing ablation:
   --amp
 ```
 
+Held-out classic dataset builder (non esegue modelli):
+
+```bash
+./venv/bin/python -m src.data.heldout_classic \
+  --source data/heldout_classic/raw/<external_source>.jsonl \
+  --dataset-version v1 \
+  --source-name <public-source-name> \
+  --source-url <source-url> \
+  --source-license <license-or-provenance> \
+  --per-depth 20 \
+  --seed 42
+```
+
+YACPDB availability scan da export/cache locale:
+
+```bash
+./venv/bin/python -m src.data.heldout_sources.yacpdb \
+  --mode availability \
+  --source data/heldout_classic/raw/yacpdb/<export>.jsonl \
+  --output-root data/heldout_classic
+```
+
+YACPDB smoke fetch tecnico, massimo 3 record:
+
+```bash
+./venv/bin/python -m src.data.heldout_sources.yacpdb_client \
+  --mode fetch-id \
+  --problem-id 26026 \
+  --max-records 3 \
+  --output-dir data/heldout_classic/raw/yacpdb/smoke
+```
+
+YACPDB candidate build:
+
+```bash
+./venv/bin/python -m src.data.heldout_sources.yacpdb \
+  --mode build \
+  --source data/heldout_classic/raw/yacpdb/<export>.jsonl \
+  --output-root data/heldout_classic \
+  --dataset-version yacpdb_v1 \
+  --per-depth 20 \
+  --seed 42
+```
+
+Lo stato corrente dell'held-out dataset e `AVAILABILITY_READY`: l'infrastruttura e l'importer YACPDB locale esistono, ma nessun problema esterno reale e stato congelato in questa VM.
+Il normalizzatore YACPDB e pronto per il prossimo availability scan, ma lo scan completo `#1`..`#10` non e stato eseguito in questa fase.
+
 ## Documentazione Chiave
 
 - [Graph representation](generic_info/models/graph_representation.md)
@@ -184,6 +247,8 @@ Model B timing ablation:
 - [Experimental protocol](generic_info/models/experimental_protocol.md)
 - [Pre-LLM project status](generic_info/pre_llm_project_status.md)
 - [Project specification coverage](generic_info/project_specification_coverage.md)
+- [Held-out classic dataset](generic_info/heldout_classic_dataset.md)
+- [YACPDB import](generic_info/yacpdb_import.md)
 
 ## Gitignore / Artifact Policy
 

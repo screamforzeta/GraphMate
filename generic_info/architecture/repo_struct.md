@@ -23,6 +23,8 @@ Questo documento descrive la struttura logica della repository dopo il refactor 
 - `generic_info/`: documentazione tecnica e progettuale.
 - `artifacts/`: checkpoint, vocabolari e report generati/versionabili quando necessario.
 - `data/`: dati generati o scaricati, non versionati.
+- `data/heldout_classic/`: area separata per il futuro dataset esterno classic Mate-in-N (`raw/`, `processed/`, `final/`).
+- `data/heldout_classic/raw/yacpdb/`: area per export/cache locali YACPDB, non per scraping live.
 - `TimeGNN-main/`: libreria esterna/vendor, non modificata dal progetto.
 
 ## Codice Sorgente
@@ -41,6 +43,7 @@ src/
 ├── common/
 ├── data/
 │   ├── download/
+│   ├── heldout_sources/
 │   └── preprocess/
 ├── evaluation/
 │   ├── model_a/
@@ -67,6 +70,11 @@ src/
 | `src/data/download/` | Download puzzle Lichess e PGN campionati. |
 | `src/data/preprocess/` | Preprocessing, cleaning, parsing e split dataset. |
 | `src/data/timing/` | Generazione timing sintetici per dataset puzzle Model B. |
+| `src/data/heldout_classic.py` | Import, validazione e manifest del dataset esterno classic Mate-in-N. |
+| `src/data/heldout_sources/yacpdb.py` | Importer YACPDB da export/cache locale, availability scan e build key-validated. |
+| `src/data/heldout_sources/yacpdb_client.py` | Client YACPDB minimo per QL query/fetch/raw-cache con guardrail `max-records`. |
+| `src/data/heldout_sources/yacpdb_position.py` | Normalizzazione YACPDB `algebraic` -> FEN per posizioni ortodosse. |
+| `src/data/heldout_sources/yacpdb_solution.py` | Estrazione strutturale della key evitando set play, tries e refutazioni. |
 | `src/graph/` | Feature nodi/archi, graph builder e dataset PyG. |
 | `src/graph/debug/` | Debugger Streamlit standalone. |
 | `src/models/model_a/` | Architetture no-timing Model A/A3. |
@@ -90,6 +98,9 @@ python3 main.py
 ./venv/bin/python -m src.graph.pyg_dataset --graphs-per-shard 1000 --overwrite
 ./venv/bin/python -m src.validation.representations --csv-sample 1000 --graph-sample 500 --seed 42
 ./venv/bin/python -m src.cli.data.generate_puzzle_timing_dataset --overwrite
+./venv/bin/python -m src.data.heldout_classic --source data/heldout_classic/raw/<external_source>.jsonl --dataset-version v1
+./venv/bin/python -m src.data.heldout_sources.yacpdb_client --mode fetch-id --problem-id 26026 --max-records 3
+./venv/bin/python -m src.data.heldout_sources.yacpdb --mode availability --source data/heldout_classic/raw/yacpdb/<export>.jsonl --output-root data/heldout_classic
 ./venv/bin/python -m src.cli.training.train_model_a3_legal_scorer --device cuda --batch-size 128 --num-workers 0 --pin-memory --non-blocking --amp
 ./venv/bin/python -m src.cli.training.train_model_b_timing_legal_scorer --dataset-root data/pyg_puzzles_timing --device cuda --batch-size 128 --num-workers 0 --pin-memory --non-blocking --amp
 ./venv/bin/python -m src.cli.evaluation.evaluate_model_a_vs_a2_vs_a3 --device cuda --batch-size 128 --non-blocking --amp
