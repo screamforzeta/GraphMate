@@ -33,7 +33,7 @@ Completato:
 
 Non ancora completato:
 
-- import/freeze del dataset esterno held-out classic Mate-in-N;
+- freeze finale del dataset esterno held-out classic Mate-in-N;
 - protocollo LLM;
 - confronto finale GNN-vs-LLM.
 
@@ -46,6 +46,10 @@ Infrastruttura held-out già presente:
 - key extraction strutturale che evita set play e tries;
 - availability scan per directmate YACPDB `#1`..`#10`;
 - validazione della key move senza engine e senza inferenza.
+- candidate dataset YACPDB `yacpdb_classic_v1`, 20 problemi per MateDepth #1..#10, stato `VALIDATED_NOT_FROZEN`.
+
+Il candidate dataset YACPDB non è ancora frozen: manca la verifica/review
+indipendente del forced mate.
 
 ## Graph Representation
 
@@ -131,7 +135,8 @@ src/
 data/heldout_classic/
   raw/              # sorgenti esterne pubbliche, non Lichess
   processed/        # righe rifiutate/quarantena
-  final/            # CSV canonico + manifest quando validato
+  final/            # candidate/frozen dataset esterni
+    yacpdb_classic_v1/ # 200 candidate VALIDATED_NOT_FROZEN
 
 generic_info/
   models/           # definitive frozen model documentation
@@ -154,6 +159,20 @@ Validazione rappresentazioni:
   --csv-sample 1000 \
   --graph-sample 500 \
   --seed 42
+
+# build offline del candidate dataset YACPDB held-out
+./venv/bin/python -m src.data.heldout_sources.yacpdb_candidate_build \
+  --output-root data/heldout_classic \
+  --dataset-version yacpdb_classic_v1 \
+  --per-depth 20 \
+  --seed 42
+
+# verifica Popeye indipendente, da eseguire solo con Popeye installato
+./venv/bin/python -m src.verification.popeye \
+  --dataset-dir data/heldout_classic/final/yacpdb_classic_v1 \
+  --verification-root data/heldout_classic/verification/yacpdb_classic_v1/popeye \
+  --popeye-executable <path-popeye> \
+  --timeout-seconds 300
 ```
 
 Streamlit:

@@ -1,6 +1,6 @@
 # YACPDB Held-Out Import
 
-Status: `NORMALIZATION_READY`
+Status: `CANDIDATE_DATASET_BUILT_NOT_FROZEN`
 
 This note documents the YACPDB support added for the external classic Mate-in-N held-out dataset. It is an import and validation boundary only: no GNN inference, no LLM inference, no engine proof, and no modification of frozen model artifacts.
 
@@ -103,7 +103,9 @@ Live YACPDB contact was performed only for bounded technical validation:
 | `GET /gateway/ql?q=Id(26026)` | 1 | `data/heldout_classic/raw/yacpdb/smoke/fetch_id_26026.json` |
 | `GET /gateway/ql?q=Stip("^#2$") AND Id(26026)&p=1` | 1 | `data/heldout_classic/raw/yacpdb/smoke/query_stip_2_id_26026_page_1.json` |
 
-No broad stipulation scan was run.
+The later bounded availability scan and candidate build have now been run from
+the cached `gateway/ql` acquisition path. The candidate dataset remains
+`VALIDATED_NOT_FROZEN`.
 
 ### Real Record Structure Observed
 
@@ -178,6 +180,52 @@ Bounded QL smoke command:
   --max-records 3 \
   --output-dir data/heldout_classic/raw/yacpdb/smoke
 ```
+
+## Candidate Dataset Build
+
+The current deterministic candidate dataset is:
+
+```text
+data/heldout_classic/final/yacpdb_classic_v1/dataset.jsonl
+```
+
+Build command:
+
+```bash
+./venv/bin/python -m src.data.heldout_sources.yacpdb_candidate_build \
+  --output-root data/heldout_classic \
+  --dataset-version yacpdb_classic_v1 \
+  --per-depth 20 \
+  --seed 42
+```
+
+The build verifies the completed availability scan fingerprint before
+selection:
+
+```text
+a7694af29724e10907d3b51d759d1ef4f38492e35cfb410b40150400696a2880
+```
+
+Selection uses only `clean_unique_eligible` records, sorted by numeric YACPDB
+ID before deterministic seeded sampling. No composer, source, date, piece
+count, key type, model behavior, or target-dependent property is used for
+selection.
+
+Output status:
+
+- dataset version: `yacpdb_classic_v1`
+- lifecycle: `VALIDATED_NOT_FROZEN`
+- total selected: 200
+- per-depth selected: 20 for MateIn1..MateIn10
+- duplicate source IDs: 0
+- exact FEN duplicates: 0
+- normalized-position duplicates: 0
+- Lichess contamination: 0
+- dataset fingerprint: `bb1b2d7c3858e3b2ffad58fd561534acf1e29bb2321b4af52a57256398ec9a5a`
+- forced-mate verification: `NOT_VERIFIED_ENGINE_NOT_USED`
+
+The next required step is independent forced-mate verification/review. The
+candidate dataset must not be treated as frozen until that pass is complete.
 
 Future full acquisition must use explicit page/range limits and should cache raw responses before normalization.
 
