@@ -25,7 +25,7 @@ import chess
 
 
 ADAPTER_VERSION = "popeye_adapter_v1"
-OUTPUT_PARSER_VERSION = "popeye_output_parser_v1"
+OUTPUT_PARSER_VERSION = "popeye_output_parser_v2"
 EXPECTED_DATASET_FINGERPRINT = "bb1b2d7c3858e3b2ffad58fd561534acf1e29bb2321b4af52a57256398ec9a5a"
 DEFAULT_DATASET_DIR = Path("data/heldout_classic/final/yacpdb_classic_v1")
 DEFAULT_VERIFICATION_ROOT = Path("data/heldout_classic/verification/yacpdb_classic_v1/popeye")
@@ -59,6 +59,8 @@ class ProcessResult:
     return_code: int | None
     runtime_seconds: float
     timed_out: bool = False
+    stdout_type: str = "str"
+    stderr_type: str = "str"
 
 
 @dataclass(frozen=True)
@@ -228,6 +230,9 @@ def popeye_input_for_row(row: dict[str, Any]) -> str:
 MOVE_TOKEN_RE = re.compile(
     r"(?<![A-Za-z0-9])(?:[KQRBSN])?[a-h][1-8][-x*][a-h][1-8](?:=[QRBSN])?[+#]?(?![A-Za-z0-9])"
 )
+ROOT_KEY_LINE_RE = re.compile(
+    r"^\s*1\.(?!\.)\s*(?P<token>(?:[KQRBSN])?[a-h][1-8][-x*][a-h][1-8](?:=[QRBSN])?[+#]?)"
+)
 
 
 def popeye_token_to_uci(token: str, board: chess.Board) -> str | None:
@@ -244,6 +249,35 @@ def popeye_token_to_uci(token: str, board: chess.Board) -> str | None:
     return None
 
 
+def decode_process_output(value: str | bytes | None) -> tuple[str, str]:
+    """Return text plus original type for subprocess output.
+
+    Popeye emits plain text. UTF-8 with replacement keeps artifacts
+    human-readable without dropping bytes if the platform encoding differs.
+    """
+
+    if value is None:
+        return "", "NoneType"
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace"), "bytes"
+    if isinstance(value, str):
+        return value, "str"
+    return str(value), type(value).__name__
+
+
+def extract_root_key_tokens(text: str) -> list[str]:
+    """Extract only structural root key tokens from Popeye solution lines."""
+
+    tokens: list[str] = []
+    for line in text.splitlines():
+        match = ROOT_KEY_LINE_RE.match(line)
+        if match:
+            token = match.group("token")
+            if token not in tokens:
+                tokens.append(token)
+    return tokens
+
+
 def parse_popeye_output(stdout: str, stderr: str, fen: str, source_key_uci: str) -> ParsedPopeyeOutput:
     """Parse Popeye output conservatively and extract solution keys."""
 
@@ -257,7 +291,7 @@ def parse_popeye_output(stdout: str, stderr: str, fen: str, source_key_uci: str)
         return ParsedPopeyeOutput(STATUS_UNVERIFIABLE, "UNSUPPORTED_POPEYE_OUTPUT", False, [], output_supported=False)
     board = chess.Board(fen)
     keys: list[str] = []
-    for token in MOVE_TOKEN_RE.findall(text):
+    for token in extract_root_key_tokens(text):
         uci = popeye_token_to_uci(token, board)
         if uci and uci not in keys:
             keys.append(uci)
@@ -284,11 +318,15 @@ def run_popeye_process(executable_path: str, input_text: str, timeout_seconds: f
             timeout=timeout_seconds,
             check=False,
         )
-        return ProcessResult(completed.stdout, completed.stderr, completed.returncode, time.perf_counter() - start)
+        stdout, stdout_type = decode_process_output(completed.stdout)
+        stderr, stderr_type = decode_process_output(completed.stderr)
+        return ProcessResult(stdout, stderr, completed.returncode, time.perf_counter() - start, stdout_type=stdout_type, stderr_type=stderr_type)
     except subprocess.TimeoutExpired as exc:
-        return ProcessResult(exc.stdout or "", exc.stderr or "", None, time.perf_counter() - start, timed_out=True)
+        stdout, stdout_type = decode_process_output(exc.stdout)
+        stderr, stderr_type = decode_process_output(exc.stderr)
+        return ProcessResult(stdout, stderr, None, time.perf_counter() - start, timed_out=True, stdout_type=stdout_type, stderr_type=stderr_type)
     except OSError as exc:
-        return ProcessResult("", str(exc), None, time.perf_counter() - start)
+        return ProcessResult("", str(exc), None, time.perf_counter() - start, stdout_type="str", stderr_type="str")
 
 
 def config_fingerprint(config: PopeyeRunConfig) -> str:
@@ -329,6 +367,8 @@ def result_from_process(
         "timeout_seconds": config.timeout_seconds,
         "runtime_seconds": process_result.runtime_seconds,
         "return_code": process_result.return_code,
+        "subprocess_stdout_type": process_result.stdout_type,
+        "subprocess_stderr_type": process_result.stderr_type,
         "verification_status": parsed.verification_status,
         "verification_reason": parsed.verification_reason,
         "forced_mate_verified": parsed.forced_mate_verified,
@@ -546,6 +586,8 @@ def run_verification(
                 "timeout_seconds": timeout_seconds,
                 "runtime_seconds": 0.0,
                 "return_code": None,
+                "subprocess_stdout_type": process_result.stdout_type,
+                "subprocess_stderr_type": process_result.stderr_type,
                 "verification_status": STATUS_UNVERIFIABLE,
                 "verification_reason": "UNVERIFIABLE_INPUT_SEMANTICS",
                 "forced_mate_verified": False,
