@@ -11,6 +11,7 @@ graph_visualization.html
 *.pt.tmp
 data/pyg_building/
 lib/
+tools/popeye/
 
 artifacts/
 __MACOSX/
