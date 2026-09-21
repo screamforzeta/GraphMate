@@ -33,6 +33,24 @@ def write_dataset(root: Path, rows: list[dict], fingerprint=popeye.EXPECTED_DATA
     (root / "selected_ids.json").write_text(json.dumps({"selected": [item["source_problem_id"] for item in rows]}), encoding="utf-8")
 
 
+def parent_result(item, reason="TIMEOUT", fingerprint="parent-fp", dataset_fingerprint=popeye.EXPECTED_DATASET_FINGERPRINT):
+    return {
+        "heldout_id": item["heldout_id"],
+        "source_problem_id": item["source_problem_id"],
+        "mate_depth": item["mate_depth"],
+        "dataset_fingerprint": dataset_fingerprint,
+        "verification_config_fingerprint": fingerprint,
+        "timeout_seconds": 300,
+        "verification_status": "FAILED" if reason == "TIMEOUT" else "VERIFIED",
+        "verification_reason": reason,
+        "forced_mate_verified": reason != "TIMEOUT",
+    }
+
+
+def write_results(path: Path, rows: list[dict]):
+    path.write_text("\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n", encoding="utf-8")
+
+
 def test_input_adapter_simple_position_and_depths():
     text = popeye.popeye_input_for_row(row(depth=1))
     assert "BeginProblem" in text
@@ -196,6 +214,78 @@ def test_config_fingerprint_and_resume_identity(tmp_path):
         popeye.load_existing_results(path, "different")
 
 
+def test_retry_selection_is_strict_and_fail_closed(tmp_path):
+    rows = [row("h1", "1"), row("h2", "2"), row("h3", "3")]
+    parent = tmp_path / "parent.jsonl"
+    write_results(
+        parent,
+        [
+            parent_result(rows[0], "TIMEOUT"),
+            parent_result(rows[1], "VERIFIED_UNIQUE_KEY_MATCH"),
+            parent_result(rows[2], "POPEYE_ERROR"),
+        ],
+    )
+    selected, provenance = popeye.select_timeout_retry_rows(parent, rows, popeye.EXPECTED_DATASET_FINGERPRINT)
+    assert [item["heldout_id"] for item in selected] == ["h1"]
+    assert provenance["retry_selected_count"] == 1
+    assert provenance["parent_verification_config_fingerprint"] == "parent-fp"
+    assert provenance["parent_timeout_seconds"] == 300
+
+    write_results(parent, [parent_result(rows[0], "TIMEOUT"), parent_result(rows[0], "TIMEOUT")])
+    with pytest.raises(RuntimeError, match="Duplicate"):
+        popeye.select_timeout_retry_rows(parent, rows, popeye.EXPECTED_DATASET_FINGERPRINT)
+
+    write_results(parent, [dict(parent_result(rows[0], "TIMEOUT"), heldout_id="unknown")])
+    with pytest.raises(RuntimeError, match="unknown"):
+        popeye.select_timeout_retry_rows(parent, rows, popeye.EXPECTED_DATASET_FINGERPRINT)
+
+    write_results(parent, [parent_result(rows[0], "TIMEOUT", dataset_fingerprint="wrong")])
+    with pytest.raises(RuntimeError, match="fingerprint"):
+        popeye.select_timeout_retry_rows(parent, rows, popeye.EXPECTED_DATASET_FINGERPRINT)
+
+
+def test_retry_config_fingerprint_depends_on_parent_and_timeout():
+    base = popeye.PopeyeRunConfig(
+        "dataset",
+        "/py",
+        "v4.103",
+        "Popeye v4.103",
+        1200,
+        verification_pass="timeout_retry",
+        parent_verification_config_fingerprint="parent-a",
+        parent_timeout_seconds=300,
+        parent_results_path="parent.jsonl",
+        retry_selection_reason="TIMEOUT",
+    )
+    different_parent = popeye.PopeyeRunConfig(
+        "dataset",
+        "/py",
+        "v4.103",
+        "Popeye v4.103",
+        1200,
+        verification_pass="timeout_retry",
+        parent_verification_config_fingerprint="parent-b",
+        parent_timeout_seconds=300,
+        parent_results_path="parent.jsonl",
+        retry_selection_reason="TIMEOUT",
+    )
+    different_timeout = popeye.PopeyeRunConfig(
+        "dataset",
+        "/py",
+        "v4.103",
+        "Popeye v4.103",
+        300,
+        verification_pass="timeout_retry",
+        parent_verification_config_fingerprint="parent-a",
+        parent_timeout_seconds=300,
+        parent_results_path="parent.jsonl",
+        retry_selection_reason="TIMEOUT",
+    )
+    assert popeye.config_fingerprint(base) != "7500621cd95b841a0a105ec37f02b821ea3ca0fd116a78f7d94c244c7d9f7bb1"
+    assert popeye.config_fingerprint(base) != popeye.config_fingerprint(different_parent)
+    assert popeye.config_fingerprint(base) != popeye.config_fingerprint(different_timeout)
+
+
 def test_orchestration_structured_results_summary_and_byte_integrity(monkeypatch, tmp_path):
     dataset_dir = tmp_path / "dataset"
     rows = [row(f"h{i}", str(i), 1) for i in range(200)]
@@ -222,6 +312,52 @@ def test_orchestration_structured_results_summary_and_byte_integrity(monkeypatch
     assert summary["by_mate_depth"]["1"]["total"] == 200
     assert (tmp_path / "verification" / "results.jsonl").exists()
     assert (tmp_path / "verification" / "summary.json").exists()
+
+
+def test_retry_run_uses_existing_result_semantics_and_keeps_hashes(monkeypatch, tmp_path):
+    dataset_dir = tmp_path / "dataset"
+    rows = [row(f"h{i}", str(i), 1) for i in range(200)]
+    write_dataset(dataset_dir, rows)
+    before = popeye.canonical_file_hashes(dataset_dir)
+    parent = tmp_path / "parent.jsonl"
+    write_results(
+        parent,
+        [
+            parent_result(rows[0], "TIMEOUT"),
+            parent_result(rows[1], "TIMEOUT"),
+            parent_result(rows[2], "VERIFIED_UNIQUE_KEY_MATCH"),
+        ],
+    )
+
+    monkeypatch.setattr(popeye, "popeye_identity", lambda executable: popeye.PopeyeIdentity("v4.test", "Popeye test v4.test"))
+    outputs = iter(
+        [
+            popeye.ProcessResult("1.Qg7-f8 #\nsolution finished.", "", 0, 0.01),
+            popeye.ProcessResult("", "", None, 1200.0, timed_out=True),
+        ]
+    )
+    monkeypatch.setattr(popeye, "run_popeye_process", lambda executable, input_text, timeout: next(outputs))
+    monkeypatch.setattr(popeye, "write_markdown_report", lambda *args, **kwargs: None)
+
+    summary = popeye.run_verification(
+        dataset_dir,
+        tmp_path / "retry",
+        "/fake/popeye",
+        1200,
+        retry_timeouts_from=parent,
+    )
+    after = popeye.canonical_file_hashes(dataset_dir)
+
+    assert before == after
+    assert summary["verification_pass"] == "timeout_retry"
+    assert summary["parent_verification_config_fingerprint"] == "parent-fp"
+    assert summary["retry_selected_count"] == 2
+    assert summary["total"] == 2
+    assert summary["verified_forced_mate"] == 1
+    assert summary["timeouts"] == 1
+    assert summary["unique_key_match"] == 1
+    result_rows = [json.loads(line) for line in (tmp_path / "retry" / "results.jsonl").read_text().splitlines()]
+    assert result_rows[1]["verification_reason"] == "TIMEOUT"
 
 
 def test_dataset_fingerprint_required(tmp_path):
