@@ -72,15 +72,32 @@ def test_process_runner_success_timeout_nonzero_and_missing(monkeypatch):
     assert result.stdout == "ok"
     assert result.stderr == "warn"
     assert result.return_code == 0
+    assert result.stdout_type == "str"
+    assert result.stderr_type == "str"
+
+    class BytesCompleted:
+        stdout = "Popeye café".encode()
+        stderr = "avertissement".encode()
+        returncode = 1
+
+    monkeypatch.setattr(popeye.subprocess, "run", lambda *args, **kwargs: BytesCompleted())
+    result = popeye.run_popeye_process("/bin/echo", "input", 1)
+    assert result.stdout == "Popeye café"
+    assert result.stderr == "avertissement"
+    assert result.return_code == 1
+    assert result.stdout_type == "bytes"
+    assert result.stderr_type == "bytes"
 
     def timeout(*args, **kwargs):
-        raise popeye.subprocess.TimeoutExpired("cmd", 1, output="partial", stderr="late")
+        raise popeye.subprocess.TimeoutExpired("cmd", 1, output=b"partial \xff", stderr=b"late \xff")
 
     monkeypatch.setattr(popeye.subprocess, "run", timeout)
     result = popeye.run_popeye_process("/bin/echo", "input", 1)
     assert result.timed_out is True
-    assert result.stdout == "partial"
-    assert result.stderr == "late"
+    assert result.stdout == "partial �"
+    assert result.stderr == "late �"
+    assert result.stdout_type == "bytes"
+    assert result.stderr_type == "bytes"
 
     def missing(*args, **kwargs):
         raise OSError("missing executable")
@@ -115,11 +132,53 @@ def test_output_parser_one_key_multiple_no_solution_and_mismatch():
     parsed = popeye.parse_popeye_output("1.Kg6-h6 #\nsolution finished.", "", MATE1_FEN, "g7f8")
     assert parsed.verification_reason == "VERIFIED_KEY_MISMATCH"
 
+    tree_output = "1.Qg7-f8 #\n  1...Kh8-g8\n  2.Kg6-h6 #\nsolution finished."
+    parsed = popeye.parse_popeye_output(tree_output, "", MATE1_FEN, "g7f8")
+    assert parsed.verification_reason == "VERIFIED_UNIQUE_KEY_MATCH"
+    assert parsed.verified_keys_uci == ["g7f8"]
+
     parsed = popeye.parse_popeye_output("No solution", "", MATE1_FEN, "g7f8")
     assert parsed.verification_reason == "NO_SOLUTION"
 
     parsed = popeye.parse_popeye_output("header only", "", MATE1_FEN, "g7f8")
     assert parsed.verification_reason == "UNSUPPORTED_POPEYE_OUTPUT"
+
+
+def test_root_key_extraction_uses_only_popeye_root_solution_lines():
+    output_145182 = """Popeye Linux-7.0.0-31-generic-unknown-64Bit v4.103 (1024 MB)
+heldout_id=yacpdb_classic_v1_0011 source_problem_id=145182
+
+1.Rg8-g7 # !
+1.Rg8-h8 # !
+1.Nd7-f6 # !
+
+solution finished. Time = 0.006 s
+"""
+    board_145182 = chess.Board("4K1R1/3N1N1k/3R3P/8/8/8/8/8 w - - 0 1")
+    keys_145182 = [
+        popeye.popeye_token_to_uci(token, board_145182)
+        for token in popeye.extract_root_key_tokens(output_145182)
+    ]
+    assert keys_145182 == ["g8g7", "g8h8", "d7f6"]
+
+    output_67081 = """Popeye Linux-7.0.0-31-generic-unknown-64Bit v4.103 (1024 MB)
+heldout_id=yacpdb_classic_v1_0122 source_problem_id=67081
+
+1.Qe4-f4 !
+  1...Kh8-g8
+  2.Qf4-f7 +
+  2...Kg8-h8
+  3.Qf7-f8 #
+1.Qb7-f7 !
+  1...Kh8-g8
+  2.Qf7-f8 #
+
+solution finished. Time = 3.000 s
+"""
+    tokens = popeye.extract_root_key_tokens(output_67081)
+    assert tokens == ["Qe4-f4", "Qb7-f7"]
+    assert "Qf4-f7" not in tokens
+    assert "Qf7-f8" not in tokens
 
 
 def test_config_fingerprint_and_resume_identity(tmp_path):
