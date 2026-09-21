@@ -45,6 +45,11 @@ class PopeyeRunConfig:
     popeye_version: str
     popeye_banner: str | None
     timeout_seconds: float
+    verification_pass: str = "full"
+    parent_verification_config_fingerprint: str | None = None
+    parent_timeout_seconds: float | None = None
+    parent_results_path: str | None = None
+    retry_selection_reason: str | None = None
     adapter_version: str = ADAPTER_VERSION
     output_parser_version: str = OUTPUT_PARSER_VERSION
     invocation_options: tuple[str, ...] = ()
@@ -369,6 +374,11 @@ def result_from_process(
         "return_code": process_result.return_code,
         "subprocess_stdout_type": process_result.stdout_type,
         "subprocess_stderr_type": process_result.stderr_type,
+        "verification_pass": config.verification_pass,
+        "parent_verification_config_fingerprint": config.parent_verification_config_fingerprint,
+        "parent_timeout_seconds": config.parent_timeout_seconds,
+        "parent_results_path": config.parent_results_path,
+        "retry_selection_reason": config.retry_selection_reason,
         "verification_status": parsed.verification_status,
         "verification_reason": parsed.verification_reason,
         "forced_mate_verified": parsed.forced_mate_verified,
@@ -407,6 +417,11 @@ def summarize_results(results: list[dict[str, Any]], config: PopeyeRunConfig, co
         "popeye_version": config.popeye_version,
         "popeye_banner": config.popeye_banner,
         "timeout_seconds": config.timeout_seconds,
+        "verification_pass": config.verification_pass,
+        "parent_verification_config_fingerprint": config.parent_verification_config_fingerprint,
+        "parent_timeout_seconds": config.parent_timeout_seconds,
+        "parent_results_path": config.parent_results_path,
+        "retry_selection_reason": config.retry_selection_reason,
         "total": len(results),
         "verified_forced_mate": sum(bool(row["forced_mate_verified"]) for row in results),
         "failed": sum(row["verification_status"] == STATUS_FAILED for row in results),
@@ -521,6 +536,60 @@ def load_existing_results(path: Path, config_fp: str) -> dict[str, dict[str, Any
     return completed
 
 
+def read_results_jsonl(path: Path) -> list[dict[str, Any]]:
+    """Read Popeye structured result rows."""
+
+    if not path.exists():
+        raise RuntimeError(f"Missing Popeye results file: {path}")
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def select_timeout_retry_rows(
+    parent_results_path: Path,
+    dataset_rows: list[dict[str, Any]],
+    dataset_fingerprint: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Select only parent rows that timed out and map them to dataset rows."""
+
+    parent_rows = read_results_jsonl(parent_results_path)
+    dataset_by_id = {row["heldout_id"]: row for row in dataset_rows}
+    seen: set[str] = set()
+    retry_ids: list[str] = []
+    parent_fingerprints: set[str] = set()
+    parent_timeouts: set[float] = set()
+    for row in parent_rows:
+        heldout_id = str(row.get("heldout_id") or "")
+        if not heldout_id:
+            raise RuntimeError("Parent result missing heldout_id")
+        if heldout_id in seen:
+            raise RuntimeError(f"Duplicate heldout_id in parent results: {heldout_id}")
+        seen.add(heldout_id)
+        if row.get("dataset_fingerprint") != dataset_fingerprint:
+            raise RuntimeError("Parent result dataset fingerprint is incompatible")
+        parent_fp = str(row.get("verification_config_fingerprint") or "")
+        if not parent_fp:
+            raise RuntimeError("Parent result missing verification_config_fingerprint")
+        parent_fingerprints.add(parent_fp)
+        if row.get("timeout_seconds") is not None:
+            parent_timeouts.add(float(row["timeout_seconds"]))
+        if row.get("verification_reason") == "TIMEOUT":
+            if heldout_id not in dataset_by_id:
+                raise RuntimeError(f"Timeout result references unknown heldout_id: {heldout_id}")
+            retry_ids.append(heldout_id)
+    if len(parent_fingerprints) != 1:
+        raise RuntimeError("Parent results contain multiple verification identities")
+    retry_rows = [dataset_by_id[heldout_id] for heldout_id in retry_ids]
+    return retry_rows, {
+        "verification_pass": "timeout_retry",
+        "parent_verification_config_fingerprint": next(iter(parent_fingerprints)),
+        "parent_timeout_seconds": next(iter(parent_timeouts)) if len(parent_timeouts) == 1 else None,
+        "parent_results_path": str(parent_results_path),
+        "retry_selection_reason": "TIMEOUT",
+        "retry_selected_count": len(retry_rows),
+        "retry_selected_heldout_ids": retry_ids,
+    }
+
+
 def write_results_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     """Write structured results as JSONL."""
 
@@ -536,6 +605,7 @@ def run_verification(
     timeout_seconds: float,
     expected_dataset_fingerprint: str = EXPECTED_DATASET_FINGERPRINT,
     limit: int | None = None,
+    retry_timeouts_from: Path | None = None,
 ) -> dict[str, Any]:
     """Run or resume Popeye verification for the fixed dataset."""
 
@@ -543,6 +613,9 @@ def run_verification(
     rows = load_dataset_rows(dataset_dir)
     if len(rows) != 200:
         raise RuntimeError(f"Expected 200 candidate rows, found {len(rows)}")
+    retry_provenance: dict[str, Any] = {}
+    if retry_timeouts_from is not None:
+        rows, retry_provenance = select_timeout_retry_rows(retry_timeouts_from, rows, manifest["dataset_fingerprint"])
     before_hashes = canonical_file_hashes(dataset_dir)
     identity = popeye_identity(executable_path)
     config = PopeyeRunConfig(
@@ -551,6 +624,11 @@ def run_verification(
         popeye_version=identity.version,
         popeye_banner=identity.banner,
         timeout_seconds=timeout_seconds,
+        verification_pass=retry_provenance.get("verification_pass", "full"),
+        parent_verification_config_fingerprint=retry_provenance.get("parent_verification_config_fingerprint"),
+        parent_timeout_seconds=retry_provenance.get("parent_timeout_seconds"),
+        parent_results_path=retry_provenance.get("parent_results_path"),
+        retry_selection_reason=retry_provenance.get("retry_selection_reason"),
     )
     config_fp = config_fingerprint(config)
     inputs_dir = verification_root / "inputs"
@@ -588,6 +666,11 @@ def run_verification(
                 "return_code": None,
                 "subprocess_stdout_type": process_result.stdout_type,
                 "subprocess_stderr_type": process_result.stderr_type,
+                "verification_pass": config.verification_pass,
+                "parent_verification_config_fingerprint": config.parent_verification_config_fingerprint,
+                "parent_timeout_seconds": config.parent_timeout_seconds,
+                "parent_results_path": config.parent_results_path,
+                "retry_selection_reason": config.retry_selection_reason,
                 "verification_status": STATUS_UNVERIFIABLE,
                 "verification_reason": "UNVERIFIABLE_INPUT_SEMANTICS",
                 "forced_mate_verified": False,
@@ -612,6 +695,9 @@ def run_verification(
     after_hashes = canonical_file_hashes(dataset_dir)
     assert_canonical_hashes_unchanged(before_hashes, after_hashes)
     summary = summarize_results(results, config, config_fp)
+    summary.update(retry_provenance)
+    if retry_timeouts_from is not None:
+        summary["retry_timeout_seconds"] = timeout_seconds
     summary["canonical_hashes_before"] = before_hashes
     summary["canonical_hashes_after"] = after_hashes
     summary["canonical_dataset_mutated"] = False
@@ -691,6 +777,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=float, default=300.0)
     parser.add_argument("--not-run-if-missing", action="store_true")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--retry-timeouts-from", default=None)
     return parser.parse_args()
 
 
@@ -712,7 +799,14 @@ def main() -> int:
         )
         print(json.dumps({"status": summary["status"], "total": summary["total"]}, indent=2, sort_keys=True))
         return 0
-    summary = run_verification(dataset_dir, verification_root, executable, args.timeout_seconds, limit=args.limit)
+    summary = run_verification(
+        dataset_dir,
+        verification_root,
+        executable,
+        args.timeout_seconds,
+        limit=args.limit,
+        retry_timeouts_from=Path(args.retry_timeouts_from) if args.retry_timeouts_from else None,
+    )
     print(json.dumps({"status": "RUN", "summary": summary}, indent=2, sort_keys=True))
     return 0
 

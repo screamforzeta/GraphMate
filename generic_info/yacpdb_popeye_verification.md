@@ -25,6 +25,53 @@ The adapter writes `BeginProblem`, `Option NoBoard`, `Stipulation #N`, and `Fors
 - multiple keys including source: 0
 - key mismatches: 0
 
+## Two-Stage Timeout Strategy
+
+The official verification protocol is now two-stage:
+
+1. Pass 1 verifies all 200 YACPDB candidate problems with `timeout_seconds = 300`.
+2. Pass 2 verifies only Pass-1 rows whose structured result has `verification_reason = TIMEOUT`, using `timeout_seconds = 1200`.
+
+The retry pass is explicit and provenance-preserving. It reads the first-pass
+`results.jsonl`, selects only timeout rows, and writes to a separate directory
+such as:
+
+```text
+data/heldout_classic/verification/yacpdb_classic_v1/popeye_retry_1200s/
+```
+
+Timeouts are retried instead of replaced because replacing computationally
+difficult compositions with easier ones would introduce solver-runtime
+selection bias into the held-out benchmark.
+
+Important semantics:
+
+- `TIMEOUT` is not evidence of an invalid composition.
+- `TIMEOUT` is not evidence of a wrong YACPDB key.
+- A second timeout after 1200 seconds remains computationally inconclusive.
+- No timeout problem may be replaced or resampled automatically.
+
+Manual retry command:
+
+```bash
+./venv/bin/python -m src.verification.popeye \
+  --dataset-dir data/heldout_classic/final/yacpdb_classic_v1 \
+  --verification-root data/heldout_classic/verification/yacpdb_classic_v1/popeye_retry_1200s \
+  --popeye-executable ./tools/popeye/py \
+  --timeout-seconds 1200 \
+  --retry-timeouts-from data/heldout_classic/verification/yacpdb_classic_v1/popeye/results.jsonl
+```
+
+The retry summary records:
+
+- `verification_pass = timeout_retry`
+- `parent_verification_config_fingerprint`
+- `parent_timeout_seconds`
+- `parent_results_path`
+- `retry_timeout_seconds`
+- `retry_selection_reason = TIMEOUT`
+- `retry_selected_count`
+
 ## By MateDepth
 
 | MateDepth | Total | Verified | Failed | Unverifiable | Timeout | Popeye error | Unique key | Multiple key | Key mismatch |
