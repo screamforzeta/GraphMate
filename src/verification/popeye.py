@@ -43,6 +43,7 @@ class PopeyeRunConfig:
     dataset_fingerprint: str
     executable_path: str
     popeye_version: str
+    popeye_banner: str | None
     timeout_seconds: float
     adapter_version: str = ADAPTER_VERSION
     output_parser_version: str = OUTPUT_PARSER_VERSION
@@ -71,6 +72,14 @@ class ParsedPopeyeOutput:
     output_supported: bool = True
 
 
+@dataclass(frozen=True)
+class PopeyeIdentity:
+    """Stable Popeye executable identity extracted from a real banner."""
+
+    version: str
+    banner: str
+
+
 def sha256_file(path: Path) -> str:
     """Return SHA256 hash for a file."""
 
@@ -97,18 +106,45 @@ def locate_popeye(explicit_path: str | None = None) -> str | None:
     return None
 
 
-def popeye_version(executable_path: str) -> str:
-    """Best-effort Popeye version string without solving a problem."""
+POPEYE_BANNER_RE = re.compile(r"^(?P<banner>Popeye\b.*?\b(?P<version>v\d+(?:\.\d+)+)\b.*)$", re.MULTILINE)
 
-    for args in ([executable_path, "--version"], [executable_path, "-version"], [executable_path, "-v"]):
-        try:
-            completed = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
-        except (OSError, subprocess.SubprocessError):
-            continue
-        text = "\n".join(part.strip() for part in (completed.stdout, completed.stderr) if part.strip())
-        if text:
-            return text.splitlines()[0][:200]
-    return "UNKNOWN_VERSION"
+
+def parse_popeye_banner(text: str) -> PopeyeIdentity:
+    """Extract Popeye version identity from a real stdout/stderr banner."""
+
+    if not text or not text.strip():
+        raise RuntimeError("Popeye banner detection failed: empty output")
+    match = POPEYE_BANNER_RE.search(text)
+    if not match:
+        raise RuntimeError("Popeye banner detection failed: missing valid Popeye banner")
+    return PopeyeIdentity(version=match.group("version"), banner=match.group("banner").strip())
+
+
+def popeye_identity_from_output(stdout: str, stderr: str = "") -> PopeyeIdentity:
+    """Return stable Popeye identity from process output."""
+
+    return parse_popeye_banner("\n".join(part for part in (stdout, stderr) if part))
+
+
+def popeye_identity(executable_path: str, timeout_seconds: float = 10.0) -> PopeyeIdentity:
+    """Identify Popeye by running a supported stdin problem and parsing banner."""
+
+    probe = "\n".join(
+        [
+            "BeginProblem",
+            "Option NoBoard",
+            "Stipulation #1",
+            "Forsyth 7k/6Q1/6K1/8/8/8/8/8",
+            "EndProblem",
+            "",
+        ]
+    )
+    result = run_popeye_process(executable_path, probe, timeout_seconds)
+    if result.timed_out:
+        raise RuntimeError("Popeye banner detection failed: timeout")
+    if result.return_code not in (0, None):
+        raise RuntimeError(f"Popeye banner detection failed: return code {result.return_code}")
+    return popeye_identity_from_output(result.stdout, result.stderr)
 
 
 def load_manifest(dataset_dir: Path) -> dict[str, Any]:
@@ -289,6 +325,7 @@ def result_from_process(
         "canonical_fen": row["fen"],
         "source_key_move_uci": row["key_move_uci"],
         "popeye_version": config.popeye_version,
+        "popeye_banner": config.popeye_banner,
         "timeout_seconds": config.timeout_seconds,
         "runtime_seconds": process_result.runtime_seconds,
         "return_code": process_result.return_code,
@@ -328,6 +365,7 @@ def summarize_results(results: list[dict[str, Any]], config: PopeyeRunConfig, co
         "dataset_fingerprint": config.dataset_fingerprint,
         "verification_config_fingerprint": config_fp,
         "popeye_version": config.popeye_version,
+        "popeye_banner": config.popeye_banner,
         "timeout_seconds": config.timeout_seconds,
         "total": len(results),
         "verified_forced_mate": sum(bool(row["forced_mate_verified"]) for row in results),
@@ -466,11 +504,12 @@ def run_verification(
     if len(rows) != 200:
         raise RuntimeError(f"Expected 200 candidate rows, found {len(rows)}")
     before_hashes = canonical_file_hashes(dataset_dir)
-    version = popeye_version(executable_path)
+    identity = popeye_identity(executable_path)
     config = PopeyeRunConfig(
         dataset_fingerprint=manifest["dataset_fingerprint"],
         executable_path=executable_path,
-        popeye_version=version,
+        popeye_version=identity.version,
+        popeye_banner=identity.banner,
         timeout_seconds=timeout_seconds,
     )
     config_fp = config_fingerprint(config)
@@ -502,7 +541,8 @@ def run_verification(
                 "mate_depth": row["mate_depth"],
                 "canonical_fen": row["fen"],
                 "source_key_move_uci": row["key_move_uci"],
-                "popeye_version": version,
+                "popeye_version": identity.version,
+                "popeye_banner": identity.banner,
                 "timeout_seconds": timeout_seconds,
                 "runtime_seconds": 0.0,
                 "return_code": None,
@@ -553,6 +593,7 @@ def write_not_run_artifacts(
         dataset_fingerprint=manifest["dataset_fingerprint"],
         executable_path=executable_path or "NOT_FOUND",
         popeye_version="NOT_RUN",
+        popeye_banner=None,
         timeout_seconds=0.0,
     )
     config_fp = config_fingerprint(config)
