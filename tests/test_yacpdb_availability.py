@@ -133,10 +133,10 @@ def test_availability_artifact_serialization(monkeypatch, tmp_path):
 
     monkeypatch.setattr(availability, "scan_depth", fake_scan_depth)
     monkeypatch.setattr(availability, "load_lichess_overlap_keys", lambda: {})
+    monkeypatch.setattr(availability, "write_markdown_report", lambda payload, path: None)
 
     payload = availability.run_scan(tmp_path, per_depth_cap=1, timeout=1)
 
     assert payload["status"] == "COMPLETE"
     assert (tmp_path / "processed" / "yacpdb_availability.json").exists()
     assert "scan_fingerprint" in payload
-

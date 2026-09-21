@@ -78,3 +78,19 @@ Availability is measured within a bounded discovery sample of up to 200 unique s
 - No parser/normalizer semantic changes were made during the scan.
 - No final dataset was built or frozen.
 - No model, LLM, Stockfish, or Popeye inference was run.
+
+## Candidate Build Follow-Up
+
+The deterministic candidate dataset `yacpdb_classic_v1` has now been built from
+this completed availability scan.
+
+- Selection: 20 clean unique eligible candidates per MateDepth, MateIn1..MateIn10
+- Seed: `42`
+- Canonical ordering before sampling: numeric YACPDB source ID
+- Total selected: 200
+- Dataset fingerprint: `bb1b2d7c3858e3b2ffad58fd561534acf1e29bb2321b4af52a57256398ec9a5a`
+- Lifecycle: `VALIDATED_NOT_FROZEN`
+- Forced-mate verification: `NOT_VERIFIED_ENGINE_NOT_USED`
+
+The candidate build did not rerun discovery, did not modify parser or
+normalizer semantics, and did not run models, LLMs, Stockfish, or Popeye.

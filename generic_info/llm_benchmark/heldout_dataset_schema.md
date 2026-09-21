@@ -1,10 +1,12 @@
 # Held-Out Classic Mate-in-N Dataset
 
-Status: `AVAILABILITY_READY`
+Status: `VALIDATED_NOT_FROZEN`
 
 The held-out classic dataset is a true external evaluation set. It must remain independent from the Lichess train/validation/test splits and must not be used for model training, fine-tuning, hyperparameter choices, prompt tuning, or parser changes.
 
-No real external classic-problem source has been imported in this repository state. The generic infrastructure and YACPDB local-export importer are implemented, but the final dataset is not frozen.
+The YACPDB candidate dataset v1 has been built from the cached bounded
+availability scan, but the final dataset is not frozen. It still requires an
+independent forced-mate verification/review pass.
 
 ## Location
 
@@ -14,16 +16,23 @@ data/heldout_classic/
     yacpdb/
   processed/
   final/
+    yacpdb_classic_v1/
 ```
 
 This area is separate from `data/final/puzzles/`.
 
 ## Canonical Schema
 
-Final rows are written to:
+The current authoritative candidate rows are written to:
 
 ```text
-data/heldout_classic/final/heldout_classic.csv
+data/heldout_classic/final/yacpdb_classic_v1/dataset.jsonl
+```
+
+A CSV derivative is also generated at:
+
+```text
+data/heldout_classic/final/yacpdb_classic_v1/dataset.csv
 ```
 
 Required fields:
@@ -144,14 +153,23 @@ Availability command:
 Build command:
 
 ```bash
-./venv/bin/python -m src.data.heldout_sources.yacpdb \
-  --mode build \
-  --source data/heldout_classic/raw/yacpdb/<export>.jsonl \
+./venv/bin/python -m src.data.heldout_sources.yacpdb_candidate_build \
   --output-root data/heldout_classic \
-  --dataset-version yacpdb_v1 \
+  --dataset-version yacpdb_classic_v1 \
   --per-depth 20 \
   --seed 42
 ```
+
+Candidate build metadata:
+
+- availability fingerprint: `a7694af29724e10907d3b51d759d1ef4f38492e35cfb410b40150400696a2880`
+- selection seed: `42`
+- canonical ordering: numeric YACPDB `source_problem_id`
+- selected rows: 200
+- selected rows per MateDepth: exactly 20 for each MateIn1..MateIn10
+- dataset fingerprint: `bb1b2d7c3858e3b2ffad58fd561534acf1e29bb2321b4af52a57256398ec9a5a`
+- lifecycle: `VALIDATED_NOT_FROZEN`
+- forced-mate verification: `NOT_VERIFIED_ENGINE_NOT_USED`
 
 ## Line Validation vs Forced Mate
 

@@ -1,8 +1,78 @@
 # Held-Out Classic Dataset Report
 
-Status: `AVAILABILITY_READY`
+Status: `VALIDATED_NOT_FROZEN`
 
-The external classic Mate-in-N dataset is not frozen yet. This pass implements generic import, YACPDB-specific availability scanning, key validation, duplicate detection, Lichess contamination audit, manifest, and documentation infrastructure. No real external source file has been imported in this development VM.
+## YACPDB Candidate Dataset v1
+
+The deterministic YACPDB held-out candidate dataset has been built but is not
+frozen.
+
+- Dataset version: `yacpdb_classic_v1`
+- Lifecycle: `VALIDATED_NOT_FROZEN`
+- Design: 20 problems per MateDepth, MateIn1 through MateIn10
+- Total rows: 200
+- Authoritative availability fingerprint: `a7694af29724e10907d3b51d759d1ef4f38492e35cfb410b40150400696a2880`
+- Dataset fingerprint: `bb1b2d7c3858e3b2ffad58fd561534acf1e29bb2321b4af52a57256398ec9a5a`
+- Selection seed: `42`
+- Canonical ordering before sampling: numeric YACPDB `source_problem_id`
+- Selection strategy: seeded sample of clean unique eligible candidates per MateDepth
+- Forced-mate verification: `NOT_VERIFIED_ENGINE_NOT_USED`
+
+Canonical artifacts:
+
+```text
+data/heldout_classic/final/yacpdb_classic_v1/dataset.jsonl
+data/heldout_classic/final/yacpdb_classic_v1/dataset.csv
+data/heldout_classic/final/yacpdb_classic_v1/manifest.json
+data/heldout_classic/final/yacpdb_classic_v1/selected_ids.json
+data/heldout_classic/final/yacpdb_classic_v1/forced_mate_verification_queue.jsonl
+generic_info/yacpdb_candidate_build.md
+```
+
+Build command:
+
+```bash
+./venv/bin/python -m src.data.heldout_sources.yacpdb_candidate_build \
+  --output-root data/heldout_classic \
+  --dataset-version yacpdb_classic_v1 \
+  --per-depth 20 \
+  --seed 42
+```
+
+The build uses only the cached clean unique eligible pool from the completed
+availability scan. It does not contact YACPDB, does not use model outputs, does
+not run LLMs, and does not run Stockfish or Popeye.
+
+The dataset remains not frozen because an independent forced-mate verification
+and review pass is still required.
+
+## Popeye Verification Adapter
+
+Independent forced-mate verification is implemented in:
+
+```text
+src/verification/popeye.py
+```
+
+It writes separate verification artifacts under:
+
+```text
+data/heldout_classic/verification/yacpdb_classic_v1/popeye/
+```
+
+The adapter converts the canonical FEN board field to Popeye `Forsyth`, writes
+`Stipulation #N`, captures stdout/stderr, parses verified key moves
+conservatively, and never mutates `dataset.jsonl`, `dataset.csv`, or
+`selected_ids.json`.
+
+On the current development VM the Popeye executable was not available, so real
+verification is explicitly recorded as `NOT_RUN`. The dataset is therefore not
+ready for freeze review yet.
+
+The external classic Mate-in-N dataset is not frozen yet. The current candidate
+build implements YACPDB-specific availability scanning, key validation,
+duplicate detection, Lichess contamination audit, manifest, review index, and
+verification queue generation.
 
 ## Purpose
 
@@ -22,7 +92,8 @@ The importer accepts `.json`, `.jsonl`, or `.csv` files from a documented extern
 - license/provenance;
 - original source metadata.
 
-No source is bundled and no synthetic final dataset is created.
+The current YACPDB candidate artifacts are generated local data and remain
+`VALIDATED_NOT_FROZEN`.
 
 ### YACPDB Support
 
@@ -171,14 +242,12 @@ YACPDB availability scan:
   --output-root data/heldout_classic
 ```
 
-YACPDB candidate build:
+YACPDB candidate build from cached availability scan:
 
 ```bash
-./venv/bin/python -m src.data.heldout_sources.yacpdb \
-  --mode build \
-  --source data/heldout_classic/raw/yacpdb/<export>.jsonl \
+./venv/bin/python -m src.data.heldout_sources.yacpdb_candidate_build \
   --output-root data/heldout_classic \
-  --dataset-version yacpdb_v1 \
+  --dataset-version yacpdb_classic_v1 \
   --per-depth 20 \
   --seed 42
 ```
@@ -186,24 +255,25 @@ YACPDB candidate build:
 Outputs:
 
 ```text
-data/heldout_classic/final/heldout_classic.csv
-data/heldout_classic/final/manifest.json
-data/heldout_classic/processed/rejected_records.jsonl
+data/heldout_classic/final/yacpdb_classic_v1/dataset.jsonl
+data/heldout_classic/final/yacpdb_classic_v1/dataset.csv
+data/heldout_classic/final/yacpdb_classic_v1/manifest.json
+data/heldout_classic/final/yacpdb_classic_v1/selected_ids.json
+data/heldout_classic/final/yacpdb_classic_v1/forced_mate_verification_queue.jsonl
 data/heldout_classic/processed/yacpdb_availability.json
-data/heldout_classic/processed/yacpdb_manual_review.json
 ```
 
 ## Current Counts
 
-No real external source has been imported in this VM.
-
-- raw count: not available
-- accepted count: not available
-- rejected count: not available
-- MateDepth distribution: not available
-- dataset fingerprint: not available
-- lifecycle status: `BUILDING`
-- YACPDB infrastructure status: `AVAILABILITY_READY`
+- selected rows: 200
+- MateDepth distribution: exactly 20 rows for each MateIn1..MateIn10
+- duplicate source IDs: 0
+- exact FEN duplicates: 0
+- normalized-position duplicates: 0
+- Lichess contamination: 0
+- dataset fingerprint: `bb1b2d7c3858e3b2ffad58fd561534acf1e29bb2321b4af52a57256398ec9a5a`
+- lifecycle status: `VALIDATED_NOT_FROZEN`
+- forced-mate verification: `NOT_VERIFIED_ENGINE_NOT_USED`
 
 ## Held-Out Status
 
