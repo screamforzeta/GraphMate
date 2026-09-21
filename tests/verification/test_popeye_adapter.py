@@ -90,6 +90,19 @@ def test_process_runner_success_timeout_nonzero_and_missing(monkeypatch):
     assert "missing executable" in result.stderr
 
 
+def test_popeye_banner_version_parsing_rejects_invalid_outputs():
+    identity = popeye.parse_popeye_banner("Popeye Linux-7.0.0-31-generic-unknown-64Bit v4.103 (1024 MB)")
+    assert identity.version == "v4.103"
+    assert identity.banner == "Popeye Linux-7.0.0-31-generic-unknown-64Bit v4.103 (1024 MB)"
+
+    with pytest.raises(RuntimeError, match="missing valid"):
+        popeye.parse_popeye_banner("error opening input file: No such file or directory")
+    with pytest.raises(RuntimeError, match="empty output"):
+        popeye.parse_popeye_banner("")
+    with pytest.raises(RuntimeError, match="missing valid"):
+        popeye.parse_popeye_banner("some unrelated solver banner")
+
+
 def test_output_parser_one_key_multiple_no_solution_and_mismatch():
     parsed = popeye.parse_popeye_output("1.Qg7-f8 #\nsolution finished.", "", MATE1_FEN, "g7f8")
     assert parsed.verification_reason == "VERIFIED_UNIQUE_KEY_MATCH"
@@ -110,9 +123,9 @@ def test_output_parser_one_key_multiple_no_solution_and_mismatch():
 
 
 def test_config_fingerprint_and_resume_identity(tmp_path):
-    config = popeye.PopeyeRunConfig("abc", "/bin/py", "4.89", 10)
-    same = popeye.PopeyeRunConfig("abc", "/bin/py", "4.89", 10)
-    other = popeye.PopeyeRunConfig("abc", "/bin/py", "4.89", 20)
+    config = popeye.PopeyeRunConfig("abc", "/bin/py", "v4.89", "Popeye test v4.89", 10)
+    same = popeye.PopeyeRunConfig("abc", "/bin/py", "v4.89", "Popeye test v4.89", 10)
+    other = popeye.PopeyeRunConfig("abc", "/bin/py", "v4.89", "Popeye test v4.89", 20)
     assert popeye.config_fingerprint(config) == popeye.config_fingerprint(same)
     assert popeye.config_fingerprint(config) != popeye.config_fingerprint(other)
 
@@ -130,7 +143,7 @@ def test_orchestration_structured_results_summary_and_byte_integrity(monkeypatch
     write_dataset(dataset_dir, rows)
     before = popeye.canonical_file_hashes(dataset_dir)
 
-    monkeypatch.setattr(popeye, "popeye_version", lambda executable: "Popeye 4.test")
+    monkeypatch.setattr(popeye, "popeye_identity", lambda executable: popeye.PopeyeIdentity("v4.test", "Popeye test v4.test"))
     monkeypatch.setattr(
         popeye,
         "run_popeye_process",
@@ -143,6 +156,8 @@ def test_orchestration_structured_results_summary_and_byte_integrity(monkeypatch
 
     assert before == after
     assert summary["total"] == 200
+    assert summary["popeye_version"] == "v4.test"
+    assert summary["popeye_banner"] == "Popeye test v4.test"
     assert summary["verified_forced_mate"] == 200
     assert summary["unique_key_match"] == 200
     assert summary["by_mate_depth"]["1"]["total"] == 200
