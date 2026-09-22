@@ -18,7 +18,11 @@ from src.graph.graph_builder import build_graph
 from src.graph.pyg_dataset import load_move_encoder
 from src.llm.parsing import PARSER_VERSION, parse_uci_response
 from src.llm.prompting import PROMPT_TEMPLATE_VERSION, build_prompt, prompt_hash
-from src.llm.model_registry import LLM_BENCHMARK_MODELS, generation_config_for_model
+from src.llm.model_registry import (
+    LLM_BENCHMARK_MODELS,
+    discover_registry,
+    generation_config_for_model,
+)
 from src.llm.ollama_client import OllamaClient, resolve_endpoint
 from src.training.model_a.model_a4_postmove_reranker import (
     _a3_candidate_features,
@@ -305,6 +309,7 @@ class QwenClassicAdapter(ClassicModelAdapter):
         self.timeout = timeout
         self.client = OllamaClient(self.endpoint, timeout=timeout)
         self.registry_id = self._registry_id_for_ollama_model(ollama_model_id)
+        self.runtime_registry_entry = None
 
     @staticmethod
     def _registry_id_for_ollama_model(ollama_model_id: str) -> str:
@@ -325,9 +330,38 @@ class QwenClassicAdapter(ClassicModelAdapter):
                 "model_digest": LLM_BENCHMARK_MODELS[self.registry_id]["digest"],
                 "endpoint": self.endpoint,
                 "generation_config": generation_config_for_model(self.registry_id),
+                "runtime_digest": (self.runtime_registry_entry or {}).get("runtime_digest"),
             }
         )
         return payload
+
+    def precheck(self) -> dict[str, Any]:
+        """Validate Ollama server and frozen Qwen model availability."""
+
+        try:
+            version = self.client.version()
+            tags = self.client.list_models()
+        except Exception as exc:
+            raise RuntimeError(f"Ollama precheck failed: server/API unreachable: {exc}") from exc
+        discovered = discover_registry(tags.get("models", []))
+        if self.registry_id not in discovered:
+            raise RuntimeError(
+                f"Ollama precheck failed: required model not installed: {self.ollama_model_id}"
+            )
+        entry = discovered[self.registry_id]
+        if entry.get("ollama_model") != self.ollama_model_id:
+            raise RuntimeError("Ollama precheck failed: model ID mismatch.")
+        self.runtime_registry_entry = entry
+        return {
+            "ollama_version": version,
+            "endpoint": self.endpoint,
+            "model_id": self.ollama_model_id,
+            "registry_id": self.registry_id,
+            "digest_match": entry.get("digest_match"),
+            "runtime_digest": entry.get("runtime_digest"),
+            "prompt_version": PROMPT_TEMPLATE_VERSION,
+            "parser_version": PARSER_VERSION,
+        }
 
     def build_prompt_for_sample(self, sample) -> dict[str, str]:
         """Build the frozen LLM prompt from canonical FEN only."""
