@@ -18,6 +18,7 @@ from src.evaluation.classic.core import (
     load_classic_samples,
     prediction_record_from_json,
     score_classic_prediction,
+    structural_counts,
     verify_frozen_benchmark,
 )
 from src.evaluation.classic.runner import (
@@ -44,6 +45,7 @@ __all__ = [
     "prediction_record_from_json",
     "prepare_official_run_directory",
     "score_classic_prediction",
+    "structural_counts",
     "verify_frozen_benchmark",
     "write_prediction_records",
 ]

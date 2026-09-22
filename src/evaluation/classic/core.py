@@ -29,16 +29,12 @@ CANONICAL_TO_CONSOLIDATED_FIELDS = {
     "fen": "canonical_fen",
     "key_move_uci": "source_key_move_uci",
 }
-ACCEPTED_RESULT_FIELDS = (
+RESULT_ACCEPTED_PROJECTION_FIELDS = (
     "source_problem_id",
     "mate_depth",
-    "canonical_fen",
     "source_key_move_uci",
     "accepted_key_moves_uci",
     "accepted_key_basis",
-    "final_verification_status",
-    "final_verification_reason",
-    "forced_mate_verified",
 )
 
 
@@ -181,7 +177,7 @@ def _validate_accepted_result_consistency(
 ) -> None:
     """Validate accepted-key view against full consolidated result when present."""
 
-    for field_name in ACCEPTED_RESULT_FIELDS:
+    for field_name in RESULT_ACCEPTED_PROJECTION_FIELDS:
         if field_name not in accepted_row:
             raise RuntimeError(f"Accepted-key row missing field for {heldout_id}: {field_name}")
         if field_name not in result_row:
@@ -214,36 +210,70 @@ def load_classic_samples(
     results = _index_by_heldout(read_jsonl(result_path), "consolidated results") if result_path.exists() else None
     if set(canonical) != set(accepted):
         raise RuntimeError("Canonical and consolidated accepted-key IDs disagree")
-    if results is not None and set(canonical) != set(results):
+    if results is None:
+        raise RuntimeError("Missing consolidated results.jsonl for classic sample loading")
+    if set(canonical) != set(results):
         raise RuntimeError("Canonical and consolidated result IDs disagree")
 
     samples: list[ClassicSample] = []
     for heldout_id in sorted(canonical):
-        source = canonical[heldout_id]
-        final = accepted[heldout_id]
-        _validate_canonical_consolidated_mapping(heldout_id, source, final)
-        if results is not None:
-            _validate_canonical_consolidated_mapping(heldout_id, source, results[heldout_id])
-            _validate_accepted_result_consistency(heldout_id, final, results[heldout_id])
-        accepted_keys = tuple(str(move) for move in final.get("accepted_key_moves_uci", []) if move)
+        canonical_row = canonical[heldout_id]
+        accepted_keys_row = accepted[heldout_id]
+        consolidated_result_row = results[heldout_id]
+        _validate_canonical_consolidated_mapping(
+            heldout_id,
+            canonical_row,
+            consolidated_result_row,
+        )
+        _validate_accepted_result_consistency(
+            heldout_id,
+            accepted_keys_row,
+            consolidated_result_row,
+        )
+        accepted_keys = tuple(str(move) for move in accepted_keys_row.get("accepted_key_moves_uci", []) if move)
         if not accepted_keys:
             raise RuntimeError(f"Accepted-key row has no accepted moves: {heldout_id}")
         samples.append(
             ClassicSample(
                 heldout_id=heldout_id,
-                source_problem_id=str(source["source_problem_id"]),
-                fen=str(source["fen"]),
-                mate_depth=int(source["mate_depth"]),
-                source_key_move_uci=str(source["key_move_uci"]),
+                source_problem_id=str(canonical_row["source_problem_id"]),
+                fen=str(canonical_row["fen"]),
+                mate_depth=int(canonical_row["mate_depth"]),
+                source_key_move_uci=str(canonical_row["key_move_uci"]),
                 accepted_key_moves_uci=accepted_keys,
-                accepted_key_basis=str(final["accepted_key_basis"]),
-                verification_status=str(final["final_verification_status"]),
-                verification_reason=str(final["final_verification_reason"]),
-                forced_mate_verified=bool(final["forced_mate_verified"]),
-                dataset_fingerprint=str(final.get("dataset_fingerprint", EXPECTED_DATASET_FINGERPRINT)),
+                accepted_key_basis=str(consolidated_result_row["accepted_key_basis"]),
+                verification_status=str(consolidated_result_row["final_verification_status"]),
+                verification_reason=str(consolidated_result_row["final_verification_reason"]),
+                forced_mate_verified=bool(consolidated_result_row["forced_mate_verified"]),
+                dataset_fingerprint=str(consolidated_result_row.get("dataset_fingerprint", EXPECTED_DATASET_FINGERPRINT)),
             )
         )
     return samples
+
+
+def structural_counts(samples: list[ClassicSample]) -> dict[str, Any]:
+    """Return metadata-only structural counts for loaded classic samples."""
+
+    return {
+        "total": len(samples),
+        "by_mate_depth": {
+            str(depth): sum(sample.mate_depth == depth for sample in samples)
+            for depth in range(1, 11)
+        },
+        "forced_mate_verified_true": sum(sample.forced_mate_verified for sample in samples),
+        "forced_mate_verified_false": sum(not sample.forced_mate_verified for sample in samples),
+        "accepted_key_basis": dict(Counter(sample.accepted_key_basis for sample in samples)),
+        "multi_key_records": sum(len(sample.accepted_key_moves_uci) > 1 for sample in samples),
+        "timeout_records_forced_false": sum(
+            sample.accepted_key_basis == "YACPDB_SOURCE_UNVERIFIED_TIMEOUT"
+            and not sample.forced_mate_verified
+            for sample in samples
+        ),
+        "verified_records_forced_true": sum(
+            sample.accepted_key_basis in VERIFIED_BASES and sample.forced_mate_verified
+            for sample in samples
+        ),
+    }
 
 
 def score_classic_prediction(predicted_uci: str | None, accepted_key_moves_uci: tuple[str, ...] | list[str]) -> bool:
