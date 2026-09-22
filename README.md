@@ -186,6 +186,7 @@ Validazione rappresentazioni:
 - `generic_info/yacpdb_methodology.md`
 - `generic_info/popeye_methodology.md`
 - `generic_info/classic_benchmark_methodology.md`
+- `generic_info/classic_evaluation_protocol.md`
 - `generic_info/yacpdb_popeye_verification.md`
 - `data/heldout_classic/final/yacpdb_classic_v1/freeze_manifest.json` dopo il freeze server
 
@@ -223,6 +224,24 @@ Model B timing ablation:
   --device cuda \
   --batch-size 128 \
   --non-blocking \
+  --amp
+```
+
+Classic held-out evaluator:
+
+```bash
+# smoke test sicuro su fixture sintetica, non usa i 200 YACPDB congelati
+./venv/bin/python -m src.cli.evaluation.evaluate_classic_heldout \
+  --smoke-test \
+  --model MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING \
+  --device cuda:0 \
+  --amp
+
+# run ufficiale solo dopo freeze verificato
+./venv/bin/python -m src.cli.evaluation.evaluate_classic_heldout \
+  --official \
+  --model MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING \
+  --device cuda:0 \
   --amp
 ```
 
