@@ -506,6 +506,77 @@ canonical FEN
 The primary result is strict-parser based. Relaxed parsing remains a separate
 diagnostic protocol and is not substituted for strict scoring here.
 
+### Qwen Runtime Infrastructure
+
+Qwen classic evaluation uses the same local Ollama client path as the Lichess
+LLM benchmark:
+
+```text
+base endpoint -> /api/version
+base endpoint -> /api/tags
+base endpoint -> /api/generate
+```
+
+The endpoint is normalized to the Ollama base URL if a user accidentally passes
+`/api`, `/api/tags`, `/api/chat`, `/api/version`, or `/api/generate`.
+
+Before any official Qwen run, the evaluator performs a fail-fast precheck:
+
+- Ollama server reachable;
+- required API endpoints reachable;
+- requested frozen model installed;
+- model ID belongs to the frozen registry;
+- prompt version is `llm_chess_uci_v1`;
+- strict parser version is `strict_uci_v1`.
+
+Transport/runtime failures are infrastructure failures, not chess/model
+failures. They are not counted as incorrect chess predictions.
+
+Primary Qwen outcome categories are mutually exclusive:
+
+| Category | Meaning |
+|---|---|
+| `correct` | Strict parser produced a legal accepted key |
+| `wrong_legal` | Strict parser produced a legal move outside the accepted set |
+| `illegal` | Strict parser produced UCI syntax but the move is illegal |
+| `parse_failure` | Strict parser failed, with no transport/runtime error |
+| `runtime_failure` | Ollama/client/inference transport failed |
+
+The category precedence is:
+
+```text
+runtime_failure
+parse_failure
+illegal
+correct
+wrong_legal
+```
+
+The summary verifies that the five category counts sum to the number of
+evaluated records. `runtime_failure` is not also counted as parse failure or as
+an illegal chess move.
+
+The first Qwen 3.5 4B classic run that produced 200 HTTP-404 runtime failures
+is classified as:
+
+```text
+INVALID_INFRASTRUCTURE_RUN
+reason = HTTP_404_RUNTIME_FAILURE
+```
+
+It is retained only as provenance and excluded from experimental comparison.
+Its original `predictions.jsonl` must not be rewritten. A sidecar
+`INVALID_INFRASTRUCTURE_RUN.json` may be added to document the invalid status.
+
+Official Qwen runs include a repeated-runtime-failure guard. The current
+threshold is three consecutive identical runtime errors. This guard aborts only
+on repeated infrastructure/runtime errors; it does not abort on wrong legal
+moves, illegal moves, or strict parse failures.
+
+Safe Qwen smoke tests use a synthetic non-YACPDB FEN and exactly one model
+request. A parse failure in smoke mode is reported separately from a transport
+failure; the smoke test is for infrastructure validation, not chess strength.
+
 ### Model B Exclusion
 
 Requesting Model B under this protocol fails before inference and creates no

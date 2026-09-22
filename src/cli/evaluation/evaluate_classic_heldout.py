@@ -152,6 +152,8 @@ def validate_official_preconditions(args, adapter) -> dict:
     for depth in range(1, 11):
         if sum(sample.mate_depth == depth for sample in samples) != 20:
             raise RuntimeError("Official classic benchmark must contain exactly 20 samples per MateDepth.")
+    if isinstance(adapter, QwenClassicAdapter):
+        adapter.precheck()
     adapter.prepare()
     validate_checkpoint_hashes(args, adapter)
     return {"manifest": manifest, "samples": samples}
@@ -174,12 +176,30 @@ def write_summaries(run_dir: Path, records) -> dict:
     return summary
 
 
+def write_invalid_run_status(run_dir: Path, reason: str) -> Path:
+    """Write a sidecar status file for an invalid infrastructure run."""
+
+    path = Path(run_dir) / "INVALID_INFRASTRUCTURE_RUN.json"
+    write_json(
+        path,
+        {
+            "status": "INVALID_INFRASTRUCTURE_RUN",
+            "reason": reason,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "predictions_jsonl_preserved": True,
+        },
+    )
+    return path
+
+
 def evaluate_samples(args, adapter, samples, run_dir: Path, freeze_fingerprint: str) -> dict:
     """Evaluate samples with resume support and persisted records."""
 
     predictions_path = run_dir / "predictions.jsonl"
     persisted = read_prediction_records(predictions_path)
     completed = {row["heldout_id"] for row in persisted}
+    consecutive_runtime_errors = 0
+    last_runtime_error = None
     for sample in samples:
         if sample.heldout_id.startswith("yacpdb_classic_v1_") and args.smoke_test:
             raise RuntimeError("Smoke/fixture mode cannot use frozen YACPDB heldout IDs.")
@@ -187,16 +207,17 @@ def evaluate_samples(args, adapter, samples, run_dir: Path, freeze_fingerprint: 
             continue
         output = adapter.predict(sample)
         diagnostics = dict(output.get("diagnostics", {}))
-        if output.get("predicted_move_uci") is not None and output.get("predicted_move_uci") in set(sample.accepted_key_moves_uci):
-            diagnostics["outcome_category"] = "correct"
-        elif output.get("parse_success") is False:
-            diagnostics.setdefault("outcome_category", "parse_failure")
-        elif output.get("is_legal") is False:
-            diagnostics.setdefault("outcome_category", "illegal")
-        elif output.get("predicted_move_uci") is not None:
-            diagnostics.setdefault("outcome_category", "wrong_legal")
+        if diagnostics.get("outcome_category") == "runtime_failure":
+            current_error = str(diagnostics.get("error") or "")
+            consecutive_runtime_errors = (
+                consecutive_runtime_errors + 1
+                if current_error == last_runtime_error
+                else 1
+            )
+            last_runtime_error = current_error
         else:
-            diagnostics.setdefault("outcome_category", "runtime_failure")
+            consecutive_runtime_errors = 0
+            last_runtime_error = None
         record = build_prediction_record(
             sample,
             adapter.metadata(),
@@ -210,6 +231,15 @@ def evaluate_samples(args, adapter, samples, run_dir: Path, freeze_fingerprint: 
         )
         append_prediction_record(predictions_path, record)
         completed.add(sample.heldout_id)
+        if (
+            args.official
+            and record.model_family == "llm_qwen"
+            and consecutive_runtime_errors >= args.runtime_failure_abort_threshold
+        ):
+            raise RuntimeError(
+                "Aborting official Qwen run after repeated identical runtime failures: "
+                f"{last_runtime_error}"
+            )
     records = [prediction_record_from_json(row) for row in read_prediction_records(predictions_path)]
     return write_summaries(run_dir, records)
 
@@ -235,6 +265,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--amp", action="store_true")
     parser.add_argument("--ollama-url", default=None)
     parser.add_argument("--timeout", type=int, default=120)
+    parser.add_argument("--runtime-failure-abort-threshold", type=int, default=3)
     return parser.parse_args()
 
 
@@ -280,6 +311,8 @@ def main() -> int:
         samples = fixture_samples()
         if any(sample.heldout_id.startswith("yacpdb_classic_v1_") for sample in samples):
             raise RuntimeError("Fixture smoke test may not use frozen YACPDB IDs.")
+        if isinstance(adapter, QwenClassicAdapter):
+            adapter.precheck()
         adapter.prepare()
         freeze_fingerprint = "SMOKE_TEST_NO_FROZEN_BENCHMARK"
         identity = build_run_identity(adapter.metadata(), freeze_fingerprint=freeze_fingerprint)

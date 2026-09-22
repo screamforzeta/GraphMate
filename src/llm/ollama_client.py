@@ -21,7 +21,12 @@ GENERATION_CONFIG_STATUS = "FROZEN_MODEL_SPECIFIC_RUNTIME_VALIDATED"
 def resolve_endpoint(cli_endpoint=None):
     """Resolve Ollama endpoint with CLI > environment > default precedence."""
 
-    return (cli_endpoint or os.environ.get("OLLAMA_URL") or DEFAULT_OLLAMA_ENDPOINT).rstrip("/")
+    endpoint = (cli_endpoint or os.environ.get("OLLAMA_URL") or DEFAULT_OLLAMA_ENDPOINT).rstrip("/")
+    for suffix in ("/api/generate", "/api/chat", "/api/tags", "/api/version", "/api"):
+        if endpoint.endswith(suffix):
+            endpoint = endpoint[: -len(suffix)]
+            break
+    return endpoint.rstrip("/")
 
 
 def extract_final_content_and_thinking(response):

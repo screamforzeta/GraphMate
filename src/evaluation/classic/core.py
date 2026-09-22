@@ -23,6 +23,13 @@ DEFAULT_DATASET_DIR = Path("data/heldout_classic/final/yacpdb_classic_v1")
 DEFAULT_CONSOLIDATED_DIR = Path("data/heldout_classic/verification/yacpdb_classic_v1/consolidated")
 DEFAULT_FREEZE_MANIFEST = DEFAULT_DATASET_DIR / "freeze_manifest.json"
 VERIFIED_BASES = {"POPEYE_VERIFIED_UNIQUE", "POPEYE_VERIFIED_MULTIPLE"}
+QWEN_OUTCOME_CATEGORIES = (
+    "correct",
+    "wrong_legal",
+    "illegal",
+    "parse_failure",
+    "runtime_failure",
+)
 CANONICAL_TO_CONSOLIDATED_FIELDS = {
     "source_problem_id": "source_problem_id",
     "mate_depth": "mate_depth",
@@ -284,6 +291,28 @@ def score_classic_prediction(predicted_uci: str | None, accepted_key_moves_uci: 
     return is_accepted_classic_key(predicted_uci, list(accepted_key_moves_uci))
 
 
+def classify_prediction_outcome(
+    *,
+    predicted_move_uci: str | None,
+    accepted_key_moves_uci: tuple[str, ...] | list[str],
+    parse_success: bool | None,
+    is_legal: bool | None,
+    diagnostics: dict[str, Any] | None = None,
+) -> str:
+    """Return one mutually exclusive primary outcome category."""
+
+    diagnostics = diagnostics or {}
+    if diagnostics.get("outcome_category") == "runtime_failure" or diagnostics.get("error"):
+        return "runtime_failure"
+    if parse_success is False:
+        return "parse_failure"
+    if is_legal is False:
+        return "illegal"
+    if predicted_move_uci is not None and score_classic_prediction(predicted_move_uci, accepted_key_moves_uci):
+        return "correct"
+    return "wrong_legal"
+
+
 def _rank_of_first_accepted(ranked_moves: tuple[str, ...], accepted: tuple[str, ...]) -> int | None:
     accepted_set = set(accepted)
     for index, move in enumerate(ranked_moves, start=1):
@@ -307,7 +336,15 @@ def build_prediction_record(
     """Build a common prediction record without mutating benchmark data."""
 
     ranked = tuple(ranked_moves_uci)
+    diagnostics = dict(diagnostics or {})
     top1 = predicted_move_uci if predicted_move_uci is not None else (ranked[0] if ranked else None)
+    diagnostics["outcome_category"] = classify_prediction_outcome(
+        predicted_move_uci=top1,
+        accepted_key_moves_uci=sample.accepted_key_moves_uci,
+        parse_success=parse_success,
+        is_legal=is_legal,
+        diagnostics=diagnostics,
+    )
     return ClassicPredictionRecord(
         benchmark_version="yacpdb_classic_v1",
         freeze_fingerprint=freeze_fingerprint,
@@ -328,7 +365,7 @@ def build_prediction_record(
         runtime_seconds=runtime_seconds,
         ranked_moves_uci=ranked,
         first_accepted_key_rank=_rank_of_first_accepted(ranked, sample.accepted_key_moves_uci),
-        diagnostics=diagnostics or {},
+        diagnostics=diagnostics,
     )
 
 
@@ -360,6 +397,15 @@ def aggregate_predictions(records: list[ClassicPredictionRecord]) -> dict[str, A
         all_metrics["mean_accepted_key_rank"] = sum(ranks) / len(ranks)
         all_metrics["median_accepted_key_rank"] = ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2
 
+    qwen_counts = {category: 0 for category in QWEN_OUTCOME_CATEGORIES}
+    for record in records:
+        category = record.diagnostics.get("outcome_category")
+        if category in qwen_counts:
+            qwen_counts[category] += 1
+    qwen_counts["total"] = len(records)
+    qwen_counts["accuracy"] = qwen_counts["correct"] / len(records) if records else None
+    qwen_counts["categories_sum"] = sum(qwen_counts[category] for category in QWEN_OUTCOME_CATEGORIES)
+
     return {
         "all_200": all_metrics,
         "popeye_verified_193": _accuracy(verified),
@@ -372,8 +418,14 @@ def aggregate_predictions(records: list[ClassicPredictionRecord]) -> dict[str, A
             for basis in sorted({record.accepted_key_basis for record in records})
         },
         "diagnostics": {
-            "legal_false": sum(record.is_legal is False for record in records),
-            "parse_failure": sum(record.parse_success is False for record in records),
+            "legal_false": sum(
+                record.is_legal is False
+                and record.diagnostics.get("outcome_category") == "illegal"
+                for record in records
+            ),
+            "parse_failure": qwen_counts["parse_failure"],
+            "runtime_failure": qwen_counts["runtime_failure"],
+            "qwen_outcome_counts": qwen_counts,
             "verification_category_counts": dict(Counter(record.accepted_key_basis for record in records)),
         },
     }

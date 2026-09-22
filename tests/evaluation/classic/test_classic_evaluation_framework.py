@@ -22,6 +22,7 @@ from src.evaluation.classic import (
 from src.evaluation.classic import core as classic_core
 from src.cli.evaluation import evaluate_classic_heldout as classic_cli
 from src.evaluation.classic.runner import mark_completed
+from src.llm.ollama_client import resolve_endpoint
 from src.verification.popeye_consolidate import ACCEPTED_KEY_POLICY_VERSION, EXPECTED_DATASET_FINGERPRINT
 
 
@@ -622,6 +623,187 @@ def test_qwen_set_valued_scoring_after_strict_parse(tmp_path):
 
     assert parsed.parse_success is True
     assert score_classic_prediction(parsed.parsed_uci, sample.accepted_key_moves_uci)
+
+
+def test_qwen_endpoint_normalization_uses_existing_generate_path():
+    assert resolve_endpoint("http://localhost:11434/api/generate") == "http://localhost:11434"
+    assert resolve_endpoint("http://localhost:11434/api") == "http://localhost:11434"
+
+
+def test_qwen_precheck_unreachable_and_missing_model(monkeypatch):
+    adapter = QwenClassicAdapter("qwen3.5:4b")
+
+    class UnreachableClient:
+        def version(self):
+            raise OSError("down")
+
+    adapter.client = UnreachableClient()
+    with pytest.raises(RuntimeError, match="unreachable"):
+        adapter.precheck()
+
+    class MissingModelClient:
+        def version(self):
+            return {"version": "x"}
+
+        def list_models(self):
+            return {"models": []}
+
+    adapter.client = MissingModelClient()
+    with pytest.raises(RuntimeError, match="not installed"):
+        adapter.precheck()
+
+
+def test_qwen_precheck_does_not_access_frozen_samples(monkeypatch):
+    adapter = QwenClassicAdapter("qwen3.5:4b")
+
+    class Client:
+        def version(self):
+            return {"version": "x"}
+
+        def list_models(self):
+            return {
+                "models": [
+                    {
+                        "name": "qwen3.5:4b",
+                        "digest": "2a654d98e6fba55d452b7043684e9b57a947e393bbffa62485a7aac05ee4eefd",
+                    }
+                ]
+            }
+
+    adapter.client = Client()
+    monkeypatch.setattr(classic_core, "load_classic_samples", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("samples accessed")))
+
+    result = adapter.precheck()
+
+    assert result["model_id"] == "qwen3.5:4b"
+
+
+def test_qwen_runtime_failure_not_parse_or_illegal(tmp_path):
+    dataset, consolidated = make_fixture(tmp_path)
+    sample = load_classic_samples(dataset, consolidated, require_frozen=False)[0]
+    metadata = {"model_id": "qwen3.5:4b", "model_family": "llm_qwen", "model_version": "frozen"}
+    record = build_prediction_record(
+        sample,
+        metadata,
+        None,
+        parse_success=False,
+        is_legal=False,
+        diagnostics={"outcome_category": "runtime_failure", "error": "HTTP Error 404: Not Found"},
+    )
+
+    summary = aggregate_predictions([record])
+
+    assert summary["diagnostics"]["qwen_outcome_counts"]["runtime_failure"] == 1
+    assert summary["diagnostics"]["qwen_outcome_counts"]["parse_failure"] == 0
+    assert summary["diagnostics"]["legal_false"] == 0
+
+
+def test_qwen_five_primary_categories_are_exclusive(tmp_path):
+    dataset, consolidated = make_fixture(tmp_path)
+    samples = load_classic_samples(dataset, consolidated, require_frozen=False)
+    metadata = {"model_id": "qwen3.5:4b", "model_family": "llm_qwen", "model_version": "frozen"}
+    records = [
+        build_prediction_record(samples[0], metadata, "e2e3", parse_success=True, is_legal=True),
+        build_prediction_record(samples[0], metadata, "e2d2", parse_success=True, is_legal=True),
+        build_prediction_record(samples[0], metadata, "e2e5", parse_success=True, is_legal=False),
+        build_prediction_record(samples[0], metadata, None, parse_success=False, is_legal=False),
+        build_prediction_record(samples[0], metadata, None, parse_success=False, is_legal=False, diagnostics={"outcome_category": "runtime_failure", "error": "down"}),
+    ]
+
+    summary = aggregate_predictions(records)
+    counts = summary["diagnostics"]["qwen_outcome_counts"]
+
+    assert counts["correct"] == 1
+    assert counts["wrong_legal"] == 1
+    assert counts["illegal"] == 1
+    assert counts["parse_failure"] == 1
+    assert counts["runtime_failure"] == 1
+    assert counts["categories_sum"] == counts["total"] == 5
+
+
+def test_qwen_smoke_uses_fixture_and_one_request(monkeypatch, tmp_path):
+    calls = []
+
+    class FakeQwen(QwenClassicAdapter):
+        def precheck(self):
+            return {"ok": True}
+
+        def predict(self, sample):
+            calls.append(sample.heldout_id)
+            return {
+                "predicted_move_uci": "e2e3",
+                "parse_success": True,
+                "is_legal": True,
+                "runtime_seconds": 0.1,
+                "diagnostics": {"raw_model_response": "e2e3"},
+            }
+
+    monkeypatch.setattr(classic_cli, "build_adapter", lambda args: FakeQwen("qwen3.5:4b"))
+    monkeypatch.setattr(
+        classic_cli,
+        "parse_args",
+        lambda: type(
+            "Args",
+            (),
+            {
+                "official": False,
+                "smoke_test": True,
+                "validate_benchmark_only": False,
+                "model": "qwen3.5:4b",
+                "output_root": str(tmp_path),
+                "device": "cpu",
+                "resume": False,
+                "runtime_failure_abort_threshold": 3,
+            },
+        )(),
+    )
+
+    assert classic_cli.main() == 0
+
+    assert calls == ["fixture_classic_smoke_001"]
+    assert not any(call.startswith("yacpdb_classic_v1_") for call in calls)
+
+
+def test_repeated_runtime_failure_guard_aborts_but_parse_failure_does_not(tmp_path):
+    dataset, consolidated = make_fixture(tmp_path)
+    samples = load_classic_samples(dataset, consolidated, require_frozen=False)
+    samples = samples + samples
+
+    class RuntimeFailAdapter(MockClassicAdapter):
+        model_id = "qwen3.5:4b"
+
+        def __init__(self):
+            super().__init__({}, "qwen3.5:4b")
+            self.model_family = "llm_qwen"
+
+        def metadata(self):
+            return {"model_id": "qwen3.5:4b", "model_family": "llm_qwen", "model_version": "frozen"}
+
+        def predict(self, sample):
+            return {"predicted_move_uci": None, "parse_success": False, "is_legal": False, "diagnostics": {"outcome_category": "runtime_failure", "error": "same"}}
+
+    args = type("Args", (), {"official": True, "smoke_test": False, "runtime_failure_abort_threshold": 3})()
+    with pytest.raises(RuntimeError, match="repeated identical runtime"):
+        classic_cli.evaluate_samples(args, RuntimeFailAdapter(), samples, tmp_path / "runtime", EXPECTED_FREEZE_FINGERPRINT)
+
+    class ParseFailAdapter(RuntimeFailAdapter):
+        def predict(self, sample):
+            return {"predicted_move_uci": None, "parse_success": False, "is_legal": False, "diagnostics": {"outcome_category": "parse_failure"}}
+
+    summary = classic_cli.evaluate_samples(args, ParseFailAdapter(), samples, tmp_path / "parse", EXPECTED_FREEZE_FINGERPRINT)
+    assert summary["diagnostics"]["qwen_outcome_counts"]["parse_failure"] == len({sample.heldout_id for sample in samples})
+
+
+def test_invalid_run_status_sidecar_does_not_modify_predictions(tmp_path):
+    run_dir = tmp_path / "qwen"
+    predictions = run_dir / "predictions.jsonl"
+    predictions.parent.mkdir(parents=True)
+    predictions.write_text('{"heldout_id":"x"}\n', encoding="utf-8")
+
+    status_path = classic_cli.write_invalid_run_status(run_dir, "HTTP_404_RUNTIME_FAILURE")
+
+    assert predictions.read_text(encoding="utf-8") == '{"heldout_id":"x"}\n'
+    assert json.loads(status_path.read_text(encoding="utf-8"))["status"] == "INVALID_INFRASTRUCTURE_RUN"
 
 
 def test_run_identity_has_no_performance_metrics():
