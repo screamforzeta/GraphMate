@@ -69,6 +69,26 @@ On the current development VM the Popeye executable was not available, so real
 verification is explicitly recorded as `NOT_RUN`. The dataset is therefore not
 ready for freeze review yet.
 
+### Consolidated Ground Truth
+
+After the two official Popeye passes, a derived consolidation step combines the
+300-second full run with the 1200-second timeout retry run. This produces
+machine-readable accepted-key sets without modifying the canonical dataset.
+
+Future external-classic evaluators must use:
+
+```text
+prediction in accepted_key_moves_uci
+```
+
+instead of assuming `key_move_uci` is the only correct move. This applies only
+to the external classic held-out benchmark. Lichess train/validation/test
+semantics remain unchanged.
+
+Residual Popeye timeouts keep the source key as the accepted move with explicit
+`YACPDB_SOURCE_UNVERIFIED_TIMEOUT` provenance; they are not marked as
+independently forced-mate verified.
+
 The external classic Mate-in-N dataset is not frozen yet. The current candidate
 build implements YACPDB-specific availability scanning, key validation,
 duplicate detection, Lichess contamination audit, manifest, review index, and
