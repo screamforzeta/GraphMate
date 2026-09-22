@@ -64,7 +64,7 @@ def make_fixture(root: Path):
             "key_move_uci": "e2f2",
         },
     ]
-    accepted = [
+    results = [
         {
             "heldout_id": "fixture_001",
             "source_problem_id": "p1",
@@ -105,10 +105,21 @@ def make_fixture(root: Path):
             "dataset_fingerprint": EXPECTED_DATASET_FINGERPRINT,
         },
     ]
+    accepted = [
+        {
+            "heldout_id": row["heldout_id"],
+            "source_problem_id": row["source_problem_id"],
+            "mate_depth": row["mate_depth"],
+            "source_key_move_uci": row["source_key_move_uci"],
+            "accepted_key_moves_uci": row["accepted_key_moves_uci"],
+            "accepted_key_basis": row["accepted_key_basis"],
+        }
+        for row in results
+    ]
     write_json(dataset / "manifest.json", {"dataset_fingerprint": EXPECTED_DATASET_FINGERPRINT})
     write_jsonl(dataset / "dataset.jsonl", canonical)
     write_jsonl(consolidated / "accepted_keys.jsonl", accepted)
-    write_jsonl(consolidated / "results.jsonl", accepted)
+    write_jsonl(consolidated / "results.jsonl", results)
     return dataset, consolidated
 
 
@@ -116,7 +127,7 @@ def make_200_fixture(root: Path):
     dataset = root / "dataset_200"
     consolidated = root / "consolidated_200"
     canonical = []
-    accepted = []
+    results = []
     for index in range(200):
         depth = index % 10 + 1
         heldout_id = f"fixture_200_{index:04d}"
@@ -137,7 +148,7 @@ def make_200_fixture(root: Path):
                 "key_move_uci": "e2e3",
             }
         )
-        accepted.append(
+        results.append(
             {
                 "heldout_id": heldout_id,
                 "source_problem_id": f"p{index}",
@@ -152,10 +163,21 @@ def make_200_fixture(root: Path):
                 "dataset_fingerprint": EXPECTED_DATASET_FINGERPRINT,
             }
         )
+    accepted = [
+        {
+            "heldout_id": row["heldout_id"],
+            "source_problem_id": row["source_problem_id"],
+            "mate_depth": row["mate_depth"],
+            "source_key_move_uci": row["source_key_move_uci"],
+            "accepted_key_moves_uci": row["accepted_key_moves_uci"],
+            "accepted_key_basis": row["accepted_key_basis"],
+        }
+        for row in results
+    ]
     write_json(dataset / "manifest.json", {"dataset_fingerprint": EXPECTED_DATASET_FINGERPRINT})
     write_jsonl(dataset / "dataset.jsonl", canonical)
     write_jsonl(consolidated / "accepted_keys.jsonl", accepted)
-    write_jsonl(consolidated / "results.jsonl", accepted)
+    write_jsonl(consolidated / "results.jsonl", results)
     return dataset, consolidated
 
 
@@ -204,9 +226,9 @@ def test_evaluator_rejects_wrong_freeze_fingerprint(monkeypatch):
 
 def test_sample_loader_fails_closed_on_disagreement(tmp_path):
     dataset, consolidated = make_fixture(tmp_path)
-    rows = [json.loads(line) for line in (consolidated / "accepted_keys.jsonl").read_text().splitlines()]
+    rows = [json.loads(line) for line in (consolidated / "results.jsonl").read_text().splitlines()]
     rows[0]["canonical_fen"] = "8/8/8/8/8/8/4K3/4k3 b - - 0 1"
-    write_jsonl(consolidated / "accepted_keys.jsonl", rows)
+    write_jsonl(consolidated / "results.jsonl", rows)
 
     with pytest.raises(RuntimeError, match="fen->canonical_fen"):
         load_classic_samples(dataset, consolidated, require_frozen=False)
@@ -214,26 +236,23 @@ def test_sample_loader_fails_closed_on_disagreement(tmp_path):
 
 def test_sample_loader_fails_closed_on_source_key_source_id_and_depth_disagreement(tmp_path):
     dataset, consolidated = make_fixture(tmp_path)
-    rows = [json.loads(line) for line in (consolidated / "accepted_keys.jsonl").read_text().splitlines()]
+    rows = [json.loads(line) for line in (consolidated / "results.jsonl").read_text().splitlines()]
 
     rows[0]["source_key_move_uci"] = "e2d3"
-    write_jsonl(consolidated / "accepted_keys.jsonl", rows)
     write_jsonl(consolidated / "results.jsonl", rows)
     with pytest.raises(RuntimeError, match="key_move_uci->source_key_move_uci"):
         load_classic_samples(dataset, consolidated, require_frozen=False)
 
     dataset, consolidated = make_fixture(tmp_path / "id")
-    rows = [json.loads(line) for line in (consolidated / "accepted_keys.jsonl").read_text().splitlines()]
+    rows = [json.loads(line) for line in (consolidated / "results.jsonl").read_text().splitlines()]
     rows[0]["source_problem_id"] = "different"
-    write_jsonl(consolidated / "accepted_keys.jsonl", rows)
     write_jsonl(consolidated / "results.jsonl", rows)
     with pytest.raises(RuntimeError, match="source_problem_id->source_problem_id"):
         load_classic_samples(dataset, consolidated, require_frozen=False)
 
     dataset, consolidated = make_fixture(tmp_path / "depth")
-    rows = [json.loads(line) for line in (consolidated / "accepted_keys.jsonl").read_text().splitlines()]
+    rows = [json.loads(line) for line in (consolidated / "results.jsonl").read_text().splitlines()]
     rows[0]["mate_depth"] = 9
-    write_jsonl(consolidated / "accepted_keys.jsonl", rows)
     write_jsonl(consolidated / "results.jsonl", rows)
     with pytest.raises(RuntimeError, match="mate_depth->mate_depth"):
         load_classic_samples(dataset, consolidated, require_frozen=False)
@@ -262,6 +281,60 @@ def test_sample_loader_fails_on_missing_duplicate_and_result_inconsistency(tmp_p
         load_classic_samples(dataset, consolidated, require_frozen=False)
 
 
+def test_projection_schema_does_not_need_canonical_fen_and_checks_projection_fields(tmp_path):
+    dataset, consolidated = make_fixture(tmp_path)
+    accepted_rows = [json.loads(line) for line in (consolidated / "accepted_keys.jsonl").read_text().splitlines()]
+    assert "canonical_fen" not in accepted_rows[0]
+
+    samples = load_classic_samples(dataset, consolidated, require_frozen=False)
+    assert samples[0].fen == FEN
+
+    accepted_rows[0]["source_key_move_uci"] = "e2d3"
+    write_jsonl(consolidated / "accepted_keys.jsonl", accepted_rows)
+    with pytest.raises(RuntimeError, match="source_key_move_uci"):
+        load_classic_samples(dataset, consolidated, require_frozen=False)
+
+    dataset, consolidated = make_fixture(tmp_path / "accepted_moves")
+    accepted_rows = [json.loads(line) for line in (consolidated / "accepted_keys.jsonl").read_text().splitlines()]
+    accepted_rows[0]["accepted_key_moves_uci"] = ["e2d2"]
+    write_jsonl(consolidated / "accepted_keys.jsonl", accepted_rows)
+    with pytest.raises(RuntimeError, match="accepted_key_moves_uci"):
+        load_classic_samples(dataset, consolidated, require_frozen=False)
+
+    dataset, consolidated = make_fixture(tmp_path / "basis")
+    accepted_rows = [json.loads(line) for line in (consolidated / "accepted_keys.jsonl").read_text().splitlines()]
+    accepted_rows[0]["accepted_key_basis"] = "YACPDB_SOURCE_UNVERIFIED_TIMEOUT"
+    write_jsonl(consolidated / "accepted_keys.jsonl", accepted_rows)
+    with pytest.raises(RuntimeError, match="accepted_key_basis"):
+        load_classic_samples(dataset, consolidated, require_frozen=False)
+
+
+def test_missing_and_duplicate_results_fail(tmp_path):
+    dataset, consolidated = make_fixture(tmp_path)
+    result_rows = [json.loads(line) for line in (consolidated / "results.jsonl").read_text().splitlines()]
+    write_jsonl(consolidated / "results.jsonl", result_rows[:-1])
+    with pytest.raises(RuntimeError, match="result IDs disagree"):
+        load_classic_samples(dataset, consolidated, require_frozen=False)
+
+    dataset, consolidated = make_fixture(tmp_path / "dup_results")
+    result_rows = [json.loads(line) for line in (consolidated / "results.jsonl").read_text().splitlines()]
+    write_jsonl(consolidated / "results.jsonl", result_rows + [result_rows[0]])
+    with pytest.raises(RuntimeError, match="Duplicate heldout_id"):
+        load_classic_samples(dataset, consolidated, require_frozen=False)
+
+
+def test_final_forced_mate_verified_comes_from_results_not_canonical(tmp_path):
+    dataset, consolidated = make_fixture(tmp_path)
+    canonical_rows = [json.loads(line) for line in (dataset / "dataset.jsonl").read_text().splitlines()]
+    canonical_rows[0]["forced_mate_verified"] = False
+    canonical_rows[0]["forced_mate_verification_status"] = "NOT_VERIFIED_ENGINE_NOT_USED"
+    write_jsonl(dataset / "dataset.jsonl", canonical_rows)
+
+    samples = load_classic_samples(dataset, consolidated, require_frozen=False)
+
+    assert samples[0].forced_mate_verified is True
+
+
 def test_all_200_structural_loader_validation_no_model_inference(tmp_path, monkeypatch):
     dataset, consolidated = make_200_fixture(tmp_path)
 
@@ -278,6 +351,38 @@ def test_all_200_structural_loader_validation_no_model_inference(tmp_path, monke
     assert sum(sample.accepted_key_basis == "POPEYE_VERIFIED_UNIQUE" for sample in samples) == 188
     assert sum(sample.accepted_key_basis == "POPEYE_VERIFIED_MULTIPLE" for sample in samples) == 5
     assert sum(sample.accepted_key_basis == "YACPDB_SOURCE_UNVERIFIED_TIMEOUT" for sample in samples) == 7
+
+
+def test_metadata_only_validation_does_not_create_predictions(monkeypatch, tmp_path, capsys):
+    dataset, consolidated = make_200_fixture(tmp_path)
+    manifest = dataset / "freeze_manifest.json"
+    write_json(manifest, {"lifecycle": "FROZEN", "freeze_fingerprint": EXPECTED_FREEZE_FINGERPRINT, "verification": {"accepted_key_policy_version": ACCEPTED_KEY_POLICY_VERSION}})
+
+    monkeypatch.setattr(classic_cli, "verify_frozen_benchmark", lambda *args, **kwargs: {"lifecycle": "FROZEN", "freeze_fingerprint": EXPECTED_FREEZE_FINGERPRINT})
+    monkeypatch.setattr(classic_core, "verify_frozen_benchmark", lambda *args, **kwargs: {"lifecycle": "FROZEN", "freeze_fingerprint": EXPECTED_FREEZE_FINGERPRINT})
+    monkeypatch.setattr(
+        classic_cli,
+        "parse_args",
+        lambda: type(
+            "Args",
+            (),
+            {
+                "official": False,
+                "smoke_test": False,
+                "validate_benchmark_only": True,
+                "dataset_dir": str(dataset),
+                "consolidated_dir": str(consolidated),
+                "freeze_manifest": str(manifest),
+            },
+        )(),
+    )
+
+    assert classic_cli.main() == 0
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["total"] == 200
+    assert output["forced_mate_verified_true"] == 193
+    assert not list(tmp_path.glob("**/predictions.jsonl"))
 
 
 def test_unique_multi_key_and_timeout_scoring(tmp_path):
@@ -434,11 +539,12 @@ def test_cli_requires_exactly_one_mode(monkeypatch):
         lambda: type(
             "Args",
             (),
-            {
-                "official": False,
-                "smoke_test": False,
-                "model": "a3",
-            },
+                {
+                    "official": False,
+                    "smoke_test": False,
+                    "validate_benchmark_only": False,
+                    "model": "a3",
+                },
         )(),
     )
 

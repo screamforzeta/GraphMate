@@ -26,6 +26,7 @@ from src.evaluation.classic.core import (
     build_prediction_record,
     load_classic_samples,
     prediction_record_from_json,
+    structural_counts,
     verify_frozen_benchmark,
 )
 from src.evaluation.classic.runner import (
@@ -219,6 +220,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--official", action="store_true", help="Evaluate the frozen 200-position benchmark.")
     parser.add_argument("--smoke-test", action="store_true", help="Run a safe synthetic non-YACPDB fixture smoke test.")
+    parser.add_argument("--validate-benchmark-only", action="store_true", help="Verify and structurally load the frozen benchmark without adapters or inference.")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--model", required=True)
     parser.add_argument("--dataset-dir", default=str(DEFAULT_DATASET_DIR))
@@ -240,8 +242,25 @@ def main() -> int:
     """CLI entrypoint."""
 
     args = parse_args()
-    if args.official == args.smoke_test:
-        raise RuntimeError("Choose exactly one of --official or --smoke-test.")
+    mode_count = sum(bool(value) for value in (args.official, args.smoke_test, args.validate_benchmark_only))
+    if mode_count != 1:
+        raise RuntimeError("Choose exactly one of --official, --smoke-test, or --validate-benchmark-only.")
+    if args.validate_benchmark_only:
+        verify_frozen_benchmark(
+            Path(args.dataset_dir),
+            Path(args.consolidated_dir),
+            Path(args.freeze_manifest),
+            EXPECTED_FREEZE_FINGERPRINT,
+        )
+        samples = load_classic_samples(
+            Path(args.dataset_dir),
+            Path(args.consolidated_dir),
+            Path(args.freeze_manifest),
+            require_frozen=True,
+        )
+        counts = structural_counts(samples)
+        print(json.dumps(counts, indent=2, sort_keys=True))
+        return 0
     adapter = build_adapter(args)
     if isinstance(adapter, ModelBClassicAdapter):
         adapter.prepare()

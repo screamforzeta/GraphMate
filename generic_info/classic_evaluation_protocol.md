@@ -137,7 +137,20 @@ Consolidated verification artifacts:
 | `source_key_move_uci` | Same source/YACPDB key move |
 | `accepted_key_moves_uci` | Set-valued scoring target |
 
-The evaluator performs explicit semantic reconciliation:
+The evaluator uses three artifacts with different roles:
+
+| Artifact | Role | Authoritative for |
+|---|---|---|
+| `data/heldout_classic/final/yacpdb_classic_v1/dataset.jsonl` | Original frozen selected composition data | FEN, MateDepth, source identity, original YACPDB source key |
+| `data/heldout_classic/verification/yacpdb_classic_v1/consolidated/results.jsonl` | Full post-Popeye verification record | Final verification state, `forced_mate_verified`, verified keys, accepted-key basis, verification provenance |
+| `data/heldout_classic/verification/yacpdb_classic_v1/consolidated/accepted_keys.jsonl` | Minimal scoring projection | Accepted move set and compact scoring lookup, cross-validated against consolidated results |
+
+Fields are intentionally not identical across these schemas. In particular,
+`accepted_keys.jsonl` is not a complete verification record and does not contain
+`canonical_fen`, `final_verification_status`, `forced_mate_verified`, or
+`verified_keys_uci`.
+
+The evaluator performs explicit three-way semantic reconciliation:
 
 ```text
 canonical heldout_id        <-> consolidated heldout_id
@@ -145,6 +158,10 @@ canonical source_problem_id <-> consolidated source_problem_id
 canonical fen               <-> consolidated canonical_fen
 canonical mate_depth        <-> consolidated mate_depth
 canonical key_move_uci      <-> consolidated source_key_move_uci
+
+consolidated source_key_move_uci  <-> accepted projection source_key_move_uci
+consolidated accepted_key_moves   <-> accepted projection accepted_key_moves
+consolidated accepted_key_basis   <-> accepted projection accepted_key_basis
 ```
 
 This boundary was validated during the first official-run precondition check
@@ -152,6 +169,10 @@ before any model inference. It is an evaluator schema-reconciliation issue, not
 a benchmark/data error. The loader still fails closed on actual disagreement,
 missing IDs, duplicate IDs, or inconsistency between `accepted_keys.jsonl` and
 `results.jsonl`.
+
+The final `ClassicSample.forced_mate_verified` value comes from
+`consolidated/results.jsonl`, not from any historical candidate-stage field in
+the canonical dataset.
 
 ## Common Prediction Schema
 
