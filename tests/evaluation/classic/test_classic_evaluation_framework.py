@@ -367,10 +367,11 @@ def test_metadata_only_validation_does_not_create_predictions(monkeypatch, tmp_p
         lambda: type(
             "Args",
             (),
-            {
-                "official": False,
-                "smoke_test": False,
-                "validate_benchmark_only": True,
+                {
+                    "mark_invalid_run": None,
+                    "official": False,
+                    "smoke_test": False,
+                    "validate_benchmark_only": True,
                 "dataset_dir": str(dataset),
                 "consolidated_dir": str(consolidated),
                 "freeze_manifest": str(manifest),
@@ -540,10 +541,11 @@ def test_cli_requires_exactly_one_mode(monkeypatch):
         lambda: type(
             "Args",
             (),
-                {
-                    "official": False,
-                    "smoke_test": False,
-                    "validate_benchmark_only": False,
+                    {
+                        "mark_invalid_run": None,
+                        "official": False,
+                        "smoke_test": False,
+                        "validate_benchmark_only": False,
                     "model": "a3",
                 },
         )(),
@@ -745,10 +747,11 @@ def test_qwen_smoke_uses_fixture_and_one_request(monkeypatch, tmp_path):
         lambda: type(
             "Args",
             (),
-            {
-                "official": False,
-                "smoke_test": True,
-                "validate_benchmark_only": False,
+                {
+                    "mark_invalid_run": None,
+                    "official": False,
+                    "smoke_test": True,
+                    "validate_benchmark_only": False,
                 "model": "qwen3.5:4b",
                 "output_root": str(tmp_path),
                 "device": "cpu",
@@ -804,6 +807,85 @@ def test_invalid_run_status_sidecar_does_not_modify_predictions(tmp_path):
 
     assert predictions.read_text(encoding="utf-8") == '{"heldout_id":"x"}\n'
     assert json.loads(status_path.read_text(encoding="utf-8"))["status"] == "INVALID_INFRASTRUCTURE_RUN"
+
+
+def test_scientific_identity_unchanged_across_invalid_retry_attempts(tmp_path):
+    metadata = QwenClassicAdapter("qwen3.5:4b").metadata()
+    first = prepare_official_run_directory(metadata, official=True, output_root=tmp_path)
+    identity = json.loads((first / "config.json").read_text(encoding="utf-8"))["run_identity"]
+    (first / "predictions.jsonl").write_text('{"heldout_id":"x"}\n', encoding="utf-8")
+    classic_cli.write_invalid_run_status(first, "HTTP_404_RUNTIME_FAILURE")
+
+    second = prepare_official_run_directory(metadata, official=True, output_root=tmp_path)
+    second_config = json.loads((second / "config.json").read_text(encoding="utf-8"))
+
+    assert first.name == identity["run_id"]
+    assert second.name == f"{identity['run_id']}_attempt2"
+    assert second_config["run_identity"] == identity
+    assert second_config["scientific_run_id"] == identity["run_id"]
+    assert second_config["execution_attempt"] == 2
+    assert second_config["previous_attempt_status"] == "INVALID_INFRASTRUCTURE_RUN"
+    assert second_config["previous_attempt_reason"] == "HTTP_404_RUNTIME_FAILURE"
+    assert not (second / "predictions.jsonl").exists()
+    assert (first / "predictions.jsonl").read_text(encoding="utf-8") == '{"heldout_id":"x"}\n'
+
+
+def test_retry_requires_explicit_invalid_marker_and_zero_accuracy_is_not_enough(tmp_path):
+    metadata = QwenClassicAdapter("qwen3.5:4b").metadata()
+    first = prepare_official_run_directory(metadata, official=True, output_root=tmp_path)
+    mark_completed(first)
+    (first / "summary.json").write_text(json.dumps({"all_200": {"top1_accuracy": 0.0}}), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="already completed"):
+        prepare_official_run_directory(metadata, official=True, output_root=tmp_path)
+
+
+def test_invalid_attempt_cannot_be_resumed_but_attempt2_can(tmp_path):
+    metadata = QwenClassicAdapter("qwen3.5:4b").metadata()
+    first = prepare_official_run_directory(metadata, official=True, output_root=tmp_path)
+    classic_cli.write_invalid_run_status(first, "HTTP_404_RUNTIME_FAILURE")
+
+    with pytest.raises(RuntimeError, match="Cannot resume invalid"):
+        prepare_official_run_directory(metadata, official=True, output_root=tmp_path, resume=True)
+
+    second = prepare_official_run_directory(metadata, official=True, output_root=tmp_path)
+    resumed = prepare_official_run_directory(metadata, official=True, output_root=tmp_path, resume=True)
+
+    assert resumed == second
+
+
+def test_a3_a4_completed_run_protection_unchanged(tmp_path):
+    for metadata in (
+        {"model_id": "MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING", "model_family": "gnn_a3", "model_version": "frozen"},
+        {"model_id": "MODEL_A4_POSTMOVE_GNN_RERANKER_NO_TIMING", "model_family": "gnn_a4", "model_version": "frozen"},
+    ):
+        root = tmp_path / metadata["model_id"]
+        run_dir = prepare_official_run_directory(metadata, official=True, output_root=root)
+        mark_completed(run_dir)
+        with pytest.raises(RuntimeError, match="already completed"):
+            prepare_official_run_directory(metadata, official=True, output_root=root)
+
+
+def test_invalid_marker_cli_requires_no_model_and_preserves_predictions(monkeypatch, tmp_path):
+    run_dir = tmp_path / "old"
+    run_dir.mkdir()
+    (run_dir / "predictions.jsonl").write_text("old\n", encoding="utf-8")
+    monkeypatch.setattr(
+        classic_cli,
+        "parse_args",
+        lambda: type(
+            "Args",
+            (),
+            {
+                "mark_invalid_run": str(run_dir),
+                "invalid_reason": "HTTP_404_RUNTIME_FAILURE",
+            },
+        )(),
+    )
+
+    assert classic_cli.main() == 0
+    assert (run_dir / "predictions.jsonl").read_text(encoding="utf-8") == "old\n"
+    assert json.loads((run_dir / "INVALID_INFRASTRUCTURE_RUN.json").read_text(encoding="utf-8"))["reason"] == "HTTP_404_RUNTIME_FAILURE"
 
 
 def test_run_identity_has_no_performance_metrics():

@@ -15,6 +15,7 @@ from src.evaluation.classic.core import (
 
 
 DEFAULT_OUTPUT_ROOT = Path("artifacts/classic_benchmark/yacpdb_classic_v1")
+ALLOWED_INVALID_INFRASTRUCTURE_REASONS = {"HTTP_404_RUNTIME_FAILURE"}
 
 
 def stable_hash(payload: dict[str, Any]) -> str:
@@ -51,6 +52,88 @@ def build_run_identity(
     return payload
 
 
+def invalid_marker(path: Path) -> Path:
+    """Return the sidecar invalid-run marker path for an attempt directory."""
+
+    return Path(path) / "INVALID_INFRASTRUCTURE_RUN.json"
+
+
+def read_invalid_marker(path: Path) -> dict[str, Any] | None:
+    """Read and validate an invalid infrastructure marker if present."""
+
+    marker = invalid_marker(path)
+    if not marker.exists():
+        return None
+    payload = json.loads(marker.read_text(encoding="utf-8"))
+    if payload.get("status") != "INVALID_INFRASTRUCTURE_RUN":
+        raise RuntimeError(f"Invalid run marker has wrong status: {marker}")
+    if payload.get("reason") not in ALLOWED_INVALID_INFRASTRUCTURE_REASONS:
+        raise RuntimeError(f"Invalid run marker reason is not retryable: {marker}")
+    return payload
+
+
+def attempt_dir_for(base_dir: Path, attempt: int) -> Path:
+    """Return the directory name for one execution attempt."""
+
+    if attempt == 1:
+        return base_dir
+    return base_dir.with_name(f"{base_dir.name}_attempt{attempt}")
+
+
+def select_attempt_directory(base_dir: Path, resume: bool) -> tuple[Path, dict[str, Any]]:
+    """Select a guarded execution-attempt directory for a scientific run ID."""
+
+    if not base_dir.exists():
+        return base_dir, {
+            "execution_attempt": 1,
+            "previous_attempt_status": None,
+            "previous_attempt_reason": None,
+            "scientific_run_id": base_dir.name,
+        }
+
+    attempt = 1
+    last_dir = base_dir
+    invalid_seen = False
+    while attempt_dir_for(base_dir, attempt).exists():
+        last_dir = attempt_dir_for(base_dir, attempt)
+        completed = last_dir / "COMPLETED"
+        invalid = read_invalid_marker(last_dir)
+        if completed.exists() and invalid is None:
+            if resume:
+                return last_dir, {
+                    "execution_attempt": attempt,
+                    "previous_attempt_status": None,
+                    "previous_attempt_reason": None,
+                    "scientific_run_id": base_dir.name,
+                }
+            raise RuntimeError(f"Official classic run already completed: {last_dir}")
+        if invalid is not None:
+            invalid_seen = True
+            attempt += 1
+            continue
+        if resume:
+            return last_dir, {
+                "execution_attempt": attempt,
+                "previous_attempt_status": None,
+                "previous_attempt_reason": None,
+                "scientific_run_id": base_dir.name,
+            }
+        raise RuntimeError(
+            "Existing official attempt is not completed and not explicitly invalid; "
+            "use --resume or add an explicit invalid infrastructure marker."
+        )
+
+    if resume and invalid_seen:
+        raise RuntimeError(f"Cannot resume invalid infrastructure run: {base_dir}")
+    previous_invalid = read_invalid_marker(last_dir)
+    return attempt_dir_for(base_dir, attempt), {
+        "execution_attempt": attempt,
+        "previous_attempt_status": previous_invalid.get("status") if previous_invalid else None,
+        "previous_attempt_reason": previous_invalid.get("reason") if previous_invalid else None,
+        "scientific_run_id": base_dir.name,
+    }
+
+
 def prepare_official_run_directory(
     model_metadata: dict[str, Any],
     *,
@@ -64,15 +147,19 @@ def prepare_official_run_directory(
     if not official:
         raise RuntimeError("Classic held-out evaluation requires explicit --official.")
     identity = build_run_identity(model_metadata, freeze_fingerprint=freeze_fingerprint)
-    run_dir = Path(output_root) / str(model_metadata["model_id"]) / identity["run_id"]
-    completed = run_dir / "COMPLETED"
-    if completed.exists() and not resume:
-        raise RuntimeError(f"Official classic run already completed: {run_dir}")
+    scientific_run_id = identity["run_id"]
+    base_dir = Path(output_root) / str(model_metadata["model_id"]) / scientific_run_id
+    run_dir, attempt = select_attempt_directory(base_dir, resume=resume)
     run_dir.mkdir(parents=True, exist_ok=True)
     config_path = run_dir / "config.json"
     config = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "run_identity": identity,
+        "scientific_run_id": scientific_run_id,
+        "execution_attempt": attempt["execution_attempt"],
+        "execution_attempt_id": run_dir.name,
+        "previous_attempt_status": attempt["previous_attempt_status"],
+        "previous_attempt_reason": attempt["previous_attempt_reason"],
         "model_metadata": model_metadata,
         "official": True,
         "resume": bool(resume),
@@ -81,6 +168,8 @@ def prepare_official_run_directory(
         existing = json.loads(config_path.read_text(encoding="utf-8"))
         if existing.get("run_identity") != identity:
             raise RuntimeError("Existing run config identity mismatch")
+        if existing.get("scientific_run_id", identity["run_id"]) != scientific_run_id:
+            raise RuntimeError("Existing scientific run ID mismatch")
     else:
         config_path.write_text(json.dumps(config, indent=2, sort_keys=True), encoding="utf-8")
     return run_dir

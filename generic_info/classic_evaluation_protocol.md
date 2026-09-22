@@ -426,6 +426,54 @@ The same official run is defined by:
 
 Performance metrics are not part of run identity.
 
+## Scientific Identity And Execution Attempts
+
+The evaluator separates two concepts:
+
+| Concept | Meaning |
+|---|---|
+| Scientific run identity | Deterministic identity of benchmark, freeze fingerprint, model, prompt/parser, protocol, checkpoint/timing metadata |
+| Execution attempt | Physical attempt to execute that scientific configuration and write artifacts |
+
+The scientific run ID must not change merely because an infrastructure attempt
+failed. For example, a Qwen 3.5 4B run may have:
+
+```text
+scientific_run_id = qwen3.5:4b_8bf8da8d39c7e331
+```
+
+If the first execution attempt is explicitly marked:
+
+```text
+INVALID_INFRASTRUCTURE_RUN
+reason = HTTP_404_RUNTIME_FAILURE
+```
+
+then a valid retry of the same scientific configuration is allowed in a separate
+directory:
+
+```text
+qwen3.5:4b_8bf8da8d39c7e331_attempt2
+```
+
+The retry config records both:
+
+```text
+scientific_run_id
+execution_attempt
+previous_attempt_status
+previous_attempt_reason
+```
+
+The invalid attempt directory and its `predictions.jsonl` remain preserved as
+provenance. Failed attempt predictions are excluded from experimental metrics.
+
+Retry is allowed only when an explicit `INVALID_INFRASTRUCTURE_RUN.json` marker
+exists with an accepted infrastructure reason. A 0% summary or poor accuracy is
+not sufficient. Valid completed runs, including A3/A4 and future valid Qwen
+runs, remain protected from overwrite. `--resume` cannot resume an invalid
+infrastructure attempt; it resumes only an active/partial valid attempt.
+
 ## Executable Implementation
 
 Entrypoint:

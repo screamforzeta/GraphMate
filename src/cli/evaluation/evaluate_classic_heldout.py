@@ -30,6 +30,7 @@ from src.evaluation.classic.core import (
     verify_frozen_benchmark,
 )
 from src.evaluation.classic.runner import (
+    ALLOWED_INVALID_INFRASTRUCTURE_REASONS,
     DEFAULT_OUTPUT_ROOT,
     append_prediction_record,
     build_run_identity,
@@ -251,8 +252,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--official", action="store_true", help="Evaluate the frozen 200-position benchmark.")
     parser.add_argument("--smoke-test", action="store_true", help="Run a safe synthetic non-YACPDB fixture smoke test.")
     parser.add_argument("--validate-benchmark-only", action="store_true", help="Verify and structurally load the frozen benchmark without adapters or inference.")
+    parser.add_argument("--mark-invalid-run", default=None, help="Write INVALID_INFRASTRUCTURE_RUN.json in an existing run directory.")
+    parser.add_argument("--invalid-reason", choices=sorted(ALLOWED_INVALID_INFRASTRUCTURE_REASONS), default="HTTP_404_RUNTIME_FAILURE")
     parser.add_argument("--resume", action="store_true")
-    parser.add_argument("--model", required=True)
+    parser.add_argument("--model", required=False)
     parser.add_argument("--dataset-dir", default=str(DEFAULT_DATASET_DIR))
     parser.add_argument("--consolidated-dir", default=str(DEFAULT_CONSOLIDATED_DIR))
     parser.add_argument("--freeze-manifest", default=str(DEFAULT_FREEZE_MANIFEST))
@@ -273,6 +276,10 @@ def main() -> int:
     """CLI entrypoint."""
 
     args = parse_args()
+    if args.mark_invalid_run:
+        path = write_invalid_run_status(Path(args.mark_invalid_run), args.invalid_reason)
+        print(json.dumps({"invalid_marker": str(path)}, indent=2, sort_keys=True))
+        return 0
     mode_count = sum(bool(value) for value in (args.official, args.smoke_test, args.validate_benchmark_only))
     if mode_count != 1:
         raise RuntimeError("Choose exactly one of --official, --smoke-test, or --validate-benchmark-only.")
@@ -292,6 +299,8 @@ def main() -> int:
         counts = structural_counts(samples)
         print(json.dumps(counts, indent=2, sort_keys=True))
         return 0
+    if not args.model:
+        raise RuntimeError("--model is required unless --mark-invalid-run or --validate-benchmark-only is used.")
     adapter = build_adapter(args)
     if isinstance(adapter, ModelBClassicAdapter):
         adapter.prepare()
