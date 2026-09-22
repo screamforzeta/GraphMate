@@ -108,6 +108,54 @@ def make_fixture(root: Path):
     write_json(dataset / "manifest.json", {"dataset_fingerprint": EXPECTED_DATASET_FINGERPRINT})
     write_jsonl(dataset / "dataset.jsonl", canonical)
     write_jsonl(consolidated / "accepted_keys.jsonl", accepted)
+    write_jsonl(consolidated / "results.jsonl", accepted)
+    return dataset, consolidated
+
+
+def make_200_fixture(root: Path):
+    dataset = root / "dataset_200"
+    consolidated = root / "consolidated_200"
+    canonical = []
+    accepted = []
+    for index in range(200):
+        depth = index % 10 + 1
+        heldout_id = f"fixture_200_{index:04d}"
+        forced = index < 193
+        basis = (
+            "POPEYE_VERIFIED_UNIQUE"
+            if index < 188
+            else "POPEYE_VERIFIED_MULTIPLE"
+            if index < 193
+            else "YACPDB_SOURCE_UNVERIFIED_TIMEOUT"
+        )
+        canonical.append(
+            {
+                "heldout_id": heldout_id,
+                "source_problem_id": f"p{index}",
+                "mate_depth": depth,
+                "fen": FEN,
+                "key_move_uci": "e2e3",
+            }
+        )
+        accepted.append(
+            {
+                "heldout_id": heldout_id,
+                "source_problem_id": f"p{index}",
+                "mate_depth": depth,
+                "canonical_fen": FEN,
+                "source_key_move_uci": "e2e3",
+                "accepted_key_moves_uci": ["e2e3"],
+                "accepted_key_basis": basis,
+                "final_verification_status": "VERIFIED" if forced else "VERIFICATION_INCONCLUSIVE_TIMEOUT",
+                "final_verification_reason": "VERIFIED_UNIQUE_KEY_MATCH" if forced else "TIMEOUT",
+                "forced_mate_verified": forced,
+                "dataset_fingerprint": EXPECTED_DATASET_FINGERPRINT,
+            }
+        )
+    write_json(dataset / "manifest.json", {"dataset_fingerprint": EXPECTED_DATASET_FINGERPRINT})
+    write_jsonl(dataset / "dataset.jsonl", canonical)
+    write_jsonl(consolidated / "accepted_keys.jsonl", accepted)
+    write_jsonl(consolidated / "results.jsonl", accepted)
     return dataset, consolidated
 
 
@@ -119,6 +167,15 @@ def test_sample_loader_joins_canonical_and_accepted_keys(tmp_path):
     assert [sample.heldout_id for sample in samples] == ["fixture_001", "fixture_002", "fixture_003"]
     assert samples[1].accepted_key_moves_uci == ("e2d2", "e2e3")
     assert samples[2].verification_category == "unresolved_timeout_source_only"
+
+
+def test_schema_mapping_allows_different_field_names_with_same_values(tmp_path):
+    dataset, consolidated = make_fixture(tmp_path)
+
+    samples = load_classic_samples(dataset, consolidated, require_frozen=False)
+
+    assert samples[0].fen == FEN
+    assert samples[0].source_key_move_uci == "e2e3"
 
 
 def test_evaluator_rejects_non_frozen_benchmark(monkeypatch):
@@ -151,8 +208,76 @@ def test_sample_loader_fails_closed_on_disagreement(tmp_path):
     rows[0]["canonical_fen"] = "8/8/8/8/8/8/4K3/4k3 b - - 0 1"
     write_jsonl(consolidated / "accepted_keys.jsonl", rows)
 
-    with pytest.raises(RuntimeError, match="mismatch"):
+    with pytest.raises(RuntimeError, match="fen->canonical_fen"):
         load_classic_samples(dataset, consolidated, require_frozen=False)
+
+
+def test_sample_loader_fails_closed_on_source_key_source_id_and_depth_disagreement(tmp_path):
+    dataset, consolidated = make_fixture(tmp_path)
+    rows = [json.loads(line) for line in (consolidated / "accepted_keys.jsonl").read_text().splitlines()]
+
+    rows[0]["source_key_move_uci"] = "e2d3"
+    write_jsonl(consolidated / "accepted_keys.jsonl", rows)
+    write_jsonl(consolidated / "results.jsonl", rows)
+    with pytest.raises(RuntimeError, match="key_move_uci->source_key_move_uci"):
+        load_classic_samples(dataset, consolidated, require_frozen=False)
+
+    dataset, consolidated = make_fixture(tmp_path / "id")
+    rows = [json.loads(line) for line in (consolidated / "accepted_keys.jsonl").read_text().splitlines()]
+    rows[0]["source_problem_id"] = "different"
+    write_jsonl(consolidated / "accepted_keys.jsonl", rows)
+    write_jsonl(consolidated / "results.jsonl", rows)
+    with pytest.raises(RuntimeError, match="source_problem_id->source_problem_id"):
+        load_classic_samples(dataset, consolidated, require_frozen=False)
+
+    dataset, consolidated = make_fixture(tmp_path / "depth")
+    rows = [json.loads(line) for line in (consolidated / "accepted_keys.jsonl").read_text().splitlines()]
+    rows[0]["mate_depth"] = 9
+    write_jsonl(consolidated / "accepted_keys.jsonl", rows)
+    write_jsonl(consolidated / "results.jsonl", rows)
+    with pytest.raises(RuntimeError, match="mate_depth->mate_depth"):
+        load_classic_samples(dataset, consolidated, require_frozen=False)
+
+
+def test_sample_loader_fails_on_missing_duplicate_and_result_inconsistency(tmp_path):
+    dataset, consolidated = make_fixture(tmp_path)
+    rows = [json.loads(line) for line in (consolidated / "accepted_keys.jsonl").read_text().splitlines()]
+    write_jsonl(consolidated / "accepted_keys.jsonl", rows[:-1])
+    with pytest.raises(RuntimeError, match="IDs disagree"):
+        load_classic_samples(dataset, consolidated, require_frozen=False)
+
+    dataset, consolidated = make_fixture(tmp_path / "dup")
+    rows = [json.loads(line) for line in (consolidated / "accepted_keys.jsonl").read_text().splitlines()]
+    write_jsonl(consolidated / "accepted_keys.jsonl", rows + [rows[0]])
+    with pytest.raises(RuntimeError, match="Duplicate heldout_id"):
+        load_classic_samples(dataset, consolidated, require_frozen=False)
+
+    dataset, consolidated = make_fixture(tmp_path / "inconsistent")
+    accepted_rows = [json.loads(line) for line in (consolidated / "accepted_keys.jsonl").read_text().splitlines()]
+    result_rows = [json.loads(line) for line in (consolidated / "results.jsonl").read_text().splitlines()]
+    result_rows[0]["accepted_key_moves_uci"] = ["e2d2"]
+    write_jsonl(consolidated / "accepted_keys.jsonl", accepted_rows)
+    write_jsonl(consolidated / "results.jsonl", result_rows)
+    with pytest.raises(RuntimeError, match="Accepted-key/result inconsistency"):
+        load_classic_samples(dataset, consolidated, require_frozen=False)
+
+
+def test_all_200_structural_loader_validation_no_model_inference(tmp_path, monkeypatch):
+    dataset, consolidated = make_200_fixture(tmp_path)
+
+    def fail_if_model_inference(*args, **kwargs):
+        raise AssertionError("model inference must not run during metadata loading")
+
+    monkeypatch.setattr(A3ClassicAdapter, "predict", fail_if_model_inference)
+    samples = load_classic_samples(dataset, consolidated, require_frozen=False)
+
+    assert len(samples) == 200
+    assert all(sum(sample.mate_depth == depth for sample in samples) == 20 for depth in range(1, 11))
+    assert sum(sample.forced_mate_verified for sample in samples) == 193
+    assert sum(not sample.forced_mate_verified for sample in samples) == 7
+    assert sum(sample.accepted_key_basis == "POPEYE_VERIFIED_UNIQUE" for sample in samples) == 188
+    assert sum(sample.accepted_key_basis == "POPEYE_VERIFIED_MULTIPLE" for sample in samples) == 5
+    assert sum(sample.accepted_key_basis == "YACPDB_SOURCE_UNVERIFIED_TIMEOUT" for sample in samples) == 7
 
 
 def test_unique_multi_key_and_timeout_scoring(tmp_path):

@@ -23,6 +23,23 @@ DEFAULT_DATASET_DIR = Path("data/heldout_classic/final/yacpdb_classic_v1")
 DEFAULT_CONSOLIDATED_DIR = Path("data/heldout_classic/verification/yacpdb_classic_v1/consolidated")
 DEFAULT_FREEZE_MANIFEST = DEFAULT_DATASET_DIR / "freeze_manifest.json"
 VERIFIED_BASES = {"POPEYE_VERIFIED_UNIQUE", "POPEYE_VERIFIED_MULTIPLE"}
+CANONICAL_TO_CONSOLIDATED_FIELDS = {
+    "source_problem_id": "source_problem_id",
+    "mate_depth": "mate_depth",
+    "fen": "canonical_fen",
+    "key_move_uci": "source_key_move_uci",
+}
+ACCEPTED_RESULT_FIELDS = (
+    "source_problem_id",
+    "mate_depth",
+    "canonical_fen",
+    "source_key_move_uci",
+    "accepted_key_moves_uci",
+    "accepted_key_basis",
+    "final_verification_status",
+    "final_verification_reason",
+    "forced_mate_verified",
+)
 
 
 @dataclass(frozen=True)
@@ -124,6 +141,59 @@ def _validate_manifest_for_fixture(dataset_dir: Path) -> None:
         raise RuntimeError("Classic fixture/canonical manifest fingerprint mismatch")
 
 
+def _normalize_mapped_value(field_name: str, value: Any) -> Any:
+    """Normalize values before semantic schema comparison."""
+
+    if field_name == "mate_depth":
+        return int(value)
+    if field_name == "accepted_key_moves_uci":
+        return tuple(str(move) for move in value)
+    if isinstance(value, bool):
+        return value
+    return str(value)
+
+
+def _validate_canonical_consolidated_mapping(
+    heldout_id: str,
+    canonical_row: dict[str, Any],
+    consolidated_row: dict[str, Any],
+) -> None:
+    """Validate explicit canonical-to-consolidated semantic field mapping."""
+
+    for canonical_field, consolidated_field in CANONICAL_TO_CONSOLIDATED_FIELDS.items():
+        if canonical_field not in canonical_row:
+            raise RuntimeError(f"Canonical row missing field for {heldout_id}: {canonical_field}")
+        if consolidated_field not in consolidated_row:
+            raise RuntimeError(f"Consolidated row missing field for {heldout_id}: {consolidated_field}")
+        left = _normalize_mapped_value(canonical_field, canonical_row[canonical_field])
+        right = _normalize_mapped_value(canonical_field, consolidated_row[consolidated_field])
+        if left != right:
+            raise RuntimeError(
+                f"Canonical/consolidated mismatch for {heldout_id}: "
+                f"{canonical_field}->{consolidated_field}"
+            )
+
+
+def _validate_accepted_result_consistency(
+    heldout_id: str,
+    accepted_row: dict[str, Any],
+    result_row: dict[str, Any],
+) -> None:
+    """Validate accepted-key view against full consolidated result when present."""
+
+    for field_name in ACCEPTED_RESULT_FIELDS:
+        if field_name not in accepted_row:
+            raise RuntimeError(f"Accepted-key row missing field for {heldout_id}: {field_name}")
+        if field_name not in result_row:
+            raise RuntimeError(f"Consolidated result row missing field for {heldout_id}: {field_name}")
+        left = _normalize_mapped_value(field_name, accepted_row[field_name])
+        right = _normalize_mapped_value(field_name, result_row[field_name])
+        if left != right:
+            raise RuntimeError(
+                f"Accepted-key/result inconsistency for {heldout_id}: {field_name}"
+            )
+
+
 def load_classic_samples(
     dataset_dir: Path = DEFAULT_DATASET_DIR,
     consolidated_dir: Path = DEFAULT_CONSOLIDATED_DIR,
@@ -140,22 +210,21 @@ def load_classic_samples(
 
     canonical = _index_by_heldout(read_jsonl(dataset_dir / "dataset.jsonl"), "canonical dataset")
     accepted = _index_by_heldout(read_jsonl(consolidated_dir / "accepted_keys.jsonl"), "accepted keys")
+    result_path = consolidated_dir / "results.jsonl"
+    results = _index_by_heldout(read_jsonl(result_path), "consolidated results") if result_path.exists() else None
     if set(canonical) != set(accepted):
         raise RuntimeError("Canonical and consolidated accepted-key IDs disagree")
+    if results is not None and set(canonical) != set(results):
+        raise RuntimeError("Canonical and consolidated result IDs disagree")
 
     samples: list[ClassicSample] = []
     for heldout_id in sorted(canonical):
         source = canonical[heldout_id]
         final = accepted[heldout_id]
-        checks = {
-            "source_problem_id": (source.get("source_problem_id"), final.get("source_problem_id")),
-            "mate_depth": (int(source.get("mate_depth")), int(final.get("mate_depth"))),
-            "fen": (source.get("fen"), final.get("canonical_fen")),
-            "source_key_move_uci": (source.get("key_move_uci"), final.get("source_key_move_uci")),
-        }
-        for field_name, (left, right) in checks.items():
-            if left != right:
-                raise RuntimeError(f"Canonical/consolidated mismatch for {heldout_id}: {field_name}")
+        _validate_canonical_consolidated_mapping(heldout_id, source, final)
+        if results is not None:
+            _validate_canonical_consolidated_mapping(heldout_id, source, results[heldout_id])
+            _validate_accepted_result_consistency(heldout_id, final, results[heldout_id])
         accepted_keys = tuple(str(move) for move in final.get("accepted_key_moves_uci", []) if move)
         if not accepted_keys:
             raise RuntimeError(f"Accepted-key row has no accepted moves: {heldout_id}")

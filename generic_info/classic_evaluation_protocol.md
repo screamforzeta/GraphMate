@@ -118,6 +118,41 @@ Each classic sample exposes:
 Canonical rows and consolidated accepted-key rows are joined by `heldout_id`.
 The loader fails closed if IDs or core fields disagree.
 
+## Frozen Artifact Schema Boundary
+
+The frozen benchmark uses two related schemas:
+
+Canonical candidate dataset:
+
+| Canonical field | Meaning |
+|---|---|
+| `fen` | Solver-position FEN |
+| `key_move_uci` | Source/YACPDB key move |
+
+Consolidated verification artifacts:
+
+| Consolidated field | Meaning |
+|---|---|
+| `canonical_fen` | Same solver-position FEN after verification consolidation |
+| `source_key_move_uci` | Same source/YACPDB key move |
+| `accepted_key_moves_uci` | Set-valued scoring target |
+
+The evaluator performs explicit semantic reconciliation:
+
+```text
+canonical heldout_id        <-> consolidated heldout_id
+canonical source_problem_id <-> consolidated source_problem_id
+canonical fen               <-> consolidated canonical_fen
+canonical mate_depth        <-> consolidated mate_depth
+canonical key_move_uci      <-> consolidated source_key_move_uci
+```
+
+This boundary was validated during the first official-run precondition check
+before any model inference. It is an evaluator schema-reconciliation issue, not
+a benchmark/data error. The loader still fails closed on actual disagreement,
+missing IDs, duplicate IDs, or inconsistency between `accepted_keys.jsonl` and
+`results.jsonl`.
+
 ## Common Prediction Schema
 
 Every evaluated system writes a common core:
