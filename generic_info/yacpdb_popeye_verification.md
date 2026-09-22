@@ -72,6 +72,63 @@ The retry summary records:
 - `retry_selection_reason = TIMEOUT`
 - `retry_selected_count`
 
+## Consolidated Derived View
+
+After both Popeye passes are complete, the benchmark ground-truth view is a
+derived artifact, not a rewrite of either source pass.
+
+Consolidation command:
+
+```bash
+./venv/bin/python -m src.verification.popeye_consolidate \
+  --dataset-dir data/heldout_classic/final/yacpdb_classic_v1 \
+  --pass1-results data/heldout_classic/verification/yacpdb_classic_v1/popeye/results.jsonl \
+  --pass1-summary data/heldout_classic/verification/yacpdb_classic_v1/popeye/summary.json \
+  --pass2-results data/heldout_classic/verification/yacpdb_classic_v1/popeye_retry_1200s/results.jsonl \
+  --pass2-summary data/heldout_classic/verification/yacpdb_classic_v1/popeye_retry_1200s/summary.json \
+  --output-dir data/heldout_classic/verification/yacpdb_classic_v1/consolidated
+```
+
+Derived outputs:
+
+```text
+data/heldout_classic/verification/yacpdb_classic_v1/consolidated/results.jsonl
+data/heldout_classic/verification/yacpdb_classic_v1/consolidated/accepted_keys.jsonl
+data/heldout_classic/verification/yacpdb_classic_v1/consolidated/multi_key_cases.jsonl
+data/heldout_classic/verification/yacpdb_classic_v1/consolidated/residual_timeout_cases.jsonl
+data/heldout_classic/verification/yacpdb_classic_v1/consolidated/summary.json
+```
+
+Consolidation policy:
+
+- If Pass 1 completed a problem, Pass 1 remains authoritative.
+- Pass 2 can define the final state only for a Pass-1 timeout.
+- If both passes timed out, final state remains
+  `VERIFICATION_INCONCLUSIVE_TIMEOUT`.
+- A timeout is not an invalid composition and is not a wrong key.
+- No timeout problem may be replaced or resampled.
+
+Accepted-key policy:
+
+- Verified unique key: `accepted_key_moves_uci` contains the one Popeye key,
+  which must match the YACPDB source key.
+- Verified multiple keys including source: all Popeye-verified root keys are
+  accepted, deterministically deduplicated and sorted.
+- Residual timeout: the source key remains the only accepted move for scoring,
+  but the basis is explicitly `YACPDB_SOURCE_UNVERIFIED_TIMEOUT`; independent
+  forced-mate verification is not claimed.
+
+Future external-classic evaluation must score:
+
+```text
+prediction in accepted_key_moves_uci
+```
+
+and must keep Lichess benchmark semantics unchanged.
+
+The candidate dataset remains not frozen until the consolidated artifacts and
+freeze-readiness audit are reviewed.
+
 ## By MateDepth
 
 | MateDepth | Total | Verified | Failed | Unverifiable | Timeout | Popeye error | Unique key | Multiple key | Key mismatch |
