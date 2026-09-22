@@ -390,7 +390,7 @@ Il target e classificazione mossa. Il modello non deve hardcodare `1786`.
 In futuro:
 
 ```python
-with open("artifacts/move_to_idx.json") as f:
+with open("resources/move_encoder/move_to_idx.json") as f:
     move_to_idx = json.load(f)
 
 num_classes = len(move_to_idx)

@@ -702,7 +702,7 @@ def run_verification(
     summary["canonical_hashes_after"] = after_hashes
     summary["canonical_dataset_mutated"] = False
     (verification_root / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True, ensure_ascii=False), encoding="utf-8")
-    write_markdown_report(summary, results, Path("generic_info/yacpdb_popeye_verification.md"), executable_path, "local executable", False)
+    write_markdown_report(summary, results, Path("generic_info/classic_benchmark/popeye/yacpdb_popeye_verification.md"), executable_path, "local executable", False)
     return summary
 
 
@@ -763,7 +763,7 @@ def write_not_run_artifacts(
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     (verification_root / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
-    write_markdown_report(summary, [], Path("generic_info/yacpdb_popeye_verification.md"), executable_path, install_note, False)
+    write_markdown_report(summary, [], Path("generic_info/classic_benchmark/popeye/yacpdb_popeye_verification.md"), executable_path, install_note, False)
     return summary
 
 

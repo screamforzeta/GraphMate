@@ -4,7 +4,7 @@ Purpose:
     Run deterministic trial-based adaptive training for the no-timing chess GAT
     baseline without using the test split for trial selection.
 Input:
-    data/pyg sharded train/validation/test splits and artifacts/move_to_idx.json.
+    data/pyg sharded train/validation/test splits and resources/move_encoder/move_to_idx.json.
 Output:
     Adaptive training artifacts under artifacts/adaptive_training/.
 Role:

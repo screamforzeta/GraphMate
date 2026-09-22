@@ -55,7 +55,7 @@ La tab `Model A Error Analysis` aggiunge una valutazione batch post-hoc del base
 Questa analisi è abilitata solo quando è caricato il checkpoint ufficiale:
 
 ```text
-artifacts/convergence_training/chess_gat_no_timing/best.pt
+checkpoints/model_a/best.pt
 ```
 
 Se la UI sta usando un fallback locale, la single-puzzle inference resta disponibile per debug, ma la batch Error Analysis ufficiale viene disabilitata. Questo evita di produrre risultati etichettati come `MODEL_A_NO_TIMING_FROZEN_BASELINE Error Analysis` con un checkpoint non ufficiale.
@@ -221,14 +221,12 @@ Il modulo `src/inference/chess_gat_inference.py` gestisce il caricamento read-on
 
 Discovery checkpoint:
 
-1. `artifacts/convergence_training/chess_gat_no_timing/best.pt`;
-2. `artifacts/checkpoints/chess_gat_no_timing_best.pt`;
-3. `artifacts/adaptive_training/chess_gat_no_timing/best_overall.pt`.
+1. `checkpoints/model_a/best.pt`;
 
-Se il checkpoint finale non è disponibile, la UI mostra `checkpoint unavailable` oppure segnala il fallback locale caricato. Il path ufficiale atteso resta:
+Se il checkpoint finale non è disponibile, la UI mostra `checkpoint unavailable`. Il path ufficiale atteso resta:
 
 ```text
-artifacts/convergence_training/chess_gat_no_timing/best.pt
+checkpoints/model_a/best.pt
 ```
 
 Il loader usa `@st.cache_resource`, seleziona CUDA se disponibile e imposta `model.eval()`.

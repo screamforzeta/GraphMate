@@ -34,7 +34,7 @@ def load_a4_for_inference(checkpoint_path, device):
     """Load an A4 checkpoint for inference.
 
     Parameters:
-        checkpoint_path: Path to artifacts/model_a4_postmove_gnn_reranker/best.pt.
+        checkpoint_path: Path to checkpoints/model_a4/best.pt.
         device: Torch device.
     Returns:
         Tuple (model, checkpoint).

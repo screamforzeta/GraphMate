@@ -39,8 +39,8 @@ from src.training.model_a.model_a3_legal_scorer import (
 )
 
 
-MODEL_A2_CHECKPOINT_PATH = Path("artifacts/model_a2_legal_mask_no_timing/best.pt")
-MODEL_A3_CHECKPOINT_PATH = Path("artifacts/model_a3_legal_move_scorer_no_timing/best.pt")
+MODEL_A2_CHECKPOINT_PATH = Path("checkpoints/model_a2/best.pt")
+MODEL_A3_CHECKPOINT_PATH = Path("checkpoints/model_a3/best.pt")
 
 MODEL_OPTIONS = [
     "Model A Raw",

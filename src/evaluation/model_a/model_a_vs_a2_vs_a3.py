@@ -47,7 +47,7 @@ from src.training.model_a.model_a3_legal_scorer import (
 )
 
 
-MODEL_A3_CHECKPOINT = Path("artifacts/model_a3_legal_move_scorer_no_timing/best.pt")
+MODEL_A3_CHECKPOINT = Path("checkpoints/model_a3/best.pt")
 OUTPUT_DIR = Path("artifacts/model_a_vs_a2_vs_a3_evaluation")
 SHARED_TEST_N = 8610
 

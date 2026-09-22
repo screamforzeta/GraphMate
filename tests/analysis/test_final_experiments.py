@@ -1,6 +1,8 @@
 from pathlib import Path
+import hashlib
 
 from src.analysis.final_experiments.artifacts import discover
+from src.analysis.final_experiments.figures import build_figures
 from src.analysis.final_experiments.statistics import mcnemar_exact, wilson_interval
 from src.analysis.final_experiments.tables import build_tables
 
@@ -70,3 +72,43 @@ def test_wilson_interval_and_mcnemar_helpers():
     assert result["discordant"] == 2
     assert result["status"] == "COMPUTED"
 
+
+def test_final_analysis_sources_still_read_raw_artifacts_and_manifest_uses_checkpoints():
+    discovered = discover(ROOT)
+    assert discovered.paths["classic_a3"].as_posix().startswith("artifacts/")
+    checkpoint_paths = [
+        r.checkpoint_path for r in discovered.included
+        if r.model_id.startswith("MODEL_") and r.checkpoint_path
+    ]
+    assert "checkpoints/model_a3/best.pt" in checkpoint_paths
+    assert all(not path.startswith("artifacts/") for path in checkpoint_paths)
+
+
+def test_default_figure_generation_is_svg_and_png_only(tmp_path):
+    tables = build_tables(discover(ROOT))
+    made = build_figures(tables, tmp_path)
+    assert len(made) == 20
+    assert {Path(path).suffix for path in made} == {".svg", ".png"}
+    assert not list((tmp_path / "figures").glob("*.pdf"))
+
+
+def test_optional_pdf_figure_generation(tmp_path):
+    tables = build_tables(discover(ROOT))
+    made = build_figures(tables, tmp_path, include_pdf=True)
+    assert len(made) == 30
+    assert {Path(path).suffix for path in made} == {".svg", ".png", ".pdf"}
+
+
+def test_canonical_resource_paths_and_checkpoint_hashes():
+    assert Path("resources/move_encoder/move_to_idx.json").exists()
+    assert Path("resources/move_encoder/idx_to_move.json").exists()
+    assert Path("resources/move_encoder/move_encoder_stats.json").exists()
+    expected_hashes = {
+        "checkpoints/model_a/best.pt": "1a72d0b6f675b50c829d76c63343e7016a569c00f993f063b0d0b75061de9b70",
+        "checkpoints/model_a2/best.pt": "20a76ae5648ded7f8fe3eb835eddd5ec0a87c9043989c37a65b4e8b9dc6901c1",
+        "checkpoints/model_a3/best.pt": "4efec653a451da7585f3663847c8dc5caaa8ebffadea677617e2f496e4253b80",
+        "checkpoints/model_b/best.pt": "b8bbad2420ce301582ad08377b1c80f56609513a8dae201600557e255b87d26f",
+        "checkpoints/model_a4/best.pt": "0cb73acf70487efa5c93f715a5a60c0aa09d64792d894301efaaaf47b2801e99",
+    }
+    for path, expected in expected_hashes.items():
+        assert hashlib.sha256(Path(path).read_bytes()).hexdigest() == expected

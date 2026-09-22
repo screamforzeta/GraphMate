@@ -22,7 +22,7 @@ def parse_args():
     parser.add_argument("--cache-root", default="data/model_a4_postmove")
     parser.add_argument(
         "--a3-checkpoint",
-        default="artifacts/model_a3_legal_move_scorer_no_timing/best.pt",
+        default="checkpoints/model_a3/best.pt",
     )
     return parser.parse_args()
 

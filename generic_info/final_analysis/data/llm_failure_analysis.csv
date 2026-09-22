@@ -1,0 +1,21 @@
+benchmark,model,outcome,count,percent
+Lichess,Qwen 3.5 4B strict,correct,6,0.06968641114982578
+Lichess,Qwen 3.5 4B strict,wrong_legal,130,1.5098722415795587
+Lichess,Qwen 3.5 4B strict,illegal,5894,68.45528455284553
+Lichess,Qwen 3.5 4B strict,parse_failure,2580,29.965156794425084
+Lichess,Qwen 3.5 4B strict,runtime_failure,0,0.0
+Lichess,Qwen 3.5 9B strict,correct,10,0.11614401858304298
+Lichess,Qwen 3.5 9B strict,wrong_legal,413,4.796747967479675
+Lichess,Qwen 3.5 9B strict,illegal,2899,33.670150987224154
+Lichess,Qwen 3.5 9B strict,parse_failure,5288,61.41695702671313
+Lichess,Qwen 3.5 9B strict,runtime_failure,0,0.0
+YACPDB classic,Qwen 3.5 4B strict,correct,0,0.0
+YACPDB classic,Qwen 3.5 4B strict,wrong_legal,3,1.5
+YACPDB classic,Qwen 3.5 4B strict,illegal,101,50.5
+YACPDB classic,Qwen 3.5 4B strict,parse_failure,96,48.0
+YACPDB classic,Qwen 3.5 4B strict,runtime_failure,0,0.0
+YACPDB classic,Qwen 3.5 9B strict,correct,1,0.5
+YACPDB classic,Qwen 3.5 9B strict,wrong_legal,6,3.0
+YACPDB classic,Qwen 3.5 9B strict,illegal,64,32.0
+YACPDB classic,Qwen 3.5 9B strict,parse_failure,129,64.5
+YACPDB classic,Qwen 3.5 9B strict,runtime_failure,0,0.0

@@ -35,7 +35,7 @@ from src.training.model_a.model_a3_legal_scorer import legal_candidates_from_fen
 
 A3_CHECKPOINT_PATH = MODEL_A3_CHECKPOINT
 A4_CHECKPOINT_PATH = MODEL_A4_CHECKPOINT
-B_CHECKPOINT_PATH = Path("artifacts/model_b_timing_legal_move_scorer/best.pt")
+B_CHECKPOINT_PATH = Path("checkpoints/model_b/best.pt")
 MODEL_B_CLASSIC_TIMING_PROTOCOL = "not_applicable_timing_unavailable"
 
 

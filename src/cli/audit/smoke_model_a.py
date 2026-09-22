@@ -4,7 +4,7 @@ Purpose:
     Verify that generated PyG chess graphs can flow through the no-timing GAT
     model, produce graph-level logits, compute loss, and run one backward pass.
 Input:
-    data/pyg sharded train split and artifacts/move_to_idx.json.
+    data/pyg sharded train split and resources/move_encoder/move_to_idx.json.
 Output:
     Printed tensor shapes, parameter count, loss, and pass/fail checks.
 Role:
@@ -24,7 +24,7 @@ from src.models import (
 )
 
 
-MOVE_ENCODER_PATH = Path("artifacts/move_to_idx.json")
+MOVE_ENCODER_PATH = Path("resources/move_encoder/move_to_idx.json")
 SMOKE_BATCH_SIZE = 8
 
 

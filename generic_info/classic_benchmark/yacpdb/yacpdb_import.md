@@ -379,7 +379,7 @@ Important deterministic rejection reasons include:
 See:
 
 ```text
-generic_info/yacpdb_normalization_smoke.md
+generic_info/classic_benchmark/yacpdb/yacpdb_normalization_smoke.md
 ```
 
 The pass inspected 8 unique real YACPDB IDs and accepted directmate examples `26026`, `297`, `36411`, `4`, and `49265`. It did not run the full `#1`..`#10` availability scan.

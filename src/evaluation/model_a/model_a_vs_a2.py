@@ -29,8 +29,8 @@ from src.training.model_a.legal_mask import apply_legal_mask, build_legal_mask_f
 from src.training.common.metrics import compute_topk_accuracies
 
 
-MODEL_A_CHECKPOINT = Path("artifacts/convergence_training/chess_gat_no_timing/best.pt")
-MODEL_A2_CHECKPOINT = Path("artifacts/model_a2_legal_mask_no_timing/best.pt")
+MODEL_A_CHECKPOINT = Path("checkpoints/model_a/best.pt")
+MODEL_A2_CHECKPOINT = Path("checkpoints/model_a2/best.pt")
 OUTPUT_DIR = Path("artifacts/model_a_vs_a2_evaluation")
 
 MODEL_A_REFERENCE = {

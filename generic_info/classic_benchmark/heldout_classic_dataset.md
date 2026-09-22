@@ -26,7 +26,7 @@ data/heldout_classic/final/yacpdb_classic_v1/dataset.csv
 data/heldout_classic/final/yacpdb_classic_v1/manifest.json
 data/heldout_classic/final/yacpdb_classic_v1/selected_ids.json
 data/heldout_classic/final/yacpdb_classic_v1/forced_mate_verification_queue.jsonl
-generic_info/yacpdb_candidate_build.md
+generic_info/classic_benchmark/yacpdb/yacpdb_candidate_build.md
 ```
 
 Build command:

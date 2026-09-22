@@ -35,9 +35,9 @@ PUZZLE_SPLITS = {
 PYG_ROOT = OUTPUT_DIR
 PYG_SPLITS = ("train", "val", "test")
 
-MOVE_TO_IDX_PATH = Path("artifacts/move_to_idx.json")
-IDX_TO_MOVE_PATH = Path("artifacts/idx_to_move.json")
-MOVE_STATS_PATH = Path("artifacts/move_encoder_stats.json")
+MOVE_TO_IDX_PATH = Path("resources/move_encoder/move_to_idx.json")
+IDX_TO_MOVE_PATH = Path("resources/move_encoder/idx_to_move.json")
+MOVE_STATS_PATH = Path("resources/move_encoder/move_encoder_stats.json")
 
 REQUIRED_PUZZLE_COLUMNS = [
     "OriginalFEN",

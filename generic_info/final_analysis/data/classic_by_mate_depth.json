@@ -1,0 +1,362 @@
+[
+  {
+    "N": 20,
+    "Top1_percent": 45.0,
+    "Wilson95_high_percent": 65.79146575496577,
+    "Wilson95_low_percent": 25.81978582556243,
+    "correct_count": 9,
+    "mate_depth": "#1",
+    "model": "A3"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 5.0,
+    "Wilson95_high_percent": 23.613119344674203,
+    "Wilson95_low_percent": 0.8881448800795402,
+    "correct_count": 1,
+    "mate_depth": "#2",
+    "model": "A3"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 5.0,
+    "Wilson95_high_percent": 23.613119344674203,
+    "Wilson95_low_percent": 0.8881448800795402,
+    "correct_count": 1,
+    "mate_depth": "#3",
+    "model": "A3"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#4",
+    "model": "A3"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#5",
+    "model": "A3"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#6",
+    "model": "A3"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#7",
+    "model": "A3"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 5.0,
+    "Wilson95_high_percent": 23.613119344674203,
+    "Wilson95_low_percent": 0.8881448800795402,
+    "correct_count": 1,
+    "mate_depth": "#8",
+    "model": "A3"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 20.0,
+    "Wilson95_high_percent": 41.60174322518937,
+    "Wilson95_low_percent": 8.065766257979806,
+    "correct_count": 4,
+    "mate_depth": "#9",
+    "model": "A3"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 30.0,
+    "Wilson95_high_percent": 51.89728183535235,
+    "Wilson95_low_percent": 14.54772448676043,
+    "correct_count": 6,
+    "mate_depth": "#10",
+    "model": "A3"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 55.00000000000001,
+    "Wilson95_high_percent": 74.18021417443758,
+    "Wilson95_low_percent": 34.20853424503424,
+    "correct_count": 11,
+    "mate_depth": "#1",
+    "model": "A4"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 5.0,
+    "Wilson95_high_percent": 23.613119344674203,
+    "Wilson95_low_percent": 0.8881448800795402,
+    "correct_count": 1,
+    "mate_depth": "#2",
+    "model": "A4"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#3",
+    "model": "A4"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#4",
+    "model": "A4"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 5.0,
+    "Wilson95_high_percent": 23.613119344674203,
+    "Wilson95_low_percent": 0.8881448800795402,
+    "correct_count": 1,
+    "mate_depth": "#5",
+    "model": "A4"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#6",
+    "model": "A4"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 10.0,
+    "Wilson95_high_percent": 30.10336452284873,
+    "Wilson95_low_percent": 2.7866481213768224,
+    "correct_count": 2,
+    "mate_depth": "#7",
+    "model": "A4"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 10.0,
+    "Wilson95_high_percent": 30.10336452284873,
+    "Wilson95_low_percent": 2.7866481213768224,
+    "correct_count": 2,
+    "mate_depth": "#8",
+    "model": "A4"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 25.0,
+    "Wilson95_high_percent": 46.87008776187441,
+    "Wilson95_low_percent": 11.186170140766565,
+    "correct_count": 5,
+    "mate_depth": "#9",
+    "model": "A4"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 45.0,
+    "Wilson95_high_percent": 65.79146575496577,
+    "Wilson95_low_percent": 25.81978582556243,
+    "correct_count": 9,
+    "mate_depth": "#10",
+    "model": "A4"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#1",
+    "model": "Qwen 3.5 4B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#2",
+    "model": "Qwen 3.5 4B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#3",
+    "model": "Qwen 3.5 4B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#4",
+    "model": "Qwen 3.5 4B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#5",
+    "model": "Qwen 3.5 4B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#6",
+    "model": "Qwen 3.5 4B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#7",
+    "model": "Qwen 3.5 4B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#8",
+    "model": "Qwen 3.5 4B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#9",
+    "model": "Qwen 3.5 4B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#10",
+    "model": "Qwen 3.5 4B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#1",
+    "model": "Qwen 3.5 9B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 5.0,
+    "Wilson95_high_percent": 23.613119344674203,
+    "Wilson95_low_percent": 0.8881448800795402,
+    "correct_count": 1,
+    "mate_depth": "#2",
+    "model": "Qwen 3.5 9B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#3",
+    "model": "Qwen 3.5 9B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#4",
+    "model": "Qwen 3.5 9B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#5",
+    "model": "Qwen 3.5 9B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#6",
+    "model": "Qwen 3.5 9B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#7",
+    "model": "Qwen 3.5 9B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#8",
+    "model": "Qwen 3.5 9B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#9",
+    "model": "Qwen 3.5 9B strict"
+  },
+  {
+    "N": 20,
+    "Top1_percent": 0.0,
+    "Wilson95_high_percent": 16.112515805281937,
+    "Wilson95_low_percent": 0.0,
+    "correct_count": 0,
+    "mate_depth": "#10",
+    "model": "Qwen 3.5 9B strict"
+  }
+]

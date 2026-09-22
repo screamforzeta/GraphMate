@@ -36,7 +36,7 @@ def load_lichess_test(
     path="data/final/puzzles/test.csv",
     limit=None,
     offset=0,
-    move_vocab_path="artifacts/move_to_idx.json",
+    move_vocab_path="resources/move_encoder/move_to_idx.json",
     shared_gnn_population=True,
 ):
     """Load the frozen Lichess test split without running model inference."""

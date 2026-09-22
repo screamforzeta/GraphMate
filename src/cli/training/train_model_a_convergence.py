@@ -4,7 +4,7 @@ Purpose:
     Run or resume MODEL_A_CONVERGENCE_RUN_V1 for ChessGATNoTiming with fixed
     scientific config from MODEL_A_FULL_BASELINE_V1.
 Input:
-    data/pyg sharded datasets and artifacts/move_to_idx.json.
+    data/pyg sharded datasets and resources/move_encoder/move_to_idx.json.
 Output:
     artifacts/convergence_training/chess_gat_no_timing/.
 Run:

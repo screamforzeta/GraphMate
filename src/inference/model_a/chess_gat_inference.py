@@ -39,15 +39,13 @@ REFERENCE_TEST_METRICS = {
 }
 PARITY_TOLERANCE = 1e-6
 EXPECTED_CHECKPOINT_PATH = Path(
-    "artifacts/convergence_training/chess_gat_no_timing/best.pt"
+    "checkpoints/model_a/best.pt"
 )
 FALLBACK_CHECKPOINT_PATHS = [
     EXPECTED_CHECKPOINT_PATH,
-    Path("artifacts/checkpoints/chess_gat_no_timing_best.pt"),
-    Path("artifacts/adaptive_training/chess_gat_no_timing/best_overall.pt"),
 ]
-MOVE_TO_IDX_PATH = Path("artifacts/move_to_idx.json")
-IDX_TO_MOVE_PATH = Path("artifacts/idx_to_move.json")
+MOVE_TO_IDX_PATH = Path("resources/move_encoder/move_to_idx.json")
+IDX_TO_MOVE_PATH = Path("resources/move_encoder/idx_to_move.json")
 
 
 @dataclass(frozen=True)

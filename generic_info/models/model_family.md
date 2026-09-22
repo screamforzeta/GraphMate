@@ -4,7 +4,7 @@
 
 | Label | Repository meaning | Main files/artifacts |
 |---|---|---|
-| A | Raw no-timing fixed-vocabulary `ChessGATNoTiming` baseline | `src/models/model_a/chess_gat.py`, `src/training/model_a/convergence.py`, `artifacts/convergence_training/chess_gat_no_timing/best.pt` |
+| A | Raw no-timing fixed-vocabulary `ChessGATNoTiming` baseline | `src/models/model_a/chess_gat.py`, `src/training/model_a/convergence.py`, `checkpoints/model_a/best.pt` |
 | A1 | Historical best-legal inference mode over Model A logits, not a separate architecture/checkpoint | `src/inference/model_a/no_timing_multimodel.py::best_legal_summary` |
 | A2 | Legal-masked no-timing fixed-vocabulary model | `src/training/model_a/model_a2_legal_mask.py`, `src/cli/training/train_model_a2_legal_mask.py` |
 | A3 | Official no-timing legal-candidate scorer | `src/models/model_a/chess_legal_scorer.py`, `src/training/model_a/model_a3_legal_scorer.py` |
@@ -44,7 +44,7 @@ A3
 
 ### A4 Frozen Validation and Terminal Test
 
-Checkpoint: `artifacts/model_a4_postmove_gnn_reranker/best.pt`.
+Checkpoint: `checkpoints/model_a4/best.pt`.
 
 Frozen validation:
 

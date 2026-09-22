@@ -3,7 +3,7 @@
 Purpose:
     Run or resume the progressive pilot/confirmation/full/final-test pipeline.
 Input:
-    data/pyg sharded datasets and artifacts/move_to_idx.json.
+    data/pyg sharded datasets and resources/move_encoder/move_to_idx.json.
 Output:
     artifacts/progressive_training/chess_gat_no_timing/.
 Run:

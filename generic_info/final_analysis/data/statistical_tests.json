@@ -1,0 +1,292 @@
+{
+  "effect_sizes": {
+    "A3_vs_B_Top1_delta_pp": -1.5795586527293848,
+    "Classic_A4_conditional_reranking_success_percent": 44.927536231884055
+  },
+  "paired_tests": {
+    "Classic_A3_vs_A4": {
+      "discordant": 23,
+      "method": "McNemar exact two-sided binomial",
+      "n01_a_wrong_b_correct": 16,
+      "n10_a_correct_b_wrong": 7,
+      "p_value": 0.0931396484375,
+      "status": "COMPUTED"
+    },
+    "Lichess_A3_vs_B": {
+      "discordant": 778,
+      "method": "McNemar exact two-sided binomial",
+      "n01_a_wrong_b_correct": 321,
+      "n10_a_correct_b_wrong": 457,
+      "p_value": 1.2238376595768834e-06,
+      "status": "COMPUTED"
+    }
+  },
+  "warnings": [
+    "Classic mate-depth buckets have N=20; confidence intervals are wide.",
+    "No large family of post-hoc significance tests is generated."
+  ],
+  "wilson_intervals": {
+    "classic_depth_top1": {
+      "A3 #1": {
+        "N": 20,
+        "high_percent": 65.79146575496577,
+        "low_percent": 25.81978582556243
+      },
+      "A3 #10": {
+        "N": 20,
+        "high_percent": 51.89728183535235,
+        "low_percent": 14.54772448676043
+      },
+      "A3 #2": {
+        "N": 20,
+        "high_percent": 23.613119344674203,
+        "low_percent": 0.8881448800795402
+      },
+      "A3 #3": {
+        "N": 20,
+        "high_percent": 23.613119344674203,
+        "low_percent": 0.8881448800795402
+      },
+      "A3 #4": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "A3 #5": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "A3 #6": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "A3 #7": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "A3 #8": {
+        "N": 20,
+        "high_percent": 23.613119344674203,
+        "low_percent": 0.8881448800795402
+      },
+      "A3 #9": {
+        "N": 20,
+        "high_percent": 41.60174322518937,
+        "low_percent": 8.065766257979806
+      },
+      "A4 #1": {
+        "N": 20,
+        "high_percent": 74.18021417443758,
+        "low_percent": 34.20853424503424
+      },
+      "A4 #10": {
+        "N": 20,
+        "high_percent": 65.79146575496577,
+        "low_percent": 25.81978582556243
+      },
+      "A4 #2": {
+        "N": 20,
+        "high_percent": 23.613119344674203,
+        "low_percent": 0.8881448800795402
+      },
+      "A4 #3": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "A4 #4": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "A4 #5": {
+        "N": 20,
+        "high_percent": 23.613119344674203,
+        "low_percent": 0.8881448800795402
+      },
+      "A4 #6": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "A4 #7": {
+        "N": 20,
+        "high_percent": 30.10336452284873,
+        "low_percent": 2.7866481213768224
+      },
+      "A4 #8": {
+        "N": 20,
+        "high_percent": 30.10336452284873,
+        "low_percent": 2.7866481213768224
+      },
+      "A4 #9": {
+        "N": 20,
+        "high_percent": 46.87008776187441,
+        "low_percent": 11.186170140766565
+      },
+      "Qwen 3.5 4B strict #1": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 4B strict #10": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 4B strict #2": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 4B strict #3": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 4B strict #4": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 4B strict #5": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 4B strict #6": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 4B strict #7": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 4B strict #8": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 4B strict #9": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 9B strict #1": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 9B strict #10": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 9B strict #2": {
+        "N": 20,
+        "high_percent": 23.613119344674203,
+        "low_percent": 0.8881448800795402
+      },
+      "Qwen 3.5 9B strict #3": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 9B strict #4": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 9B strict #5": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 9B strict #6": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 9B strict #7": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 9B strict #8": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      },
+      "Qwen 3.5 9B strict #9": {
+        "N": 20,
+        "high_percent": 16.112515805281937,
+        "low_percent": 0.0
+      }
+    },
+    "classic_top1": {
+      "A3": {
+        "high_percent": 16.09269099730149,
+        "low_percent": 7.377244460125304
+      },
+      "A4": {
+        "high_percent": 21.16069059234208,
+        "low_percent": 11.139636927689315
+      },
+      "Qwen 3.5 4B strict": {
+        "high_percent": 1.8845326377266574,
+        "low_percent": 1.734723475976807e-16
+      },
+      "Qwen 3.5 9B strict": {
+        "high_percent": 2.777370439789293,
+        "low_percent": 0.08831687156009814
+      }
+    },
+    "lichess_top1": {
+      "A": {
+        "N": 8610,
+        "high_percent": 40.65423950326553,
+        "low_percent": 38.58847109748434
+      },
+      "A1": {
+        "N": 8610,
+        "high_percent": 50.870137540656316,
+        "low_percent": 48.75836734705285
+      },
+      "A2": {
+        "N": 8610,
+        "high_percent": 50.31278552535433,
+        "low_percent": 48.20123402548233
+      },
+      "A3": {
+        "N": 8610,
+        "high_percent": 68.54179987827024,
+        "low_percent": 66.5644882332132
+      },
+      "A4": {
+        "N": 8610,
+        "high_percent": 86.14210953496972,
+        "low_percent": 84.65092780095154
+      },
+      "B": {
+        "N": 8610,
+        "high_percent": 66.97481864596897,
+        "low_percent": 64.97376101104241
+      },
+      "Qwen 3.5 4B strict": {
+        "N": 8610,
+        "high_percent": 0.1519653191291012,
+        "low_percent": 0.031941697228533864
+      },
+      "Qwen 3.5 9B strict": {
+        "N": 8610,
+        "high_percent": 0.2136797376521179,
+        "low_percent": 0.0631010567782246
+      }
+    }
+  }
+}

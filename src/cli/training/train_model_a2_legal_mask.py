@@ -4,7 +4,7 @@ Purpose:
     Train the unchanged ChessGATNoTiming backbone from scratch with legal-move
     masking applied to loss and official metrics.
 Input:
-    data/pyg sharded datasets and artifacts/move_to_idx.json.
+    data/pyg sharded datasets and resources/move_encoder/move_to_idx.json.
 Output:
     artifacts/model_a2_legal_mask_no_timing/ with A2 checkpoints and reports.
 Run:

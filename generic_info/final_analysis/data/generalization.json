@@ -1,0 +1,26 @@
+[
+  {
+    "classic_Top1_percent": 11.0,
+    "classic_minus_lichess_pp": -56.5609756097561,
+    "lichess_Top1_percent": 67.5609756097561,
+    "model": "A3"
+  },
+  {
+    "classic_Top1_percent": 15.5,
+    "classic_minus_lichess_pp": -69.9123112659698,
+    "lichess_Top1_percent": 85.4123112659698,
+    "model": "A4"
+  },
+  {
+    "classic_Top1_percent": 0.0,
+    "classic_minus_lichess_pp": -0.06968641114982578,
+    "lichess_Top1_percent": 0.06968641114982578,
+    "model": "Qwen 3.5 4B strict"
+  },
+  {
+    "classic_Top1_percent": 0.5,
+    "classic_minus_lichess_pp": 0.38385598141695704,
+    "lichess_Top1_percent": 0.11614401858304298,
+    "model": "Qwen 3.5 9B strict"
+  }
+]

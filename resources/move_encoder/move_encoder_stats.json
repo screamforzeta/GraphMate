@@ -1,0 +1,121 @@
+{
+    "num_unique_moves": 1786,
+    "num_total_samples": 68958,
+    "top_20_moves": [
+        {
+            "move": "f3f7",
+            "count": 874
+        },
+        {
+            "move": "f6f2",
+            "count": 760
+        },
+        {
+            "move": "e8e1",
+            "count": 685
+        },
+        {
+            "move": "d8d1",
+            "count": 685
+        },
+        {
+            "move": "d1d8",
+            "count": 680
+        },
+        {
+            "move": "d3h7",
+            "count": 631
+        },
+        {
+            "move": "e1e8",
+            "count": 526
+        },
+        {
+            "move": "h6h7",
+            "count": 409
+        },
+        {
+            "move": "h5f7",
+            "count": 383
+        },
+        {
+            "move": "h5h7",
+            "count": 353
+        },
+        {
+            "move": "c8c1",
+            "count": 352
+        },
+        {
+            "move": "f4f7",
+            "count": 347
+        },
+        {
+            "move": "b6f2",
+            "count": 337
+        },
+        {
+            "move": "h8h1",
+            "count": 335
+        },
+        {
+            "move": "h1h8",
+            "count": 330
+        },
+        {
+            "move": "d6h2",
+            "count": 328
+        },
+        {
+            "move": "c2h7",
+            "count": 324
+        },
+        {
+            "move": "h4h7",
+            "count": 310
+        },
+        {
+            "move": "f2f7",
+            "count": 306
+        },
+        {
+            "move": "e4f6",
+            "count": 302
+        }
+    ],
+    "oov_stats": [
+        {
+            "split": "val",
+            "input_targets": 8620,
+            "oov_targets": 8,
+            "oov_percentage": 0.09280742459396751,
+            "examples": [
+                "b6d5",
+                "d2f1",
+                "f8e6",
+                "h1b7",
+                "h4g2",
+                "h8b2",
+                "h8c3"
+            ]
+        },
+        {
+            "split": "test",
+            "input_targets": 8620,
+            "oov_targets": 10,
+            "oov_percentage": 0.11600928074245939,
+            "examples": [
+                "b1c2",
+                "b2c1q",
+                "b6d5",
+                "c1d3",
+                "c8d6",
+                "f7f8b",
+                "g2g1n",
+                "g6h8",
+                "h1b7",
+                "h4g2"
+            ]
+        }
+    ]
+}

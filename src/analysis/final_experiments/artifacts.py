@@ -24,15 +24,22 @@ def _classic_record(root: Path, run_dir: Path, validity: str = "VALID") -> Sourc
     ident = config.get("run_identity", {})
     meta = config.get("model_metadata", {})
     git = config.get("git", {})
+    checkpoint_path = meta.get("checkpoint_path")
+    repo_checkpoint_paths = {
+        "MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING": "checkpoints/model_a3/best.pt",
+        "MODEL_A4_POSTMOVE_GNN_RERANKER_NO_TIMING": "checkpoints/model_a4/best.pt",
+    }
+    model_id = ident.get("model_id", meta.get("model_id", run_dir.parent.name))
+    checkpoint_path = repo_checkpoint_paths.get(model_id, checkpoint_path)
     return SourceRecord(
-        model_id=ident.get("model_id", meta.get("model_id", run_dir.parent.name)),
+        model_id=model_id,
         benchmark="YACPDB classic",
         protocol=ident.get("evaluation_protocol_version", "classic_heldout_eval_v1"),
         scientific_run_id=config.get("scientific_run_id", ident.get("run_id")),
         execution_attempt=config.get("execution_attempt"),
         run_dir=str(run_dir),
         source_files=[str(run_dir / name) for name in ("config.json", "summary.json", "by_mate_depth.json", "by_verification_status.json", "predictions.jsonl")],
-        checkpoint_path=meta.get("checkpoint_path"),
+        checkpoint_path=checkpoint_path,
         checkpoint_sha256=ident.get("checkpoint_sha256", meta.get("checkpoint_sha256")),
         benchmark_version=ident.get("benchmark_version"),
         freeze_fingerprint=ident.get("freeze_fingerprint"),
@@ -74,12 +81,12 @@ def discover(root: Path = Path(".")) -> DiscoveredArtifacts:
         raise FileNotFoundError("Missing required official artifact(s): " + ", ".join(missing))
 
     included = [
-        SourceRecord("MODEL_A_NO_TIMING_FROZEN_BASELINE", "Lichess", "model_a_vs_a2_vs_a3_eval", str(paths["model_a_vs_a2_vs_a3"].parent), [str(paths["model_a_vs_a2_vs_a3"])], True, "COMPLETED", "VALID", checkpoint_path="artifacts/convergence_training/chess_gat_no_timing/best.pt"),
-        SourceRecord("MODEL_A_BEST_LEGAL", "Lichess", "inference_only_best_legal_filter", str(paths["model_a_vs_a2_vs_a3"].parent), [str(paths["model_a_vs_a2_vs_a3"])], True, "COMPLETED", "VALID", checkpoint_path="artifacts/convergence_training/chess_gat_no_timing/best.pt", notes="Inference-only mode, not a separate trained architecture."),
-        SourceRecord("MODEL_A2_LEGAL_MASK_NO_TIMING", "Lichess", "model_a_vs_a2_vs_a3_eval", str(paths["model_a_vs_a2_vs_a3"].parent), [str(paths["model_a_vs_a2_vs_a3"])], True, "COMPLETED", "VALID", checkpoint_path="artifacts/model_a2_legal_mask_no_timing/best.pt"),
-        SourceRecord("MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING", "Lichess", "terminal_test", str(paths["a3_final"].parent), [str(paths["a3_final"]), str(paths["a4_terminal"])], True, "COMPLETED", "VALID", checkpoint_path="artifacts/model_a3_legal_move_scorer_no_timing/best.pt", checkpoint_sha256="4efec653a451da7585f3663847c8dc5caaa8ebffadea677617e2f496e4253b80"),
-        SourceRecord("MODEL_B_TIMING_LEGAL_MOVE_SCORER", "Lichess", "terminal_test_with_synthetic_timing", str(paths["b_final"].parent), [str(paths["b_final"]), str(paths["timing_ablation"]), str(paths["timing_rows"])], True, "COMPLETED", "VALID", checkpoint_path="artifacts/model_b_timing_legal_move_scorer/best.pt"),
-        SourceRecord("MODEL_A4_POSTMOVE_GNN_RERANKER_NO_TIMING", "Lichess", "terminal_postmove_rerank", str(paths["a4_terminal"].parent), [str(paths["a4_terminal"])], True, "COMPLETED", "VALID", checkpoint_path="artifacts/model_a4_postmove_gnn_reranker/best.pt", checkpoint_sha256="0cb73acf70487efa5c93f715a5a60c0aa09d64792d894301efaaaf47b2801e99"),
+        SourceRecord("MODEL_A_NO_TIMING_FROZEN_BASELINE", "Lichess", "model_a_vs_a2_vs_a3_eval", str(paths["model_a_vs_a2_vs_a3"].parent), [str(paths["model_a_vs_a2_vs_a3"])], True, "COMPLETED", "VALID", checkpoint_path="checkpoints/model_a/best.pt"),
+        SourceRecord("MODEL_A_BEST_LEGAL", "Lichess", "inference_only_best_legal_filter", str(paths["model_a_vs_a2_vs_a3"].parent), [str(paths["model_a_vs_a2_vs_a3"])], True, "COMPLETED", "VALID", checkpoint_path="checkpoints/model_a/best.pt", notes="Inference-only mode, not a separate trained architecture."),
+        SourceRecord("MODEL_A2_LEGAL_MASK_NO_TIMING", "Lichess", "model_a_vs_a2_vs_a3_eval", str(paths["model_a_vs_a2_vs_a3"].parent), [str(paths["model_a_vs_a2_vs_a3"])], True, "COMPLETED", "VALID", checkpoint_path="checkpoints/model_a2/best.pt"),
+        SourceRecord("MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING", "Lichess", "terminal_test", str(paths["a3_final"].parent), [str(paths["a3_final"]), str(paths["a4_terminal"])], True, "COMPLETED", "VALID", checkpoint_path="checkpoints/model_a3/best.pt", checkpoint_sha256="4efec653a451da7585f3663847c8dc5caaa8ebffadea677617e2f496e4253b80"),
+        SourceRecord("MODEL_B_TIMING_LEGAL_MOVE_SCORER", "Lichess", "terminal_test_with_synthetic_timing", str(paths["b_final"].parent), [str(paths["b_final"]), str(paths["timing_ablation"]), str(paths["timing_rows"])], True, "COMPLETED", "VALID", checkpoint_path="checkpoints/model_b/best.pt"),
+        SourceRecord("MODEL_A4_POSTMOVE_GNN_RERANKER_NO_TIMING", "Lichess", "terminal_postmove_rerank", str(paths["a4_terminal"].parent), [str(paths["a4_terminal"])], True, "COMPLETED", "VALID", checkpoint_path="checkpoints/model_a4/best.pt", checkpoint_sha256="0cb73acf70487efa5c93f715a5a60c0aa09d64792d894301efaaaf47b2801e99"),
     ]
     for summary_key, manifest_key, model_id in (
         ("llm_qwen4_summary", "llm_qwen4_manifest", "qwen3.5:4b"),
@@ -133,4 +140,3 @@ def discover(root: Path = Path(".")) -> DiscoveredArtifacts:
                 validity_state=reason,
             ))
     return DiscoveredArtifacts(root=root, included=included, excluded=excluded, paths=paths)
-

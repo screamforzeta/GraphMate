@@ -3,7 +3,7 @@
 Purpose:
     Train the no-timing GAT legal-candidate scorer from scratch.
 Input:
-    data/pyg sharded datasets and artifacts/move_to_idx.json for compatibility
+    data/pyg sharded datasets and resources/move_encoder/move_to_idx.json for compatibility
     validation only.
 Output:
     artifacts/model_a3_legal_move_scorer_no_timing/ with A3 checkpoints and

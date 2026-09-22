@@ -4,7 +4,7 @@ Purpose:
     Measure DataLoader, shard-cache, transfer, forward/backward, optimizer, AMP,
     and batch-size runtime costs without running convergence training.
 Input:
-    data/pyg sharded train split and artifacts/move_to_idx.json.
+    data/pyg sharded train split and resources/move_encoder/move_to_idx.json.
 Output:
     Terminal summary plus artifacts/benchmarks JSON and Markdown reports.
 Run:

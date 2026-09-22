@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument("--output-dir", default="artifacts/model_a3_postmove_audit")
     parser.add_argument(
         "--checkpoint",
-        default="artifacts/model_a3_legal_move_scorer_no_timing/best.pt",
+        default="checkpoints/model_a3/best.pt",
     )
     parser.add_argument("--pyg-root", default="data/pyg")
     return parser.parse_args()

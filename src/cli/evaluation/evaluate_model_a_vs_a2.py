@@ -5,7 +5,7 @@ Purpose:
     legal-masked checkpoint on the official test split without training.
 Input:
     Official best checkpoints, data/pyg/test, data/final/puzzles/test.csv,
-    and artifacts/move_to_idx.json.
+    and resources/move_encoder/move_to_idx.json.
 Output:
     artifacts/model_a_vs_a2_evaluation/summary.json and report.md.
 Run:

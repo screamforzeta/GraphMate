@@ -40,7 +40,7 @@ A4 non ricerca tra tutte le legal moves. Il suo candidate set è esattamente la 
 A3 viene caricato da:
 
 ```bash
-artifacts/model_a3_legal_move_scorer_no_timing/best.pt
+checkpoints/model_a3/best.pt
 ```
 
 I parametri A3 sono forzati a `requires_grad = False` e A3 resta in `eval()`.

@@ -28,11 +28,11 @@ def parse_args():
     parser.add_argument("--no-timing-dataset-root", default="data/pyg")
     parser.add_argument(
         "--model-b-checkpoint",
-        default="artifacts/model_b_timing_legal_move_scorer/best.pt",
+        default="checkpoints/model_b/best.pt",
     )
     parser.add_argument(
         "--model-a3-checkpoint",
-        default="artifacts/model_a3_legal_move_scorer_no_timing/best.pt",
+        default="checkpoints/model_a3/best.pt",
     )
     parser.add_argument("--output-dir", default="artifacts/model_b_timing_ablation")
     parser.add_argument(

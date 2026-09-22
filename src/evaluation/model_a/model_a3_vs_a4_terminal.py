@@ -49,10 +49,10 @@ from src.training.model_a.model_a4_postmove_reranker import (
 )
 
 
-MODEL_A4_CHECKPOINT = Path("artifacts/model_a4_postmove_gnn_reranker/best.pt")
+MODEL_A4_CHECKPOINT = Path("checkpoints/model_a4/best.pt")
 MODEL_A4_TRAINING_SUMMARY = Path("artifacts/model_a4_postmove_gnn_reranker/training_summary.json")
 OUTPUT_DIR = Path("artifacts/model_a4_terminal_evaluation")
-REPORT_PATH = Path("generic_info/model_a/model_a4_terminal_evaluation.md")
+REPORT_PATH = Path("generic_info/models/model_a/model_a4_terminal_evaluation.md")
 EXPECTED_A4_BEST_EPOCH = 32
 RATING_BUCKETS = ["<1200", "1200-1599", "1600-1999", "2000-2399", "2400+"]
 

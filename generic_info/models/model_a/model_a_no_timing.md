@@ -106,7 +106,7 @@ No timing. No event IDs. No legal mask durante il training. La scelta era intenz
 Checkpoint ufficiale:
 
 ```text
-artifacts/convergence_training/chess_gat_no_timing/best.pt
+checkpoints/model_a/best.pt
 ```
 
 | Metric | Value |

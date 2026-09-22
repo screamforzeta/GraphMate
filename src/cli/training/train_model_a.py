@@ -4,7 +4,7 @@ Purpose:
     Train the CURRENT_PYG_BASELINE no-timing chess GAT on generated PyG graph
     shards, save the best validation checkpoint, reload it, and test once.
 Input:
-    data/pyg/manifest.json, split shards, and artifacts/move_to_idx.json.
+    data/pyg/manifest.json, split shards, and resources/move_encoder/move_to_idx.json.
 Output:
     artifacts/checkpoints/chess_gat_no_timing_best.pt and
     artifacts/training/chess_gat_no_timing_history.json.
@@ -30,7 +30,7 @@ from src.training import (
 
 
 PYG_DATASET_ROOT = OUTPUT_DIR
-MOVE_ENCODER_PATH = Path("artifacts/move_to_idx.json")
+MOVE_ENCODER_PATH = Path("resources/move_encoder/move_to_idx.json")
 
 
 def parse_args():

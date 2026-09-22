@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument("--output-root", default="artifacts/model_a4_postmove_gnn_reranker")
     parser.add_argument(
         "--a3-checkpoint",
-        default="artifacts/model_a3_legal_move_scorer_no_timing/best.pt",
+        default="checkpoints/model_a3/best.pt",
     )
     parser.add_argument("--smoke", action="store_true")
     return parser.parse_args()

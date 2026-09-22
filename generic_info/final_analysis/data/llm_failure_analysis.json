@@ -1,0 +1,142 @@
+[
+  {
+    "benchmark": "Lichess",
+    "count": 6,
+    "model": "Qwen 3.5 4B strict",
+    "outcome": "correct",
+    "percent": 0.06968641114982578
+  },
+  {
+    "benchmark": "Lichess",
+    "count": 130,
+    "model": "Qwen 3.5 4B strict",
+    "outcome": "wrong_legal",
+    "percent": 1.5098722415795587
+  },
+  {
+    "benchmark": "Lichess",
+    "count": 5894,
+    "model": "Qwen 3.5 4B strict",
+    "outcome": "illegal",
+    "percent": 68.45528455284553
+  },
+  {
+    "benchmark": "Lichess",
+    "count": 2580,
+    "model": "Qwen 3.5 4B strict",
+    "outcome": "parse_failure",
+    "percent": 29.965156794425084
+  },
+  {
+    "benchmark": "Lichess",
+    "count": 0,
+    "model": "Qwen 3.5 4B strict",
+    "outcome": "runtime_failure",
+    "percent": 0.0
+  },
+  {
+    "benchmark": "Lichess",
+    "count": 10,
+    "model": "Qwen 3.5 9B strict",
+    "outcome": "correct",
+    "percent": 0.11614401858304298
+  },
+  {
+    "benchmark": "Lichess",
+    "count": 413,
+    "model": "Qwen 3.5 9B strict",
+    "outcome": "wrong_legal",
+    "percent": 4.796747967479675
+  },
+  {
+    "benchmark": "Lichess",
+    "count": 2899,
+    "model": "Qwen 3.5 9B strict",
+    "outcome": "illegal",
+    "percent": 33.670150987224154
+  },
+  {
+    "benchmark": "Lichess",
+    "count": 5288,
+    "model": "Qwen 3.5 9B strict",
+    "outcome": "parse_failure",
+    "percent": 61.41695702671313
+  },
+  {
+    "benchmark": "Lichess",
+    "count": 0,
+    "model": "Qwen 3.5 9B strict",
+    "outcome": "runtime_failure",
+    "percent": 0.0
+  },
+  {
+    "benchmark": "YACPDB classic",
+    "count": 0,
+    "model": "Qwen 3.5 4B strict",
+    "outcome": "correct",
+    "percent": 0.0
+  },
+  {
+    "benchmark": "YACPDB classic",
+    "count": 3,
+    "model": "Qwen 3.5 4B strict",
+    "outcome": "wrong_legal",
+    "percent": 1.5
+  },
+  {
+    "benchmark": "YACPDB classic",
+    "count": 101,
+    "model": "Qwen 3.5 4B strict",
+    "outcome": "illegal",
+    "percent": 50.5
+  },
+  {
+    "benchmark": "YACPDB classic",
+    "count": 96,
+    "model": "Qwen 3.5 4B strict",
+    "outcome": "parse_failure",
+    "percent": 48.0
+  },
+  {
+    "benchmark": "YACPDB classic",
+    "count": 0,
+    "model": "Qwen 3.5 4B strict",
+    "outcome": "runtime_failure",
+    "percent": 0.0
+  },
+  {
+    "benchmark": "YACPDB classic",
+    "count": 1,
+    "model": "Qwen 3.5 9B strict",
+    "outcome": "correct",
+    "percent": 0.5
+  },
+  {
+    "benchmark": "YACPDB classic",
+    "count": 6,
+    "model": "Qwen 3.5 9B strict",
+    "outcome": "wrong_legal",
+    "percent": 3.0
+  },
+  {
+    "benchmark": "YACPDB classic",
+    "count": 64,
+    "model": "Qwen 3.5 9B strict",
+    "outcome": "illegal",
+    "percent": 32.0
+  },
+  {
+    "benchmark": "YACPDB classic",
+    "count": 129,
+    "model": "Qwen 3.5 9B strict",
+    "outcome": "parse_failure",
+    "percent": 64.5
+  },
+  {
+    "benchmark": "YACPDB classic",
+    "count": 0,
+    "model": "Qwen 3.5 9B strict",
+    "outcome": "runtime_failure",
+    "percent": 0.0
+  }
+]

@@ -141,7 +141,16 @@ data/heldout_classic/
 generic_info/
   models/           # definitive frozen model documentation
   architecture/     # repository and architecture notes
+  classic_benchmark/# YACPDB/Popeye/classic benchmark methodology
+  final_analysis/   # consolidated final scientific tables, figures, summary
+  llm/              # LLM benchmark protocol and diagnostics
   reference/        # project specification PDF
+
+resources/
+  move_encoder/     # canonical checked-in move vocabulary resources
+
+checkpoints/        # final frozen distributable checkpoints only
+artifacts/          # raw/intermediate local experiment outputs, gitignored
 ```
 
 ## Comandi
@@ -182,12 +191,12 @@ Validazione rappresentazioni:
 
 ## Documentazione Benchmark Esterno
 
-- `generic_info/heldout_classic_dataset.md`
-- `generic_info/yacpdb_methodology.md`
-- `generic_info/popeye_methodology.md`
-- `generic_info/classic_benchmark_methodology.md`
-- `generic_info/classic_evaluation_protocol.md`
-- `generic_info/yacpdb_popeye_verification.md`
+- `generic_info/classic_benchmark/heldout_classic_dataset.md`
+- `generic_info/classic_benchmark/yacpdb/yacpdb_methodology.md`
+- `generic_info/classic_benchmark/popeye/popeye_methodology.md`
+- `generic_info/classic_benchmark/classic_benchmark_methodology.md`
+- `generic_info/classic_benchmark/classic_evaluation_protocol.md`
+- `generic_info/classic_benchmark/popeye/yacpdb_popeye_verification.md`
 - `data/heldout_classic/final/yacpdb_classic_v1/freeze_manifest.json` dopo il freeze server
 
 Streamlit:
@@ -297,15 +306,16 @@ Il normalizzatore YACPDB e pronto per il prossimo availability scan, ma lo scan 
 - [Graph representation](generic_info/models/graph_representation.md)
 - [Frozen model family](generic_info/models/model_family.md)
 - [Experimental protocol](generic_info/models/experimental_protocol.md)
-- [Pre-LLM project status](generic_info/pre_llm_project_status.md)
-- [Project specification coverage](generic_info/project_specification_coverage.md)
-- [Held-out classic dataset](generic_info/heldout_classic_dataset.md)
-- [YACPDB import](generic_info/yacpdb_import.md)
+- [Pre-LLM project status](generic_info/project/pre_llm_project_status.md)
+- [Project specification coverage](generic_info/project/project_specification_coverage.md)
+- [Held-out classic dataset](generic_info/classic_benchmark/heldout_classic_dataset.md)
+- [YACPDB import](generic_info/classic_benchmark/yacpdb/yacpdb_import.md)
 
 ## Gitignore / Artifact Policy
 
 Dati generati e artifact pesanti non devono essere versionati:
 
+- `artifacts/` per raw/intermediate experiment outputs;
 - `data/`
 - `data/pyg/`
 - `data/pyg_puzzles_timing/`
@@ -316,7 +326,7 @@ Dati generati e artifact pesanti non devono essere versionati:
 - `graph_visualization.html`
 - file temporanei/cache.
 
-Se `artifacts/move_to_idx.json` e `artifacts/idx_to_move.json` sono versionati, fissano la vocabulary delle mosse train-only.
+`resources/move_encoder/` contiene la vocabulary canonica train-only versionata. `checkpoints/` contiene solo i checkpoint finali congelati. `generic_info/final_analysis/` contiene l'analisi scientifica consolidata versionata; la pipeline la rigenera leggendo le fonti raw da `artifacts/`.
 
 ## Prossima Fase
 

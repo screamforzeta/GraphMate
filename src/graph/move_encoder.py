@@ -6,9 +6,9 @@ Purpose:
 Input:
     data/final/puzzles/train.csv
 Output:
-    artifacts/move_to_idx.json
-    artifacts/idx_to_move.json
-    artifacts/move_encoder_stats.json
+    resources/move_encoder/move_to_idx.json
+    resources/move_encoder/idx_to_move.json
+    resources/move_encoder/move_encoder_stats.json
 Run:
     python3 src/graph/move_encoder.py
 """
@@ -34,7 +34,7 @@ TEST_CSV = Path(
     "data/final/puzzles/test.csv"
 )
 
-OUTPUT_DIR = Path("artifacts")
+OUTPUT_DIR = Path("resources/move_encoder")
 OUTPUT_DIR.mkdir(
     parents=True,
     exist_ok=True
@@ -107,8 +107,8 @@ def build_move_encoder():
     Returns:
         None.
     Side effects:
-        Reads the training puzzle CSV, creates artifacts/, and writes encoder
-        JSON files plus move-frequency statistics.
+        Reads the training puzzle CSV, creates resources/move_encoder/, and
+        writes the canonical checked-in encoder JSON files plus statistics.
     """
 
     print("[INFO] Loading training dataset...")

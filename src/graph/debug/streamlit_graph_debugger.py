@@ -4,7 +4,7 @@ Purpose:
     Visualize one generated puzzle graph together with its chessboard,
     edge overlays, node metadata, and raw puzzle fields.
 Input:
-    data/final/puzzles/train.csv and artifacts/move_to_idx.json.
+    data/final/puzzles/train.csv and resources/move_encoder/move_to_idx.json.
 Output:
     Streamlit UI with graph/chessboard visualization; no pipeline files are
     written by this module.
@@ -126,7 +126,7 @@ DATASET_PATHS = {
 }
 
 MOVE_ENCODER_PATH = Path(
-    "artifacts/move_to_idx.json"
+    "resources/move_encoder/move_to_idx.json"
 )
 
 BOARD_SIZE = 700
@@ -483,7 +483,7 @@ def predict_next_move_for_fen(
         result = predict_a4_from_fen(
             fen,
             a3_checkpoint=MODEL_A3_CHECKPOINT_PATH,
-            a4_checkpoint="artifacts/model_a4_postmove_gnn_reranker/best.pt",
+            a4_checkpoint="checkpoints/model_a4/best.pt",
             top_k=5,
             amp=False,
         )
@@ -1201,7 +1201,7 @@ with puzzle_tab:
                 st.session_state["a4_result"] = predict_a4_from_fen(
                     puzzle_session.current_fen,
                     a3_checkpoint=MODEL_A3_CHECKPOINT_PATH,
-                    a4_checkpoint="artifacts/model_a4_postmove_gnn_reranker/best.pt",
+                    a4_checkpoint="checkpoints/model_a4/best.pt",
                     top_k=5,
                     amp=False,
                 )
@@ -1364,7 +1364,7 @@ with model_tab:
             "Model A3 Legal Scorer": bundle_a3 is not None,
         }[selected_model_mode]
     elif selected_readable_model.startswith("A4"):
-        selected_bundle_available = Path("artifacts/model_a4_postmove_gnn_reranker/best.pt").exists()
+        selected_bundle_available = Path("checkpoints/model_a4/best.pt").exists()
     else:
         st.info("Model B is shown in Performance because its frozen timing ablation is not an interactive puzzle solver in this UI.")
 
@@ -1375,7 +1375,7 @@ with model_tab:
                     result = predict_a4_from_fen(
                         puzzle_session.current_fen,
                         a3_checkpoint=MODEL_A3_CHECKPOINT_PATH,
-                        a4_checkpoint="artifacts/model_a4_postmove_gnn_reranker/best.pt",
+                        a4_checkpoint="checkpoints/model_a4/best.pt",
                         top_k=5,
                         amp=False,
                     )

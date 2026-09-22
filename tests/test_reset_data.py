@@ -11,7 +11,7 @@ from src.cli.data.reset_data import (
 
 
 def test_reset_removes_existing_file_and_directory(tmp_path):
-    file_path = tmp_path / "artifacts" / "move_to_idx.json"
+    file_path = tmp_path / "artifacts" / "generated_marker.json"
     directory_path = tmp_path / "data" / "raw"
 
     file_path.parent.mkdir()
@@ -24,7 +24,7 @@ def test_reset_removes_existing_file_and_directory(tmp_path):
 
     results = reset_project_data(
         paths=[
-            Path("artifacts/move_to_idx.json"),
+            Path("artifacts/generated_marker.json"),
             Path("data/raw"),
         ],
         project_root=tmp_path,
@@ -35,6 +35,15 @@ def test_reset_removes_existing_file_and_directory(tmp_path):
     assert not directory_path.exists()
     assert results[file_path.resolve()] == "removed"
     assert results[directory_path.resolve()] == "removed"
+
+
+def test_default_reset_paths_do_not_delete_canonical_resources():
+    from src.cli.data.reset_data import RESET_PATHS
+
+    assert all(
+        not str(path).startswith("resources/move_encoder")
+        for path in RESET_PATHS
+    )
 
 
 def test_reset_ignores_missing_path(tmp_path):

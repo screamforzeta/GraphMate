@@ -14,13 +14,13 @@ Non esegue training, fine-tuning o checkpoint selection. È solo una post-hoc ev
 Model A:
 
 ```text
-artifacts/convergence_training/chess_gat_no_timing/best.pt
+checkpoints/model_a/best.pt
 ```
 
 Model A2:
 
 ```text
-artifacts/model_a2_legal_mask_no_timing/best.pt
+checkpoints/model_a2/best.pt
 ```
 
 L'evaluator non usa fallback per produrre metriche ufficiali.
@@ -31,7 +31,7 @@ Usa:
 
 - `data/pyg/test`;
 - `data/final/puzzles/test.csv`;
-- `artifacts/move_to_idx.json`.
+- `resources/move_encoder/move_to_idx.json`.
 
 Atteso:
 

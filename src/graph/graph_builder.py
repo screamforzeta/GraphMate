@@ -268,7 +268,7 @@ def build_graph(
 # =========================================================
 
 def load_move_encoder(
-    path="artifacts/move_to_idx.json"
+    path="resources/move_encoder/move_to_idx.json"
 ):
     """
     Load move encoder vocabulary.

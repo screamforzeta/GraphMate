@@ -576,7 +576,7 @@ def build_candidate_dataset(config: CandidateBuildConfig) -> dict[str, Any]:
     ]
     write_jsonl(final_dir / "forced_mate_verification_queue.jsonl", queue_rows)
     (final_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False), encoding="utf-8")
-    write_markdown_report(manifest, rows, Path("generic_info/yacpdb_candidate_build.md"))
+    write_markdown_report(manifest, rows, Path("generic_info/classic_benchmark/yacpdb/yacpdb_candidate_build.md"))
     return manifest
 
 

@@ -11,10 +11,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
-def _save(fig, out_dir: Path, name: str) -> list[str]:
+def _save(fig, out_dir: Path, name: str, include_pdf: bool = False) -> list[str]:
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = []
-    for ext in ("svg", "pdf", "png"):
+    formats = ["svg", "png"]
+    if include_pdf:
+        formats.insert(1, "pdf")
+    for ext in formats:
         path = out_dir / f"{name}.{ext}"
         fig.savefig(path, bbox_inches="tight")
         paths.append(str(path))
@@ -31,9 +34,12 @@ def _bar(ax, labels, values, title, ylabel="Top1 (%)"):
     ax.grid(axis="y", alpha=0.25)
 
 
-def build_figures(tables: dict[str, Any], out_dir: Path) -> list[str]:
+def build_figures(tables: dict[str, Any], out_dir: Path, include_pdf: bool = False) -> list[str]:
     made: list[str] = []
     fig_dir = out_dir / "figures"
+    if not include_pdf and fig_dir.exists():
+        for stale_pdf in fig_dir.glob("*.pdf"):
+            stale_pdf.unlink()
 
     graph_rows = [r for r in tables["lichess_primary"] if r["model"] in {"A", "A1", "A2", "A3", "B"}]
     labels = [r["model"] for r in graph_rows]
@@ -48,7 +54,7 @@ def build_figures(tables: dict[str, Any], out_dir: Path) -> list[str]:
     ax.set_ylim(0, 100)
     ax.grid(axis="y", alpha=0.25)
     ax.legend()
-    made += _save(fig, fig_dir, "lichess_topk_comparison")
+    made += _save(fig, fig_dir, "lichess_topk_comparison", include_pdf=include_pdf)
 
     fig, ax = plt.subplots(figsize=(8, 4.5))
     for model in ["A3", "B", "A4", "Qwen 3.5 4B strict", "Qwen 3.5 9B strict"]:
@@ -59,7 +65,7 @@ def build_figures(tables: dict[str, Any], out_dir: Path) -> list[str]:
     ax.set_ylim(0, 100)
     ax.grid(alpha=0.25)
     ax.legend(fontsize=8)
-    made += _save(fig, fig_dir, "lichess_mate_depth_top1")
+    made += _save(fig, fig_dir, "lichess_mate_depth_top1", include_pdf=include_pdf)
 
     fig, ax = plt.subplots(figsize=(7, 4.5))
     for model in ["A3", "A4"]:
@@ -71,17 +77,17 @@ def build_figures(tables: dict[str, Any], out_dir: Path) -> list[str]:
     ax.tick_params(axis="x", rotation=25)
     ax.grid(alpha=0.25)
     ax.legend()
-    made += _save(fig, fig_dir, "lichess_rating_top1")
+    made += _save(fig, fig_dir, "lichess_rating_top1", include_pdf=include_pdf)
 
     fig, ax = plt.subplots(figsize=(7, 4.5))
     rows = tables["timing_ablation"]
     _bar(ax, [r["model"].replace("_", "\n") for r in rows], [r["Top1_percent"] for r in rows], "Timing Ablation")
-    made += _save(fig, fig_dir, "timing_ablation")
+    made += _save(fig, fig_dir, "timing_ablation", include_pdf=include_pdf)
 
     fig, ax = plt.subplots(figsize=(7, 4.5))
     rows = [r for r in tables["classic_primary"] if r["model"] != "B"]
     _bar(ax, [r["model"].replace(" strict", "") for r in rows], [r["ALL200_Top1_percent"] for r in rows], "Classic Benchmark Top1")
-    made += _save(fig, fig_dir, "classic_top1_comparison")
+    made += _save(fig, fig_dir, "classic_top1_comparison", include_pdf=include_pdf)
 
     fig, ax = plt.subplots(figsize=(9, 4.5))
     for model in ["A3", "A4", "Qwen 3.5 4B strict", "Qwen 3.5 9B strict"]:
@@ -92,7 +98,7 @@ def build_figures(tables: dict[str, Any], out_dir: Path) -> list[str]:
     ax.set_ylim(0, 100)
     ax.grid(alpha=0.25)
     ax.legend(fontsize=8)
-    made += _save(fig, fig_dir, "classic_mate_depth_top1")
+    made += _save(fig, fig_dir, "classic_mate_depth_top1", include_pdf=include_pdf)
 
     for benchmark, name in [("Lichess", "llm_failure_composition_lichess"), ("YACPDB classic", "llm_failure_composition_classic")]:
         fig, ax = plt.subplots(figsize=(8, 4.5))
@@ -109,7 +115,7 @@ def build_figures(tables: dict[str, Any], out_dir: Path) -> list[str]:
         ax.set_ylim(0, 100)
         ax.legend(fontsize=8)
         ax.tick_params(axis="x", rotation=15)
-        made += _save(fig, fig_dir, name)
+        made += _save(fig, fig_dir, name, include_pdf=include_pdf)
 
     fig, ax = plt.subplots(figsize=(7, 4.5))
     rows = tables["generalization"]
@@ -124,14 +130,13 @@ def build_figures(tables: dict[str, Any], out_dir: Path) -> list[str]:
     ax.legend()
     ax.tick_params(axis="x", rotation=20)
     ax.grid(axis="y", alpha=0.25)
-    made += _save(fig, fig_dir, "generalization_lichess_vs_classic")
+    made += _save(fig, fig_dir, "generalization_lichess_vs_classic", include_pdf=include_pdf)
 
     fig, ax = plt.subplots(figsize=(6, 4))
     labels = ["retrieval failures", "reranking failures", "A4 Top1 success"]
     values = [131, 38, 31]
     _bar(ax, labels, values, "A4 Classic Retrieval and Reranking", ylabel="Problems")
     ax.set_ylim(0, 200)
-    made += _save(fig, fig_dir, "a4_classic_retrieval_reranking")
+    made += _save(fig, fig_dir, "a4_classic_retrieval_reranking", include_pdf=include_pdf)
 
     return made
-

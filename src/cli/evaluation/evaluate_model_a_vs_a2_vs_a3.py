@@ -4,7 +4,7 @@ Purpose:
     Compare frozen Model A, A2, and A3 checkpoints on the shared PyG test set.
 Input:
     Official best checkpoints, data/pyg/test, data/final/puzzles/test.csv,
-    and artifacts/move_to_idx.json.
+    and resources/move_encoder/move_to_idx.json.
 Output:
     artifacts/model_a_vs_a2_vs_a3_evaluation/summary.json and report.md.
 Run:

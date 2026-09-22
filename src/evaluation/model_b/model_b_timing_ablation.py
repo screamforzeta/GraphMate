@@ -43,7 +43,7 @@ from src.training.model_a.model_a3_legal_scorer import (
 )
 
 
-MODEL_B_CHECKPOINT = Path("artifacts/model_b_timing_legal_move_scorer/best.pt")
+MODEL_B_CHECKPOINT = Path("checkpoints/model_b/best.pt")
 OUTPUT_DIR = Path("artifacts/model_b_timing_ablation")
 TIMING_DATASET_ROOT = Path("data/pyg_puzzles_timing")
 NO_TIMING_DATASET_ROOT = Path("data/pyg")

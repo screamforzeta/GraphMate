@@ -4,7 +4,7 @@ Purpose:
     Convert final puzzle CSV splits into memory-safe PyG shards and expose a
     dataset object that loads individual graphs during training.
 Input:
-    data/final/puzzles/{train,val,test}.csv and artifacts/move_to_idx.json.
+    data/final/puzzles/{train,val,test}.csv and resources/move_encoder/move_to_idx.json.
 Output:
     data/pyg/{train,val,test}/shard_XXXXX.pt plus data/pyg/manifest.json.
 Run:
@@ -36,7 +36,7 @@ from src.graph.graph_builder import build_graph
 TRAIN_CSV = Path("data/final/puzzles/train.csv")
 VAL_CSV = Path("data/final/puzzles/val.csv")
 TEST_CSV = Path("data/final/puzzles/test.csv")
-MOVE_ENCODER_PATH = Path("artifacts/move_to_idx.json")
+MOVE_ENCODER_PATH = Path("resources/move_encoder/move_to_idx.json")
 OUTPUT_DIR = Path("data/pyg")
 BUILDING_DIR = Path("data/pyg_building")
 MANIFEST_NAME = "manifest.json"

@@ -128,7 +128,7 @@ generic_info/
 ```
 
 - `generic_info/architecture/`: architettura repo, decisioni progettuali e piani tecnici.
-- `generic_info/model_a/`: documentazione definitiva della fase no-timing Model A/A2/A3.
+- `generic_info/models/model_a/`: documentazione definitiva della fase no-timing Model A/A2/A3.
 - `generic_info/timegnn/`: analisi della libreria `TimeGNN-main/` e note per Model B.
 - `generic_info/project/`: note operative generali.
 - `generic_info/reference/`: materiali esterni o consegne di riferimento.

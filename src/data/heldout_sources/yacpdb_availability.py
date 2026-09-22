@@ -479,7 +479,7 @@ def run_scan(output_root: Path, per_depth_cap: int, timeout: float) -> dict[str,
     }
     availability_path = processed_dir / "yacpdb_availability.json"
     availability_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    write_markdown_report(payload, Path("generic_info/yacpdb_availability.md"))
+    write_markdown_report(payload, Path("generic_info/classic_benchmark/yacpdb/yacpdb_availability.md"))
     return payload
 
 

@@ -1,0 +1,16 @@
+{
+  "bounded_conclusion": "The implemented synthetic timing signal did not improve predictive performance relative to the matched no-timing A3 baseline.",
+  "controlled_comparison": "A3 no timing vs Model B synthetic timing",
+  "paired_test": {
+    "discordant": 778,
+    "method": "McNemar exact two-sided binomial",
+    "n01_a_wrong_b_correct": 321,
+    "n10_a_correct_b_wrong": 457,
+    "p_value": 1.2238376595768834e-06,
+    "status": "COMPUTED"
+  },
+  "status": "COMPUTED",
+  "top1_delta_b_minus_a3_pp": -1.579558652729375,
+  "top3_delta_b_minus_a3_pp": -0.8130081300812861,
+  "top5_delta_b_minus_a3_pp": -0.48780487804877737
+}

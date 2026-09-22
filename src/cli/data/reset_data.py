@@ -24,9 +24,6 @@ RESET_PATHS = [
     Path("data/processed"),
     Path("data/final"),
     Path("data/pyg"),
-    Path("artifacts/move_to_idx.json"),
-    Path("artifacts/idx_to_move.json"),
-    Path("artifacts/move_encoder_stats.json"),
 ]
 
 

@@ -1,0 +1,9 @@
+model,architecture_family,timing,legal_candidate_restriction,post_move_reranking,N,Top1_percent,Top3_percent,Top5_percent,mean_rank,median_rank,illegal_Top1_rate_percent,Top1_Wilson95_low_percent,Top1_Wilson95_high_percent,protocol_notes
+A,Global vocabulary GAT,no,no,no,8610,39.61672474213732,55.807200940228505,62.75261325010993,4.011498257839722,2.0,30.23228803716609,38.58847109748434,40.65423950326553,Frozen no-timing baseline
+A1,A + best-legal filter,no,filter only,no,8610,49.81416957095941,70.4994192743689,79.55865272107717,,,,48.75836734705285,50.870137540656316,Inference-only; no separate checkpoint
+A2,Global vocabulary GAT with legal mask,no,yes,no,8610,49.256678281068524,71.49825784802853,81.17305459461146,3.7219512195121953,2.0,0.0,48.20123402548233,50.31278552535433,Legal class masking
+A3,Legal-move candidate scorer,no,yes,no,8610,67.5609756097561,85.65621370499419,91.85830429732869,2.224274099883856,1.0,0.0,66.5644882332132,68.54179987827024,Matched no-timing baseline for RQ2
+B,Timing-aware legal-move candidate scorer,synthetic,yes,no,8610,65.98141695702672,84.8432055749129,91.37049941927991,2.302903600464576,1.0,0.0,64.97376101104241,66.97481864596897,Synthetic timing; not applicable to classic benchmark
+A4,A3 Top-5 retrieval + post-move GNN reranker,no,yes,yes,8610,85.4123112659698,,,,,0.0,84.65092780095154,86.14210953496972,Top1 only in terminal summary
+Qwen 3.5 4B strict,LLM,N/A,N/A,N/A,8610,0.06968641114982578,,,,,,0.031941697228533864,0.1519653191291012,"Strict UCI, one generated move"
+Qwen 3.5 9B strict,LLM,N/A,N/A,N/A,8610,0.11614401858304298,,,,,,0.0631010567782246,0.2136797376521179,"Strict UCI, one generated move"

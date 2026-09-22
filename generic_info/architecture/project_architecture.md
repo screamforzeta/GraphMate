@@ -149,9 +149,9 @@ La pipeline valida che la setup move sia legale e che `TargetMove` sia legale ne
 
 `src/graph/move_encoder.py` costruisce:
 
-- `artifacts/move_to_idx.json`;
-- `artifacts/idx_to_move.json`;
-- `artifacts/move_encoder_stats.json`.
+- `resources/move_encoder/move_to_idx.json`;
+- `resources/move_encoder/idx_to_move.json`;
+- `resources/move_encoder/move_encoder_stats.json`.
 
 La vocabulary è costruita solo dal train set per evitare leakage validation/test.
 

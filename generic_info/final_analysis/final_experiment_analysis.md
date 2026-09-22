@@ -58,5 +58,5 @@ Run:
 ./venv/bin/python -m src.cli.analysis.build_final_experiment_report
 ```
 
-Generated outputs are written under `artifacts/final_analysis/`, including machine-readable data in `artifacts/final_analysis/data/`, figures in `artifacts/final_analysis/figures/`, `source_manifest.json`, and `final_experiment_summary.md`.
+Generated outputs are written under `generic_info/final_analysis/`, including machine-readable data in `generic_info/final_analysis/data/`, figures in `generic_info/final_analysis/figures/`, `source_manifest.json`, and `final_experiment_summary.md`.
 
