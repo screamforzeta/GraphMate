@@ -33,7 +33,7 @@ Completato:
 
 Non ancora completato:
 
-- freeze finale del dataset esterno held-out classic Mate-in-N;
+- esecuzione server della freeze finale `yacpdb_classic_v1` se gli artifact consolidati non sono presenti localmente;
 - protocollo LLM;
 - confronto finale GNN-vs-LLM.
 
@@ -46,10 +46,10 @@ Infrastruttura held-out già presente:
 - key extraction strutturale che evita set play e tries;
 - availability scan per directmate YACPDB `#1`..`#10`;
 - validazione della key move senza engine e senza inferenza.
-- candidate dataset YACPDB `yacpdb_classic_v1`, 20 problemi per MateDepth #1..#10, stato `VALIDATED_NOT_FROZEN`.
+- candidate dataset YACPDB `yacpdb_classic_v1`, 20 problemi per MateDepth #1..#10;
+- consolidamento Popeye e machinery di freeze/verify del benchmark esterno.
 
-Il candidate dataset YACPDB non è ancora frozen: manca la verifica/review
-indipendente del forced mate.
+Il freeze reale richiede gli artifact consolidati prodotti sul server.
 
 ## Graph Representation
 
@@ -173,7 +173,21 @@ Validazione rappresentazioni:
   --verification-root data/heldout_classic/verification/yacpdb_classic_v1/popeye \
   --popeye-executable <path-popeye> \
   --timeout-seconds 300
+
+# freeze/verify del benchmark YACPDB classic dopo consolidamento Popeye
+./venv/bin/python -m src.verification.freeze_classic_benchmark \
+  --dataset-dir data/heldout_classic/final/yacpdb_classic_v1 \
+  --consolidated-dir data/heldout_classic/verification/yacpdb_classic_v1/consolidated
 ```
+
+## Documentazione Benchmark Esterno
+
+- `generic_info/heldout_classic_dataset.md`
+- `generic_info/yacpdb_methodology.md`
+- `generic_info/popeye_methodology.md`
+- `generic_info/classic_benchmark_methodology.md`
+- `generic_info/yacpdb_popeye_verification.md`
+- `data/heldout_classic/final/yacpdb_classic_v1/freeze_manifest.json` dopo il freeze server
 
 Streamlit:
 
