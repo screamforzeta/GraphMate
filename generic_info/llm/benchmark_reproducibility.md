@@ -48,7 +48,7 @@ GPT-OSS setting:
 
 GPT-OSS status: `RUNTIME_VALIDATED`.
 
-The first server2 smoke showed `num_predict=16` with default thinking enabled is invalid for all three models: generation ended with `done_reason=length`, non-empty truncated thinking, and empty final content. Qwen supports `think=false`; GPT-OSS supports reasoning levels and cannot fully disable reasoning. The frozen GPT-OSS protocol therefore uses the minimum supported reasoning effort, `think="low"`.
+The first remote-runtime smoke showed `num_predict=16` with default thinking enabled is invalid for all three models: generation ended with `done_reason=length`, non-empty truncated thinking, and empty final content. Qwen supports `think=false`; GPT-OSS supports reasoning levels and cannot fully disable reasoning. The frozen GPT-OSS protocol therefore uses the minimum supported reasoning effort, `think="low"`.
 
 GPT-OSS calibration was run only on non-official fixtures before any official Lichess inference:
 

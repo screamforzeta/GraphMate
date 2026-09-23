@@ -1,338 +1,167 @@
-# Progetto Damiani - Chess GNN
+# GraphMate
 
-Repository Python per costruire grafi PyTorch Geometric da puzzle Lichess mate-in-1..5 e valutare una famiglia di modelli GNN/GAT per predire la prossima mossa corretta.
+[English](README.md) | [Italiano](README.it.md)
 
-La fase GNN è congelata. La prossima fase è il benchmark held-out / LLM.
+GraphMate is a chess graph-neural-network research repository for predicting the next correct move in mate puzzles. It builds PyTorch Geometric graph representations from Lichess mate-in-1..5 puzzles, evaluates a frozen family of GNN/GAT models, compares them with local LLM baselines, and measures external generalization on a frozen YACPDB classic-composition benchmark.
 
-## Obiettivo
+The experimental phase is complete. The checked-in documentation and final analysis are intended to make the frozen results auditable without retraining models or mutating official artifacts.
 
-Il progetto studia:
+## Research Questions
 
-- rappresentazione a grafo di posizioni chess;
-- modelli no-timing e timing-aware;
-- ablation timing sintetico vs no timing;
-- futuro confronto con LLM su puzzle mate-in-n held-out.
+RQ1 asks where the timed GNN provides better move guidance than selected local LLM baselines. The literal timed comparison is evaluated on Lichess, where timing features exist.
 
-## Stato Attuale
+RQ2 asks whether adding the implemented synthetic timing signal improves over the matched no-timing GNN baseline. The controlled comparison is Model B against Model A3.
 
-Completato:
+YACPDB classic is used separately as an external generalization benchmark for A3, A4, and LLMs. Model B is not evaluated there because human timing is unavailable.
 
-- download puzzle Lichess `.csv.zst`;
-- download streaming PGN Lichess con campionamento;
-- preprocessing puzzle mate-in-1..5;
-- parsing/cleaning partite;
-- split train/validation/test;
-- vocabulary mosse costruita solo sul train set;
-- feature nodi, archi e globali;
-- dataset PyG sharded;
-- validator rappresentazioni;
-- Model A/A1/A2/A3/A4/B congelati e documentati;
-- terminal evaluation A3 vs A4;
-- timing ablation Model B;
-- Streamlit debugger/app con filtro MateDepth, graph view, puzzle interaction, model/result dashboard.
+## Key Results
 
-Non ancora completato:
+| Setting | Model / Baseline | Top-1 |
+| --- | --- | ---: |
+| Lichess official test | A3 legal-candidate scorer | 67.561% |
+| Lichess official test | B timing-aware A3 variant | 65.981% |
+| Lichess official test | A4 A3 Top-5 post-move reranker | 85.412% |
+| Lichess strict UCI | Qwen 3.5 4B | 0.070% |
+| Lichess strict UCI | Qwen 3.5 9B | 0.116% |
+| YACPDB classic | A3 | 11.0% |
+| YACPDB classic | A4 | 15.5% |
+| YACPDB classic | Qwen 3.5 4B | 0.0% |
+| YACPDB classic | Qwen 3.5 9B | 0.5% |
 
-- esecuzione server della freeze finale `yacpdb_classic_v1` se gli artifact consolidati non sono presenti localmente;
-- protocollo LLM;
-- confronto finale GNN-vs-LLM.
+The controlled RQ2 timing ablation did not support a timing benefit: Model B scored 1.580 percentage points below A3 on the aligned Lichess comparison (`n01=321`, `n10=457`, exact two-sided McNemar/binomial `p=1.2238376595768834e-06`). The bounded conclusion is that the implemented synthetic timing signal did not improve predictive performance relative to the matched no-timing A3 baseline.
 
-Infrastruttura held-out già presente:
-
-- builder generico per dataset classic Mate-in-N;
-- importer YACPDB da export/cache locale;
-- client YACPDB smoke per query/fetch/raw-cache con limite esplicito;
-- normalizzazione YACPDB `algebraic` -> FEN per directmate ortodossi;
-- key extraction strutturale che evita set play e tries;
-- availability scan per directmate YACPDB `#1`..`#10`;
-- validazione della key move senza engine e senza inferenza.
-- candidate dataset YACPDB `yacpdb_classic_v1`, 20 problemi per MateDepth #1..#10;
-- consolidamento Popeye e machinery di freeze/verify del benchmark esterno.
-
-Il freeze reale richiede gli artifact consolidati prodotti sul server.
-
-## Graph Representation
-
-Ogni posizione è un `torch_geometric.data.Data`:
-
-```text
-Data(x, edge_index, edge_attr, y, global_features)
-```
-
-- `x`: `[64, 15]`, una casella = un nodo;
-- `edge_index`: sparse PyG, non matrice di adiacenza;
-- `edge_attr`: `[E, 5]`, multilabel;
-- `global_features`: `[1, 4]`.
-
-Feature nodi:
-
-- one-hot pezzo: pawn, knight, bishop, rook, queen, king;
-- color;
-- occupied;
-- normalized row/column;
-- attacked_by_white;
-- attacked_by_black;
-- legal_mobility;
-- is_pinned;
-- piece_value.
-
-Feature archi:
-
-- legal_move;
-- attack;
-- defend;
-- pin;
-- check_line.
-
-Global features:
-
-- side_to_move;
-- is_check;
-- `min(fullmove_number, 200) / 200`;
-- `min(halfmove_clock, 100) / 100`.
-
-Semantica Lichess:
-
-```text
-OriginalFEN -> apply Moves[0] -> solver FEN -> TargetMove = Moves[1]
-```
-
-I modelli predicono la prossima mossa, non l'intera linea Mate-in-N autonoma.
+External generalization drops sharply from Lichess to YACPDB classic: A3 moves from 67.561% to 11.0%, and A4 from 85.412% to 15.5%. The analysis treats this as a distribution shift result, not as a claim that one benchmark is objectively harder.
 
 ## Model Family
 
-| Model | Sintesi | Stato |
-|---|---|---|
-| A | GAT no-timing fixed-vocabulary classifier | frozen historical baseline |
-| A1 | best-legal inference mode su Model A | historical diagnostic mode |
-| A2 | legal-masked fixed-vocabulary model | frozen |
-| A3 | legal-candidate scorer no-timing | frozen official no-timing baseline |
-| A4 | frozen A3 Top-5 + post-move GAT reranker | frozen terminal best GNN |
-| B | A3 + synthetic timing encoder | frozen timing ablation |
+| Model | Description | Status |
+| --- | --- | --- |
+| A | Global-vocabulary no-timing GAT classifier | Frozen historical baseline |
+| A1 | Best-legal inference mode over Model A | Diagnostic mode, no independent checkpoint |
+| A2 | Legal-masked global-vocabulary GAT classifier | Frozen baseline |
+| A3 | Legal-move candidate scorer without timing | Frozen official no-timing baseline |
+| B | A3-controlled timing-aware variant | Frozen timing ablation |
+| A4 | A3 Top-5 post-move GNN reranker | Frozen best GNN |
 
-Risultati principali:
+## Graph Representation
 
-- A3 test Top1: `67.5609756097561%`;
-- A4 test end-to-end Top1: `85.4123112659698%`;
-- A4 delta vs A3: `+17.8513` pp;
-- B synthetic timing Top1: `65.9814%`, quindi sotto A3 per questa rappresentazione timing sintetica.
+Each chess position is represented as a `torch_geometric.data.Data` object with 64 board-square nodes.
 
-## Struttura
+Node features have dimension 15: piece type one-hot (`pawn`, `knight`, `bishop`, `rook`, `queen`, `king`), color, occupied, row, column, attacked-by-white, attacked-by-black, legal mobility, pinned status, and piece value.
+
+Edges use a 5-dimensional multilabel representation: legal move, attack, defend, pin, and check line. Global features are side to move, check status, normalized fullmove number, and normalized halfmove clock.
+
+For Lichess puzzles, the solver position is obtained by applying `Moves[0]` to `OriginalFEN`; the target is `Moves[1]`. The models predict the next move from the solver position, not a full autonomous mate line.
+
+## Data And Timing
+
+The main training and test distribution is Lichess mate-in-1..5. The final split is approximately 68,958 train, 8,620 validation, and 8,620 test positions; some official aligned evaluations use 8,610 evaluable terminal samples.
+
+Model B uses synthetic, rating-conditioned timing features: previous move time, original move time, and a `time_is_synthetic` indicator. These are not human think-time measurements.
+
+The external benchmark is `yacpdb_classic_v1`, a frozen set of 200 YACPDB directmate compositions with 20 problems per mate depth from #1 through #10. Accepted-key scoring is used for classic compositions.
+
+## LLM Baselines
+
+The primary LLM baselines are local `qwen3.5:4b` and `qwen3.5:9b` runs. Strict UCI parsing is the primary metric; relaxed parsing is diagnostic only. GPT-OSS attempts are documented but excluded from the primary comparison because protocol, reasoning, and truncation behavior made them unsuitable for the final strict accuracy table.
+
+## Repository Structure
 
 ```text
-src/
-  data/             # download, preprocessing, timing data
-    heldout_sources/ # import sorgenti esterne classic, incluso YACPDB
-  graph/            # node/edge/global features, PyG dataset, Streamlit app
-  models/           # model_a e model_b architectures
-  training/         # training loops A/A2/A3/A4/B
-  inference/        # inference adapters
-  evaluation/       # frozen evaluation and ablations
-  validation/       # representation validator
-  streamlit_app/    # Streamlit-independent UI helpers
-  cli/              # python -m entrypoints
-
-data/heldout_classic/
-  raw/              # sorgenti esterne pubbliche, non Lichess
-  processed/        # righe rifiutate/quarantena
-  final/            # candidate/frozen dataset esterni
-    yacpdb_classic_v1/ # 200 candidate VALIDATED_NOT_FROZEN
-
-generic_info/
-  models/           # definitive frozen model documentation
-  architecture/     # repository and architecture notes
-  classic_benchmark/# YACPDB/Popeye/classic benchmark methodology
-  final_analysis/   # consolidated final scientific tables, figures, summary
-  llm/              # LLM benchmark protocol and diagnostics
-  reference/        # project specification PDF
-
-resources/
-  move_encoder/     # canonical checked-in move vocabulary resources
-
-checkpoints/        # final frozen distributable checkpoints only
-artifacts/          # raw/intermediate local experiment outputs, gitignored
+src/                         # data, graph, model, training, inference, evaluation, analysis code
+tests/                       # unit and integration tests
+checkpoints/                 # final frozen distributable checkpoints
+resources/move_encoder/      # checked-in canonical move vocabulary
+generic_info/                # public technical notes and final reports
+generic_info/final_analysis/ # canonical generated final analysis tables, figures, summary
+data/                        # local data root, mostly ignored
+artifacts/                   # local experiment outputs, ignored
+TimeGNN-main/                # external upstream code, kept separate
 ```
 
-## Comandi
+See [generic_info/README.md](generic_info/README.md), [checkpoints/README.md](checkpoints/README.md), and [resources/README.md](resources/README.md) for more detail.
 
-Pipeline principale:
+## Installation
 
 ```bash
-python3 main.py
+python -m venv venv
+./venv/bin/python -m pip install --upgrade pip
+./venv/bin/python -m pip install -r requirements.txt
 ```
 
-Validazione rappresentazioni:
+PyTorch installation can be platform-specific, especially when CUDA wheels are required. If the generic `requirements.txt` install is not suitable for your machine, install the matching PyTorch/PyG wheels first and then install the remaining requirements.
+
+## Data Preparation
+
+The historical all-in-one Lichess pipeline entry point is:
 
 ```bash
-./venv/bin/python -m src.validation.representations \
-  --csv-sample 1000 \
-  --graph-sample 500 \
-  --seed 42
-
-# build offline del candidate dataset YACPDB held-out
-./venv/bin/python -m src.data.heldout_sources.yacpdb_candidate_build \
-  --output-root data/heldout_classic \
-  --dataset-version yacpdb_classic_v1 \
-  --per-depth 20 \
-  --seed 42
-
-# verifica Popeye indipendente, da eseguire solo con Popeye installato
-./venv/bin/python -m src.verification.popeye \
-  --dataset-dir data/heldout_classic/final/yacpdb_classic_v1 \
-  --verification-root data/heldout_classic/verification/yacpdb_classic_v1/popeye \
-  --popeye-executable <path-popeye> \
-  --timeout-seconds 300
-
-# freeze/verify del benchmark YACPDB classic dopo consolidamento Popeye
-./venv/bin/python -m src.verification.freeze_classic_benchmark \
-  --dataset-dir data/heldout_classic/final/yacpdb_classic_v1 \
-  --consolidated-dir data/heldout_classic/verification/yacpdb_classic_v1/consolidated
+./venv/bin/python main.py
 ```
 
-## Documentazione Benchmark Esterno
-
-- `generic_info/classic_benchmark/heldout_classic_dataset.md`
-- `generic_info/classic_benchmark/yacpdb/yacpdb_methodology.md`
-- `generic_info/classic_benchmark/popeye/popeye_methodology.md`
-- `generic_info/classic_benchmark/classic_benchmark_methodology.md`
-- `generic_info/classic_benchmark/classic_evaluation_protocol.md`
-- `generic_info/classic_benchmark/popeye/yacpdb_popeye_verification.md`
-- `data/heldout_classic/final/yacpdb_classic_v1/freeze_manifest.json` dopo il freeze server
-
-Streamlit:
+Representation validation can be inspected with:
 
 ```bash
-streamlit run src/graph/debug/streamlit_graph_debugger.py
+./venv/bin/python -m src.validation.representations --help
 ```
 
-Model A3 evaluation:
+Frozen final results should be reproduced from the existing artifacts and checkpoints rather than by rebuilding datasets casually.
+
+## Training
+
+Training entry points remain available for reproducibility and extension:
 
 ```bash
-./venv/bin/python -m src.cli.evaluation.evaluate_model_a_vs_a2_vs_a3 \
-  --device cuda \
-  --batch-size 128 \
-  --non-blocking \
-  --amp
+./venv/bin/python -m src.cli.training.train_model_a3_legal_scorer --help
+./venv/bin/python -m src.cli.training.train_model_b_timing_legal_scorer --help
+./venv/bin/python -m src.cli.training.train_model_a4_postmove --help
 ```
 
-Model A4 terminal evaluator is already completed; do not rerun casually. The entrypoint is:
+The public results in this repository use the frozen checkpoints under [checkpoints/](checkpoints/). Training is not required to inspect the final analysis.
+
+## Evaluation
+
+Representative evaluation entry points:
 
 ```bash
-./venv/bin/python -m src.cli.evaluation.evaluate_model_a3_vs_a4 \
-  --device cuda \
-  --batch-size 128 \
-  --non-blocking \
-  --amp \
-  --run-terminal-test
+./venv/bin/python -m src.cli.evaluation.evaluate_model_a_vs_a2_vs_a3 --help
+./venv/bin/python -m src.cli.evaluation.evaluate_model_b_timing_ablation --help
+./venv/bin/python -m src.cli.evaluation.evaluate_model_a3_vs_a4 --help
+./venv/bin/python -m src.cli.evaluation.evaluate_classic_heldout --help
+./venv/bin/python -m src.cli.evaluation.benchmark_llm_chess --help
 ```
 
-Model B timing ablation:
+Use the command help before launching an evaluation, because some commands expect local data or ignored artifact paths that are not part of the public Git checkout.
+
+## Final Analysis
+
+The canonical public analysis is under [generic_info/final_analysis/](generic_info/final_analysis/):
+
+- [final_experiment_summary.md](generic_info/final_analysis/final_experiment_summary.md) is the generated scientific summary.
+- [final_experiment_analysis.md](generic_info/final_analysis/final_experiment_analysis.md) explains source selection, statistics, exclusions, and limitations.
+- `data/` contains machine-readable tables and statistical outputs.
+- `figures/` contains generated SVG and PNG figures.
+
+Regeneration entry point:
 
 ```bash
-./venv/bin/python -m src.cli.evaluation.evaluate_model_b_timing_ablation \
-  --device cuda \
-  --batch-size 128 \
-  --non-blocking \
-  --amp
+./venv/bin/python -m src.cli.analysis.build_final_experiment_report --help
 ```
 
-Classic held-out evaluator:
+## Checkpoints And Resources
 
-```bash
-# smoke test sicuro su fixture sintetica, non usa i 200 YACPDB congelati
-./venv/bin/python -m src.cli.evaluation.evaluate_classic_heldout \
-  --smoke-test \
-  --model MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING \
-  --device cuda:0 \
-  --amp
+Frozen model checkpoints are documented in [checkpoints/README.md](checkpoints/README.md). The canonical move vocabulary is documented in [resources/README.md](resources/README.md).
 
-# run ufficiale solo dopo freeze verificato
-./venv/bin/python -m src.cli.evaluation.evaluate_classic_heldout \
-  --official \
-  --model MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING \
-  --device cuda:0 \
-  --amp
-```
+Do not write training outputs into `checkpoints/`; keep trial and raw experiment artifacts under ignored local artifact directories.
 
-Held-out classic dataset builder (non esegue modelli):
+## Limitations
 
-```bash
-./venv/bin/python -m src.data.heldout_classic \
-  --source data/heldout_classic/raw/<external_source>.jsonl \
-  --dataset-version v1 \
-  --source-name <public-source-name> \
-  --source-url <source-url> \
-  --source-license <license-or-provenance> \
-  --per-depth 20 \
-  --seed 42
-```
+The timing experiment uses synthetic timing features, so it does not answer whether real human think-time would help. YACPDB per-depth buckets are small (`N=20`), so depth-level intervals are wide. The LLM comparison measures strict move-output behavior under the documented protocol and should not be read as a broad benchmark of general chess ability.
 
-YACPDB availability scan da export/cache locale:
+## License And Citation
 
-```bash
-./venv/bin/python -m src.data.heldout_sources.yacpdb \
-  --mode availability \
-  --source data/heldout_classic/raw/yacpdb/<export>.jsonl \
-  --output-root data/heldout_classic
-```
+This repository is released under the [MIT License](LICENSE). If you use GraphMate before formal citation metadata is added, cite the repository and the final analysis summary.
 
-YACPDB smoke fetch tecnico, massimo 3 record:
+## Acknowledgements
 
-```bash
-./venv/bin/python -m src.data.heldout_sources.yacpdb_client \
-  --mode fetch-id \
-  --problem-id 26026 \
-  --max-records 3 \
-  --output-dir data/heldout_classic/raw/yacpdb/smoke
-```
-
-YACPDB candidate build:
-
-```bash
-./venv/bin/python -m src.data.heldout_sources.yacpdb \
-  --mode build \
-  --source data/heldout_classic/raw/yacpdb/<export>.jsonl \
-  --output-root data/heldout_classic \
-  --dataset-version yacpdb_v1 \
-  --per-depth 20 \
-  --seed 42
-```
-
-Lo stato corrente dell'held-out dataset e `AVAILABILITY_READY`: l'infrastruttura e l'importer YACPDB locale esistono, ma nessun problema esterno reale e stato congelato in questa VM.
-Il normalizzatore YACPDB e pronto per il prossimo availability scan, ma lo scan completo `#1`..`#10` non e stato eseguito in questa fase.
-
-## Documentazione Chiave
-
-- [Graph representation](generic_info/models/graph_representation.md)
-- [Frozen model family](generic_info/models/model_family.md)
-- [Experimental protocol](generic_info/models/experimental_protocol.md)
-- [Pre-LLM project status](generic_info/project/pre_llm_project_status.md)
-- [Project specification coverage](generic_info/project/project_specification_coverage.md)
-- [Held-out classic dataset](generic_info/classic_benchmark/heldout_classic_dataset.md)
-- [YACPDB import](generic_info/classic_benchmark/yacpdb/yacpdb_import.md)
-
-## Gitignore / Artifact Policy
-
-Dati generati e artifact pesanti non devono essere versionati:
-
-- `artifacts/` per raw/intermediate experiment outputs;
-- `data/`
-- `data/pyg/`
-- `data/pyg_puzzles_timing/`
-- `lib/`
-- `__pycache__/`
-- `*.pyc`
-- `.streamlit/`
-- `graph_visualization.html`
-- file temporanei/cache.
-
-`resources/move_encoder/` contiene la vocabulary canonica train-only versionata. `checkpoints/` contiene solo i checkpoint finali congelati. `generic_info/final_analysis/` contiene l'analisi scientifica consolidata versionata; la pipeline la rigenera leggendo le fonti raw da `artifacts/`.
-
-## Prossima Fase
-
-La fase GNN è pronta per handoff. Rimangono:
-
-- costruire held-out classic puzzle set;
-- implementare protocollo LLM;
-- confrontare GNN e LLM con metriche coerenti;
-- finalizzare analisi statistica e report.
+GraphMate uses public chess puzzle and composition sources, PyTorch Geometric infrastructure, and local open model baselines. External upstream code under `TimeGNN-main/` is kept separate from the GraphMate implementation.

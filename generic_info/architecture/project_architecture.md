@@ -1,10 +1,10 @@
 # Project Architecture
 
-Questo documento descrive come è organizzato il progetto e come scorre la pipeline end-to-end. Le motivazioni progettuali sono raccolte in [architectural_choices.md](architectural_choices.md).
+Questo documento storico descrive come era organizzata una fase iniziale del progetto e come scorreva la pipeline end-to-end. Le motivazioni progettuali sono raccolte in [architectural_choices.md](architectural_choices.md). Per la vista pubblica aggiornata del repository, usa il [README principale](../../README.md).
 
 ## Obiettivo
 
-`Progetto-Damiani` rappresenta posizioni di puzzle Lichess come grafi PyTorch Geometric e addestra un modello GAT graph-level per predire la prima mossa corretta della soluzione.
+GraphMate rappresenta posizioni di puzzle Lichess come grafi PyTorch Geometric e addestra modelli GNN/GAT graph-level per predire la prima mossa corretta della soluzione.
 
 Stato implementato:
 
@@ -29,7 +29,7 @@ Stato pianificato:
 ## Directory Tree
 
 ```text
-Progetto-Damiani/
+GraphMate/
 ├── main.py
 ├── README.md
 ├── requirements.txt
@@ -303,7 +303,7 @@ Stato Model A:
 IMPLEMENTED -> TRAINED -> CONVERGED -> FROZEN
 ```
 
-Documento principale: [model_a_no_timing.md](model_a_no_timing.md).
+Documento principale: [model_a_no_timing.md](../models/model_a/model_a_no_timing.md).
 
 Forma logica:
 

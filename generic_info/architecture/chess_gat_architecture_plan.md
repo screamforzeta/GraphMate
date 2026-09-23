@@ -1,6 +1,6 @@
 # Chess GAT Architecture Plan
 
-> Nota di stato: questo documento è un piano storico. `ChessGATNoTiming` è stato implementato, addestrato, portato a convergenza empirica e congelato come `MODEL_A_NO_TIMING_FROZEN_BASELINE`. Il riferimento definitivo aggiornato è [`model_a_no_timing.md`](model_a_no_timing.md).
+> Nota di stato: questo documento è un piano storico. `ChessGATNoTiming` è stato implementato, addestrato, portato a convergenza empirica e congelato come `MODEL_A_NO_TIMING_FROZEN_BASELINE`. Il riferimento definitivo aggiornato è [`model_a_no_timing.md`](../models/model_a/model_a_no_timing.md).
 
 ## Obiettivo
 

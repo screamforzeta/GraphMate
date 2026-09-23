@@ -1,6 +1,6 @@
 # Final Experiment Analysis Layer
 
-This analysis layer consolidates already completed official Progetto-Damiani experiments into reproducible tables, statistics, figures, and a generated summary report.
+This analysis layer consolidates already completed official GraphMate experiments into reproducible tables, statistics, figures, and a generated summary report.
 
 It is analysis-only. It reads existing artifacts and does not train models, run official inference, mutate checkpoints, rebuild datasets, edit frozen accepted-key files, or modify `TimeGNN-main/`.
 
@@ -59,4 +59,3 @@ Run:
 ```
 
 Generated outputs are written under `generic_info/final_analysis/`, including machine-readable data in `generic_info/final_analysis/data/`, figures in `generic_info/final_analysis/figures/`, `source_manifest.json`, and `final_experiment_summary.md`.
-

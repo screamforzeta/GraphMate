@@ -881,7 +881,7 @@ Final test dopo reload del best checkpoint:
 Da questo punto modifiche a architecture, feature, target, vocabulary, masking, optimizer protocol o hyperparameter non sono lo stesso Model A baseline. Devono essere trattate come variante, ablation o nuovo esperimento.
 
 **Methodology Note**  
-Il test è stato osservato più volte nella storia. La continuation fu decisa usando solo stato training/validation, non il risultato test epoch 150. Il documento principale è [model_a_no_timing.md](model_a_no_timing.md).
+Il test è stato osservato più volte nella storia. La continuation fu decisa usando solo stato training/validation, non il risultato test epoch 150. Il documento principale è [model_a_no_timing.md](../models/model_a/model_a_no_timing.md).
 
 ## 41. Evaluate Legality-Aware Training As Controlled No-Timing Ablation
 

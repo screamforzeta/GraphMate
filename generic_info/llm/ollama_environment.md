@@ -2,9 +2,9 @@
 
 Audit date: 2026-09-19
 
-The development VM must not contact Docker or Ollama directly. Runtime checks are executed manually on server2.
+The development VM must not contact Docker or Ollama directly. Runtime checks are executed manually on a separate local runtime host.
 
-## Server2 Runtime
+## Local Runtime
 
 Endpoint:
 

@@ -1,5 +1,5 @@
-python3 main.py                                                                                                                    37m 36s py Progetto-Damiani ale@server2 15:16:36
-/home/ale/code/damians/Progetto-Damiani/venv/lib/python3.14/site-packages/torch/jit/_script.py:1485: FutureWarning: `torch.jit.script` is not supported in Python 3.14+ and may break. Please switch to `torch.compile` or `torch.export`.
+python3 main.py                                                                                                                    37m 36s py GraphMate <local-shell-context-redacted>
+<repo>/venv/lib/python3.14/site-packages/torch/jit/_script.py:1485: FutureWarning: `torch.jit.script` is not supported in Python 3.14+ and may break. Please switch to `torch.compile` or `torch.export`.
   warnings.warn(
 [INFO] Downloading Lichess puzzle database...
 lichess_puzzles.csv.zst: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 290M/290M [03:45<00:00, 1.35MB/s]
