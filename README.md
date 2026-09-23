@@ -2,9 +2,13 @@
 
 [English](README.md) | [Italiano](README.it.md)
 
-GraphMate is a chess graph-neural-network research repository for predicting the next correct move in mate puzzles. It builds PyTorch Geometric graph representations from Lichess mate-in-1..5 puzzles, evaluates a frozen family of GNN/GAT models, compares them with local LLM baselines, and measures external generalization on a frozen YACPDB classic-composition benchmark.
+GraphMate is a chess graph-neural-network research repository for chess puzzle solving, timing-aware move prediction, post-move reranking, and comparison with language models. It builds PyTorch Geometric graph representations from Lichess mate-in-1..5 puzzles, evaluates a frozen family of GNN/GAT models, compares them with local LLM baselines, and measures external generalization on a frozen YACPDB classic-composition benchmark.
 
 The experimental phase is complete. The checked-in documentation and final analysis are intended to make the frozen results auditable without retraining models or mutating official artifacts.
+
+![GraphMate architecture and evaluation overview](docs/images/graphmate_overview.svg)
+
+A3 and B form the controlled no-timing/timing comparison, while A4 tests whether explicit post-move graph reasoning can improve ranking over frozen A3 Top-5 retrieval.
 
 ## Research Questions
 
@@ -55,7 +59,7 @@ For Lichess puzzles, the solver position is obtained by applying `Moves[0]` to `
 
 ## Data And Timing
 
-The main training and test distribution is Lichess mate-in-1..5. The final split is approximately 68,958 train, 8,620 validation, and 8,620 test positions; some official aligned evaluations use 8,610 evaluable terminal samples.
+The main training and test distribution is Lichess mate-in-1..5. The final CSV split contains 68,958 training, 8,620 validation, and 8,620 test puzzles. The move vocabulary is built exclusively from the training split. Eight validation targets and ten test targets are out of vocabulary, leaving 8,612 validation and 8,610 test graphs in the PyG datasets used by the frozen graph-model evaluations.
 
 Model B uses synthetic, rating-conditioned timing features: previous move time, original move time, and a `time_is_synthetic` indicator. These are not human think-time measurements.
 

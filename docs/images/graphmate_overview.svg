@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">GraphMate architecture and evaluation overview</title>
+  <desc id="desc">A chess position is encoded as a 64-square graph, processed by shared GAT components, then evaluated through A3, B, and A4 model paths on Lichess and YACPDB with LLM comparison.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1d4ed8"/>
+    </marker>
+    <style>
+      .bg { fill: #ffffff; }
+      .title { font-family: Arial, Helvetica, sans-serif; font-size: 28px; font-weight: 700; fill: #0f172a; }
+      .subtitle { font-family: Arial, Helvetica, sans-serif; font-size: 15px; fill: #475569; }
+      .label { font-family: Arial, Helvetica, sans-serif; font-size: 17px; font-weight: 700; fill: #0f172a; }
+      .text { font-family: Arial, Helvetica, sans-serif; font-size: 14px; fill: #334155; }
+      .small { font-family: Arial, Helvetica, sans-serif; font-size: 12px; fill: #475569; }
+      .tiny { font-family: Arial, Helvetica, sans-serif; font-size: 11px; fill: #64748b; }
+      .box { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.4; rx: 10; }
+      .source { fill: #eef2ff; stroke: #6366f1; }
+      .graph { fill: #ecfeff; stroke: #0891b2; }
+      .model { fill: #f0fdf4; stroke: #16a34a; }
+      .timing { fill: #fff7ed; stroke: #ea580c; }
+      .rerank { fill: #fdf2f8; stroke: #db2777; }
+      .eval { fill: #f8fafc; stroke: #64748b; }
+      .llm { fill: #faf5ff; stroke: #9333ea; }
+      .line { fill: none; stroke: #334155; stroke-width: 2; marker-end: url(#arrow); }
+      .line-blue { fill: none; stroke: #1d4ed8; stroke-width: 2.3; marker-end: url(#arrow-blue); }
+      .line-dash { fill: none; stroke: #64748b; stroke-width: 1.7; stroke-dasharray: 7 5; marker-end: url(#arrow); }
+      .bracket { fill: none; stroke: #1d4ed8; stroke-width: 1.8; stroke-dasharray: 6 5; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="58" y="52">GraphMate architecture and evaluation overview</text>
+  <text class="subtitle" x="58" y="78">Graph neural networks for chess puzzle solving, timing-aware move prediction, post-move reranking, and comparison with language models.</text>
+
+  <rect class="box source" x="64" y="122" width="220" height="78"/>
+  <text class="label" x="92" y="152">Chess position</text>
+  <text class="text" x="92" y="176">Solver FEN + target move</text>
+
+  <rect class="box graph" x="354" y="110" width="250" height="104"/>
+  <text class="label" x="386" y="142">64-square chess graph</text>
+  <text class="text" x="386" y="166">64 square nodes</text>
+  <text class="text" x="386" y="186">15 node features, 5 edge relations</text>
+  <text class="text" x="386" y="206">4 global features including is_check</text>
+
+  <rect class="box graph" x="674" y="122" width="190" height="78"/>
+  <text class="label" x="722" y="153">GAT encoder</text>
+  <text class="text" x="710" y="176">Shared graph reasoning</text>
+
+  <path class="line" d="M 284 161 L 354 161"/>
+  <path class="line" d="M 604 161 L 674 161"/>
+
+  <rect class="box model" x="170" y="278" width="238" height="112"/>
+  <text class="label" x="257" y="310">A3</text>
+  <text class="text" x="205" y="334">No-timing legal-move</text>
+  <text class="text" x="205" y="354">candidate scorer</text>
+  <text class="small" x="205" y="376">Main controlled baseline</text>
+
+  <rect class="box timing" x="502" y="278" width="238" height="112"/>
+  <text class="label" x="604" y="310">B</text>
+  <text class="text" x="532" y="334">Timing-aware A3 variant</text>
+  <text class="text" x="532" y="354">with synthetic timing context</text>
+  <text class="small" x="532" y="376">Comparable candidates and graph setup</text>
+
+  <rect class="box rerank" x="286" y="454" width="254" height="132"/>
+  <text class="label" x="396" y="486">A4</text>
+  <text class="text" x="318" y="510">Frozen A3 Top-5 retrieval</text>
+  <text class="text" x="318" y="532">Candidate move application</text>
+  <text class="text" x="318" y="554">Post-move graph construction</text>
+  <text class="small" x="318" y="576">Learned post-move GNN reranker</text>
+
+  <path class="line" d="M 739 200 C 680 238, 510 246, 360 278"/>
+  <path class="line" d="M 769 200 C 745 242, 690 251, 650 278"/>
+  <path class="line-blue" d="M 294 390 C 300 426, 330 438, 368 454"/>
+  <text class="small" x="196" y="432">frozen Top-5 candidates</text>
+
+  <path class="bracket" d="M 205 262 C 270 238, 650 238, 717 262"/>
+  <text class="small" x="384" y="250">RQ2 controlled comparison: A3 vs B</text>
+
+  <rect class="box eval" x="858" y="278" width="284" height="118"/>
+  <text class="label" x="950" y="310">Lichess</text>
+  <text class="text" x="890" y="334">Mate-in-1 through mate-in-5</text>
+  <text class="text" x="890" y="354">Main train/validation/test domain</text>
+  <text class="small" x="890" y="376">A3, B, A4 and Qwen comparison</text>
+
+  <rect class="box eval" x="858" y="462" width="284" height="118"/>
+  <text class="label" x="926" y="494">YACPDB classic</text>
+  <text class="text" x="890" y="518">External held-out compositions</text>
+  <text class="text" x="890" y="538">Mate #1 through #10, 200 positions</text>
+  <text class="small" x="890" y="560">A3, A4, Qwen; B = N/A timing unavailable</text>
+
+  <rect class="box llm" x="858" y="622" width="284" height="58"/>
+  <text class="label" x="928" y="646">LLM comparison</text>
+  <text class="text" x="932" y="668">Qwen 3.5 4B / 9B</text>
+
+  <path class="line" d="M 408 334 L 858 334"/>
+  <path class="line" d="M 740 334 L 858 334"/>
+  <path class="line" d="M 540 520 C 664 516, 738 382, 858 360"/>
+  <path class="line-dash" d="M 540 538 C 672 564, 734 520, 858 520"/>
+  <path class="line-dash" d="M 408 352 C 610 438, 680 498, 858 520"/>
+  <path class="line" d="M 1000 396 L 1000 462"/>
+  <path class="line" d="M 1000 580 L 1000 622"/>
+
+  <text class="small" x="884" y="424">RQ1: B vs Qwen on Lichess by mate depth</text>
+  <text class="small" x="858" y="606">External generalization: A3/A4 Lichess to YACPDB</text>
+  <text class="tiny" x="62" y="690">Note: B is evaluated on Lichess only because the classic-composition benchmark has no timing inputs.</text>
+</svg>

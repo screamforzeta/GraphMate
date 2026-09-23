@@ -2,9 +2,13 @@
 
 [English](README.md) | [Italiano](README.it.md)
 
-GraphMate è un repository di ricerca su reti neurali a grafo per gli scacchi. Costruisce rappresentazioni PyTorch Geometric da puzzle Lichess mate-in-1..5, valuta una famiglia congelata di modelli GNN/GAT, li confronta con baseline LLM locali e misura la generalizzazione esterna su un benchmark congelato di composizioni classiche YACPDB.
+GraphMate è un repository di ricerca su reti neurali a grafo per la risoluzione di puzzle scacchistici, la predizione di mosse con timing, il reranking post-move e il confronto con modelli linguistici. Costruisce rappresentazioni PyTorch Geometric da puzzle Lichess mate-in-1..5, valuta una famiglia congelata di modelli GNN/GAT, li confronta con baseline LLM locali e misura la generalizzazione esterna su un benchmark congelato di composizioni classiche YACPDB.
 
 La fase sperimentale è conclusa. La documentazione e l'analisi finale versionate servono a rendere verificabili i risultati congelati senza riaddestrare modelli o modificare artifact ufficiali.
+
+![Panoramica dell'architettura e della valutazione GraphMate](docs/images/graphmate_overview.svg)
+
+A3 e B costituiscono il confronto controllato senza/con timing, mentre A4 verifica se il ragionamento esplicito sul grafo successivo alla mossa può migliorare il ranking ottenuto dal Top-5 congelato di A3.
 
 ## Domande Di Ricerca
 
@@ -55,7 +59,7 @@ Per i puzzle Lichess, la posizione del solutore è ottenuta applicando `Moves[0]
 
 ## Dati E Timing
 
-La distribuzione principale di training e test è Lichess mate-in-1..5. Lo split finale è circa 68,958 posizioni di train, 8,620 di validation e 8,620 di test; alcune valutazioni ufficiali allineate usano 8,610 campioni terminali valutabili.
+La distribuzione principale di training e test è Lichess mate-in-1..5. Lo split CSV finale contiene 68,958 puzzle di training, 8,620 di validation e 8,620 di test. Il vocabolario delle mosse è costruito esclusivamente dallo split di training. Otto target di validation e dieci target di test sono fuori vocabolario, lasciando 8,612 grafi di validation e 8,610 grafi di test nei dataset PyG usati dalle valutazioni congelate dei modelli a grafo.
 
 Model B usa feature di timing sintetiche condizionate dal rating: tempo della mossa precedente, tempo della mossa originale e indicatore `time_is_synthetic`. Non sono misure di riflessione umana.
 
