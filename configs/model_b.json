@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "model_id": "b",
+  "run_id": "MODEL_B_TIMING_LEGAL_MOVE_SCORER",
+  "role": "Timing-aware controlled variant of A3",
+  "official_checkpoint": {
+    "path": "checkpoints/model_b/best.pt",
+    "sha256": "b8bbad2420ce301582ad08377b1c80f56609513a8dae201600557e255b87d26f"
+  },
+  "timing": {
+    "uses_timing": true,
+    "dataset_root": "data/pyg_puzzles_timing",
+    "generator_version": "puzzle_timing_lognormal_v1",
+    "feature_names": [
+      "previous_move_time",
+      "original_move_time",
+      "time_is_synthetic"
+    ],
+    "raw_metadata_fields": [
+      "previous_move_time_seconds",
+      "original_move_time_seconds"
+    ],
+    "global_seed": 42,
+    "normalization": "train-only log1p z-score",
+    "indicator_value": 1.0,
+    "timing_hidden_dim": 16,
+    "required_paths": [
+      "data/pyg_puzzles_timing/manifest.json"
+    ]
+  },
+  "dependencies": [
+    {
+      "model_id": "a3",
+      "relationship": "architecture-controlled baseline, not loaded during B training"
+    }
+  ],
+  "data": {
+    "pyg_root": "data/pyg_puzzles_timing",
+    "move_encoder": "resources/move_encoder/move_to_idx.json",
+    "required_paths": [
+      "data/pyg_puzzles_timing/manifest.json",
+      "resources/move_encoder/move_to_idx.json"
+    ]
+  },
+  "architecture": {
+    "model_class": "ChessGATTimingLegalMoveScorer",
+    "input_dim": 15,
+    "edge_dim": 5,
+    "hidden_per_head": 32,
+    "heads": 4,
+    "num_layers": 2,
+    "global_feature_dim": 4,
+    "scorer_hidden_dim": 128,
+    "promotion_embedding_dim": 8,
+    "timing_input_dim": 3,
+    "timing_hidden_dim": 16,
+    "dropout": 0.3,
+    "output_space": "variable_legal_candidates",
+    "vocabulary_size_for_compatibility": 1786
+  },
+  "training": {
+    "seed": 42,
+    "optimizer": "Adam",
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "batch_size": 128,
+    "max_epochs": 300,
+    "early_stopping_patience": 12,
+    "min_delta": 0.0,
+    "num_workers": 0,
+    "pin_memory": true,
+    "persistent_workers": false,
+    "prefetch_factor": null,
+    "non_blocking": true,
+    "amp": true
+  },
+  "scheduler": {
+    "type": "ReduceLROnPlateau",
+    "mode": "min",
+    "factor": 0.5,
+    "patience": 3,
+    "min_lr": 0.000001
+  },
+  "provenance": {
+    "authoritative_source": "artifacts/model_b_timing_legal_move_scorer/final_report.json",
+    "timing_protocol_source": "src/data/timing/puzzle_timing.py",
+    "config_source": "EXTENDS_MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING"
+  }
+}

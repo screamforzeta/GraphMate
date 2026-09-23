@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "model_id": "a4",
+  "run_id": "MODEL_A4_POSTMOVE_GNN_RERANKER_NO_TIMING",
+  "role": "A3 Top-5 post-move GNN reranker",
+  "official_checkpoint": {
+    "path": "checkpoints/model_a4/best.pt",
+    "sha256": "0cb73acf70487efa5c93f715a5a60c0aa09d64792d894301efaaaf47b2801e99"
+  },
+  "timing": {
+    "uses_timing": false
+  },
+  "dependencies": [
+    {
+      "model_id": "a3",
+      "relationship": "frozen Top-5 retrieval dependency",
+      "checkpoint_path": "checkpoints/model_a3/best.pt",
+      "checkpoint_sha256": "4efec653a451da7585f3663847c8dc5caaa8ebffadea677617e2f496e4253b80"
+    }
+  ],
+  "data": {
+    "pyg_root": "data/pyg",
+    "cache_root": "data/model_a4_postmove",
+    "move_encoder": "resources/move_encoder/move_to_idx.json",
+    "required_paths": [
+      "data/model_a4_postmove/manifest.json",
+      "resources/move_encoder/move_to_idx.json",
+      "checkpoints/model_a3/best.pt"
+    ]
+  },
+  "retrieval": {
+    "source_model": "a3",
+    "top_k": 5,
+    "a3_checkpoint": "checkpoints/model_a3/best.pt",
+    "a3_checkpoint_sha256": "4efec653a451da7585f3663847c8dc5caaa8ebffadea677617e2f496e4253b80",
+    "cache_root": "data/model_a4_postmove",
+    "graph_representation_version": "pyg_chess_graph_v1_node15_edge5_global4",
+    "test_split_cached": false
+  },
+  "architecture": {
+    "model_class": "ChessA4PostMoveReranker",
+    "postmove_encoder": "PostMoveGATEncoder",
+    "input_dim": 15,
+    "edge_dim": 5,
+    "hidden_per_head": 32,
+    "heads": 4,
+    "num_layers": 2,
+    "global_feature_dim": 4,
+    "node_hidden_dim": 128,
+    "graph_context_dim": 132,
+    "promotion_embedding_dim": 8,
+    "score_feature_dim": 2,
+    "scorer_hidden_dim": 128,
+    "candidate_dim": 530,
+    "dropout": 0.3
+  },
+  "training": {
+    "seed": 42,
+    "optimizer": "Adam",
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "batch_size": 128,
+    "max_epochs": 300,
+    "early_stopping_patience": 12,
+    "min_delta": 0.0,
+    "num_workers": 0,
+    "pin_memory": true,
+    "non_blocking": true,
+    "amp": true
+  },
+  "scheduler": {
+    "type": "ReduceLROnPlateau",
+    "mode": "max",
+    "factor": 0.5,
+    "patience": 3,
+    "min_lr": 0.000001
+  },
+  "provenance": {
+    "authoritative_source": "src/training/model_a/model_a4_postmove_reranker.py::ModelA4PostMoveConfig",
+    "training_summary": "artifacts/model_a4_postmove_gnn_reranker/training_summary.json",
+    "cache_manifest_source": "artifacts/model_a4_postmove_gnn_reranker/benchmark_cached_validation.json"
+  }
+}

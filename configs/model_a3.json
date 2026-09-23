@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "model_id": "a3",
+  "run_id": "MODEL_A3_LEGAL_MOVE_SCORER_NO_TIMING",
+  "role": "Legal-move candidate scorer without timing",
+  "official_checkpoint": {
+    "path": "checkpoints/model_a3/best.pt",
+    "sha256": "4efec653a451da7585f3663847c8dc5caaa8ebffadea677617e2f496e4253b80"
+  },
+  "timing": {
+    "uses_timing": false
+  },
+  "dependencies": [],
+  "data": {
+    "pyg_root": "data/pyg",
+    "move_encoder": "resources/move_encoder/move_to_idx.json",
+    "required_paths": [
+      "data/pyg/manifest.json",
+      "resources/move_encoder/move_to_idx.json"
+    ]
+  },
+  "architecture": {
+    "model_class": "ChessGATLegalMoveScorer",
+    "input_dim": 15,
+    "edge_dim": 5,
+    "hidden_per_head": 32,
+    "heads": 4,
+    "num_layers": 2,
+    "global_feature_dim": 4,
+    "scorer_hidden_dim": 128,
+    "promotion_embedding_dim": 8,
+    "dropout": 0.3,
+    "output_space": "variable_legal_candidates",
+    "vocabulary_size_for_compatibility": 1786
+  },
+  "training": {
+    "seed": 42,
+    "optimizer": "Adam",
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "batch_size": 128,
+    "max_epochs": 300,
+    "early_stopping_patience": 12,
+    "min_delta": 0.0,
+    "num_workers": 0,
+    "pin_memory": true,
+    "persistent_workers": false,
+    "prefetch_factor": null,
+    "non_blocking": true,
+    "amp": true
+  },
+  "scheduler": {
+    "type": "ReduceLROnPlateau",
+    "mode": "min",
+    "factor": 0.5,
+    "patience": 3,
+    "min_lr": 0.000001
+  },
+  "provenance": {
+    "authoritative_source": "artifacts/model_a3_legal_move_scorer_no_timing/final_report.json",
+    "config_source": "FIXED_FROM_MODEL_A_CONVERGENCE_PROTOCOL"
+  }
+}

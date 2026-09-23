@@ -10,6 +10,58 @@ The experimental phase is complete. The checked-in documentation and final analy
 
 A3 and B form the controlled no-timing/timing comparison, while A4 tests whether explicit post-move graph reasoning can improve ranking over frozen A3 Top-5 retrieval.
 
+## Quick Start
+
+From an already cloned repository:
+
+```bash
+cd graphmate
+python -m venv venv
+./venv/bin/python -m pip install --upgrade pip
+./venv/bin/python -m pip install -r requirements.txt
+```
+
+PyTorch installation can be platform-specific, especially when CUDA wheels are required. If the generic `requirements.txt` install is not suitable for your machine, install the matching PyTorch/PyG wheels first and then install the remaining requirements.
+
+Inspect an official training configuration without launching training:
+
+```bash
+./venv/bin/python -m src.cli.training.train_official --model a3 --dry-run
+```
+
+Use `--model a`, `--model a2`, `--model a3`, `--model b`, or `--model a4`. The dry-run prints required input paths, dependency checkpoints, and the safe local retraining output directory.
+
+Use the published pretrained checkpoints under [checkpoints/](checkpoints/) for the frozen results. Representative evaluation entry points are:
+
+```bash
+./venv/bin/python -m src.cli.evaluation.evaluate_model_a_vs_a2_vs_a3 --help
+./venv/bin/python -m src.cli.evaluation.evaluate_model_b_timing_ablation --help
+./venv/bin/python -m src.cli.evaluation.evaluate_model_a3_vs_a4 --help
+```
+
+Retrain from an official configuration:
+
+```bash
+./venv/bin/python -m src.cli.training.train_official --model a3
+```
+
+Retraining writes to ignored `artifacts/retraining/<model>/<timestamp>/` paths by default and does not overwrite tracked checkpoints. The official config reproduces the training setup used for the published checkpoint, not guaranteed identical checkpoint bytes or the same selected best epoch on every environment.
+
+| Model | Retraining syntax | Special requirement |
+| --- | --- | --- |
+| A | `--model a` | Lichess PyG dataset and move encoder |
+| A2 | `--model a2` | Lichess PyG dataset and move encoder |
+| A3 | `--model a3` | Lichess PyG dataset and move encoder |
+| B | `--model b` | Timing-prepared PyG dataset from the frozen synthetic timing protocol |
+| A4 | `--model a4` | Tracked frozen A3 checkpoint and A4 post-move cache |
+
+The checked-in final analysis is the easiest way to inspect published results:
+[generic_info/final_analysis/](generic_info/final_analysis/). The analysis command can be inspected with:
+
+```bash
+./venv/bin/python -m src.cli.analysis.build_final_experiment_report --help
+```
+
 ## Research Questions
 
 RQ1 asks where the timed GNN provides better move guidance than selected local LLM baselines. The literal timed comparison is evaluated on Lichess, where timing features exist.
@@ -75,15 +127,16 @@ The primary LLM baselines are local `qwen3.5:4b` and `qwen3.5:9b` runs. Strict U
 src/                         # data, graph, model, training, inference, evaluation, analysis code
 tests/                       # unit and integration tests
 checkpoints/                 # final frozen distributable checkpoints
+configs/                     # official training configurations for frozen model setups
 resources/move_encoder/      # checked-in canonical move vocabulary
 generic_info/                # public technical notes and final reports
 generic_info/final_analysis/ # canonical generated final analysis tables, figures, summary
 data/                        # local data root, mostly ignored
-artifacts/                   # local experiment outputs, ignored
+artifacts/retraining/        # ignored local outputs from user retraining runs
 TimeGNN-main/                # external upstream code, kept separate
 ```
 
-See [generic_info/README.md](generic_info/README.md), [checkpoints/README.md](checkpoints/README.md), and [resources/README.md](resources/README.md) for more detail.
+See [generic_info/README.md](generic_info/README.md), [checkpoints/README.md](checkpoints/README.md), [configs/README.md](configs/README.md), and [resources/README.md](resources/README.md) for more detail.
 
 ## Installation
 
@@ -116,12 +169,13 @@ Frozen final results should be reproduced from the existing artifacts and checkp
 Training entry points remain available for reproducibility and extension:
 
 ```bash
+./venv/bin/python -m src.cli.training.train_official --help
 ./venv/bin/python -m src.cli.training.train_model_a3_legal_scorer --help
 ./venv/bin/python -m src.cli.training.train_model_b_timing_legal_scorer --help
 ./venv/bin/python -m src.cli.training.train_model_a4_postmove --help
 ```
 
-The public results in this repository use the frozen checkpoints under [checkpoints/](checkpoints/). Training is not required to inspect the final analysis.
+The public results in this repository use the frozen checkpoints under [checkpoints/](checkpoints/). Official training setups are versioned under [configs/](configs/). Training is not required to inspect the final analysis.
 
 ## Evaluation
 
@@ -154,7 +208,7 @@ Regeneration entry point:
 
 ## Checkpoints And Resources
 
-Frozen model checkpoints are documented in [checkpoints/README.md](checkpoints/README.md). The canonical move vocabulary is documented in [resources/README.md](resources/README.md).
+Frozen model checkpoints are documented in [checkpoints/README.md](checkpoints/README.md). Official training configurations are documented in [configs/README.md](configs/README.md). The canonical move vocabulary is documented in [resources/README.md](resources/README.md).
 
 Do not write training outputs into `checkpoints/`; keep trial and raw experiment artifacts under ignored local artifact directories.
 

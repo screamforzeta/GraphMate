@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "model_id": "a2",
+  "run_id": "MODEL_A2_LEGAL_MASK_NO_TIMING",
+  "role": "Legal-masked global-vocabulary GAT baseline",
+  "official_checkpoint": {
+    "path": "checkpoints/model_a2/best.pt",
+    "sha256": "20a76ae5648ded7f8fe3eb835eddd5ec0a87c9043989c37a65b4e8b9dc6901c1"
+  },
+  "timing": {
+    "uses_timing": false
+  },
+  "dependencies": [],
+  "data": {
+    "pyg_root": "data/pyg",
+    "move_encoder": "resources/move_encoder/move_to_idx.json",
+    "required_paths": [
+      "data/pyg/manifest.json",
+      "resources/move_encoder/move_to_idx.json"
+    ]
+  },
+  "architecture": {
+    "model_class": "ChessGATNoTiming",
+    "input_dim": 15,
+    "edge_dim": 5,
+    "hidden_per_head": 32,
+    "heads": 4,
+    "num_layers": 2,
+    "global_feature_dim": 4,
+    "classifier_hidden_dim": 128,
+    "num_classes": 1786,
+    "dropout": 0.3,
+    "legal_mask": true
+  },
+  "training": {
+    "seed": 42,
+    "optimizer": "Adam",
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "batch_size": 128,
+    "max_epochs": 300,
+    "early_stopping_patience": 12,
+    "min_delta": 0.0,
+    "num_workers": 0,
+    "pin_memory": true,
+    "persistent_workers": false,
+    "prefetch_factor": null,
+    "non_blocking": true,
+    "amp": true
+  },
+  "scheduler": {
+    "type": "ReduceLROnPlateau",
+    "mode": "min",
+    "factor": 0.5,
+    "patience": 3,
+    "min_lr": 0.000001
+  },
+  "provenance": {
+    "authoritative_source": "artifacts/model_a2_legal_mask_no_timing/final_report.json",
+    "config_source": "FIXED_FROM_MODEL_A_NO_TIMING_FROZEN_BASELINE"
+  }
+}

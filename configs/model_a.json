@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "model_id": "a",
+  "run_id": "MODEL_A_CONVERGENCE_RUN_V1",
+  "role": "Global-vocabulary no-timing GAT baseline",
+  "official_checkpoint": {
+    "path": "checkpoints/model_a/best.pt",
+    "sha256": "1a72d0b6f675b50c829d76c63343e7016a569c00f993f063b0d0b75061de9b70"
+  },
+  "timing": {
+    "uses_timing": false
+  },
+  "dependencies": [],
+  "data": {
+    "pyg_root": "data/pyg",
+    "move_encoder": "resources/move_encoder/move_to_idx.json",
+    "required_paths": [
+      "data/pyg/manifest.json",
+      "resources/move_encoder/move_to_idx.json"
+    ]
+  },
+  "architecture": {
+    "model_class": "ChessGATNoTiming",
+    "input_dim": 15,
+    "edge_dim": 5,
+    "hidden_per_head": 32,
+    "heads": 4,
+    "num_layers": 2,
+    "global_feature_dim": 4,
+    "classifier_hidden_dim": 128,
+    "num_classes": 1786,
+    "dropout": 0.3
+  },
+  "training": {
+    "seed": 42,
+    "optimizer": "Adam",
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0001,
+    "batch_size": 128,
+    "max_epochs": 300,
+    "early_stopping_patience": 12,
+    "min_delta": 0.0,
+    "num_workers": 0,
+    "pin_memory": true,
+    "persistent_workers": false,
+    "prefetch_factor": null,
+    "non_blocking": true,
+    "amp": true
+  },
+  "scheduler": {
+    "type": "ReduceLROnPlateau",
+    "mode": "min",
+    "factor": 0.5,
+    "patience": 3,
+    "min_lr": 0.000001
+  },
+  "provenance": {
+    "authoritative_source": "artifacts/convergence_training/chess_gat_no_timing/experiment_config.json",
+    "report_source": "artifacts/convergence_training/chess_gat_no_timing/final_report.json",
+    "config_source": "FIXED_FROM_MODEL_A_FULL_BASELINE_V1",
+    "notes": "The official run continued the original 150-epoch budget to 300 by validation-trend protocol; test was not used for checkpoint selection."
+  }
+}
