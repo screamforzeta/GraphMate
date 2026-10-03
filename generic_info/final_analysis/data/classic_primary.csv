@@ -1,6 +1,0 @@
-model,ALL200_Top1_percent,Top3_percent,Top5_percent,correct_count,Popeye193_Top1_percent,mean_rank,median_rank,parse_failure_count,illegal_count,wrong_legal_count,runtime_failure_count,Wilson95_low_percent,Wilson95_high_percent,notes
-A3,11.0,23.5,34.5,22,11.398963730569948,12.2,9.0,,,,,7.377244460125304,16.09269099730149,
-A4,15.5,29.5,34.5,31,15.025906735751295,2.101449275362319,2,,,,,11.139636927689315,21.16069059234208,
-Qwen 3.5 4B strict,0.0,,,0,0.0,,,96,101,3,0,1.734723475976807e-16,1.8845326377266574,
-Qwen 3.5 9B strict,0.5,,,1,0.5181347150259068,,,129,64,6,0,0.08831687156009814,2.777370439789293,
-B,,,,,,,,,,,,,,N/A - TIMING_UNAVAILABLE
