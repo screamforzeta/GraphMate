@@ -6,7 +6,7 @@ GraphMate is a chess graph-neural-network research repository for chess puzzle s
 
 The experimental phase is complete. The checked-in documentation and final analysis are intended to make the frozen results auditable without retraining models or mutating official artifacts.
 
-![GraphMate architecture and evaluation overview](docs/images/graphmate_overview.svg)
+![GraphMate architecture and evaluation overview](docs/images/graphmate_schema.svg)
 
 A3 and B form the controlled no-timing/timing comparison, while A4 tests whether explicit post-move graph reasoning can improve ranking over frozen A3 Top-5 retrieval.
 
