@@ -6,7 +6,7 @@ GraphMate è un repository di ricerca su reti neurali a grafo per la risoluzione
 
 La fase sperimentale è conclusa. La documentazione e l'analisi finale versionate servono a rendere verificabili i risultati congelati senza riaddestrare modelli o modificare artifact ufficiali.
 
-![Panoramica dell'architettura e della valutazione GraphMate](docs/images/graphmate_overview.svg)
+![Panoramica dell'architettura e della valutazione GraphMate](docs/images/graphmate_schema.svg)
 
 A3 e B costituiscono il confronto controllato senza/con timing, mentre A4 verifica se il ragionamento esplicito sul grafo successivo alla mossa può migliorare il ranking ottenuto dal Top-5 congelato di A3.
 
