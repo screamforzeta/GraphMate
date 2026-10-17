@@ -1,0 +1,94 @@
+\babel@toc {italian}{}\relax 
+\babel@toc {italian}{}\relax 
+\contentsline {chapter}{\numberline {1}Introduzione}{1}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Contesto e motivazione}{1}{section.1.1}%
+\contentsline {section}{\numberline {1.2}Obiettivi e domande di ricerca}{1}{section.1.2}%
+\contentsline {section}{\numberline {1.3}Organizzazione della relazione}{2}{section.1.3}%
+\contentsline {chapter}{\numberline {2}Background e lavori correlati}{3}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Posizioni, mosse e problemi di matto}{3}{section.2.1}%
+\contentsline {section}{\numberline {2.2}Reti neurali su grafi e attenzione}{3}{section.2.2}%
+\contentsline {section}{\numberline {2.3}Informazione temporale e rapporto con TimeGNN}{4}{section.2.3}%
+\contentsline {section}{\numberline {2.4}Modelli linguistici come baseline}{4}{section.2.4}%
+\contentsline {chapter}{\numberline {3}Dataset e preparazione dei dati}{5}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Sorgenti dei dati}{5}{section.3.1}%
+\contentsline {subsection}{\numberline {3.1.1}Puzzle Lichess}{5}{subsection.3.1.1}%
+\contentsline {subsection}{\numberline {3.1.2}Partite ausiliarie e benchmark esterno}{5}{subsection.3.1.2}%
+\contentsline {section}{\numberline {3.2}Pulizia e costruzione del task supervisionato}{6}{section.3.2}%
+\contentsline {section}{\numberline {3.3}Bilanciamento e suddivisione}{6}{section.3.3}%
+\contentsline {section}{\numberline {3.4}Codifica della mossa e generazione dei grafi}{7}{section.3.4}%
+\contentsline {section}{\numberline {3.5}Variante con timing sintetico}{7}{section.3.5}%
+\contentsline {chapter}{\numberline {4}Rappresentazione a grafo}{8}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Dalla scacchiera al grafo}{8}{section.4.1}%
+\contentsline {section}{\numberline {4.2}Rappresentazione dei nodi}{9}{section.4.2}%
+\contentsline {section}{\numberline {4.3}Rappresentazione degli archi}{10}{section.4.3}%
+\contentsline {section}{\numberline {4.4}Feature globali del grafo}{12}{section.4.4}%
+\contentsline {section}{\numberline {4.5}PyTorch Geometric Data Object}{12}{section.4.5}%
+\contentsline {section}{\numberline {4.6}Generazione e persistenza del dataset a grafo}{13}{section.4.6}%
+\contentsline {chapter}{\numberline {5}Architetture dei modelli}{15}{chapter.5}%
+\contentsline {section}{\numberline {5.1}Panoramica della famiglia di modelli}{15}{section.5.1}%
+\contentsline {section}{\numberline {5.2}Encoder Graph Attention condiviso}{16}{section.5.2}%
+\contentsline {section}{\numberline {5.3}Modelli a vocabolario fisso: A e A2}{17}{section.5.3}%
+\contentsline {subsection}{\numberline {5.3.1}Modello A: classificatore sul vocabolario globale}{17}{subsection.5.3.1}%
+\contentsline {subsection}{\numberline {5.3.2}Modello A2: classificatore con mascheramento delle mosse illegali}{18}{subsection.5.3.2}%
+\contentsline {section}{\numberline {5.4}Scoring delle mosse legali: Modello A3}{18}{section.5.4}%
+\contentsline {section}{\numberline {5.5}Modello B e informazione temporale}{19}{section.5.5}%
+\contentsline {section}{\numberline {5.6}Reranking delle posizioni post-mossa: Modello A4}{20}{section.5.6}%
+\contentsline {section}{\numberline {5.7}Confronto architetturale}{21}{section.5.7}%
+\contentsline {chapter}{\numberline {6}Metodologia sperimentale}{22}{chapter.6}%
+\contentsline {section}{\numberline {6.1}Disegno sperimentale}{22}{section.6.1}%
+\contentsline {section}{\numberline {6.2}Addestramento e selezione dei checkpoint}{22}{section.6.2}%
+\contentsline {section}{\numberline {6.3}Protocollo di valutazione Lichess}{23}{section.6.3}%
+\contentsline {section}{\numberline {6.4}Protocollo dei modelli linguistici}{23}{section.6.4}%
+\contentsline {section}{\numberline {6.5}Benchmark esterno}{23}{section.6.5}%
+\contentsline {section}{\numberline {6.6}Metriche e analisi statistica}{24}{section.6.6}%
+\contentsline {section}{\numberline {6.7}Limiti del protocollo}{24}{section.6.7}%
+\contentsline {chapter}{\numberline {7}Risultati}{25}{chapter.7}%
+\contentsline {section}{\numberline {7.1}Panoramica delle valutazioni}{25}{section.7.1}%
+\contentsline {section}{\numberline {7.2}Risultati sul benchmark Lichess}{25}{section.7.2}%
+\contentsline {section}{\numberline {7.3}Contributo delle informazioni temporali}{26}{section.7.3}%
+\contentsline {section}{\numberline {7.4}Prestazioni in funzione della profondità del matto}{27}{section.7.4}%
+\contentsline {section}{\numberline {7.5}Analisi per fascia di rating}{28}{section.7.5}%
+\contentsline {section}{\numberline {7.6}Confronto con le baseline LLM su Lichess}{29}{section.7.6}%
+\contentsline {section}{\numberline {7.7}Risultati sul benchmark esterno YACPDB}{30}{section.7.7}%
+\contentsline {section}{\numberline {7.8}Generalizzazione tra Lichess e YACPDB}{31}{section.7.8}%
+\contentsline {section}{\numberline {7.9}Sintesi delle misure}{31}{section.7.9}%
+\contentsline {chapter}{\numberline {8}Discussione}{32}{chapter.8}%
+\contentsline {section}{\numberline {8.1}Vincoli scacchistici e spazio decisionale}{32}{section.8.1}%
+\contentsline {section}{\numberline {8.2}Reranking post-mossa e limite di recupero}{32}{section.8.2}%
+\contentsline {section}{\numberline {8.3}Timing e confronto con i modelli linguistici}{33}{section.8.3}%
+\contentsline {section}{\numberline {8.4}Generalizzazione e limiti sperimentali}{33}{section.8.4}%
+\contentsline {chapter}{\numberline {9}Conclusioni}{35}{chapter.9}%
+\contentsline {chapter}{Bibliografia}{36}{chapter*.17}%
+\contentsline {chapter}{Appendici}{37}{section*.18}%
+\contentsline {chapter}{\numberline {A}Configurazioni ufficiali, iperparametri e protocollo di addestramento}{38}{appendix.alph1.Alph1}%
+\contentsline {section}{\numberline {A.1}Politica di addestramento comune}{38}{section.alph1.Alph1.1}%
+\contentsline {section}{\numberline {A.2}Sintesi delle architetture dei modelli}{39}{section.alph1.Alph1.2}%
+\contentsline {section}{\numberline {A.3}Inventario dei checkpoint congelati}{41}{section.alph1.Alph1.3}%
+\contentsline {section}{\numberline {A.4}Note per modello}{41}{section.alph1.Alph1.4}%
+\contentsline {chapter}{\numberline {B}Rappresentazione a grafo e schema delle feature}{43}{appendix.alph1.Alph2}%
+\contentsline {section}{\numberline {B.1}Indicizzazione delle case e layout dei tensori}{43}{section.alph1.Alph2.1}%
+\contentsline {section}{\numberline {B.2}Feature dei nodi}{44}{section.alph1.Alph2.2}%
+\contentsline {section}{\numberline {B.3}Feature degli archi}{44}{section.alph1.Alph2.3}%
+\contentsline {section}{\numberline {B.4}Feature globali}{45}{section.alph1.Alph2.4}%
+\contentsline {section}{\numberline {B.5}Rappresentazioni delle mosse candidate}{46}{section.alph1.Alph2.5}%
+\contentsline {chapter}{\numberline {C}Pipeline dei dati, suddivisioni e timing sintetico}{47}{appendix.alph1.Alph3}%
+\contentsline {section}{\numberline {C.1}Semantica dei puzzle Lichess}{47}{section.alph1.Alph3.1}%
+\contentsline {section}{\numberline {C.2}Vocabolario delle mosse e conteggi dei grafi}{48}{section.alph1.Alph3.2}%
+\contentsline {section}{\numberline {C.3}Dataset di timing sintetico}{48}{section.alph1.Alph3.3}%
+\contentsline {chapter}{\numberline {D}Costruzione e verifica del benchmark di composizioni classiche}{50}{appendix.alph1.Alph4}%
+\contentsline {section}{\numberline {D.1}Acquisizione ed eleggibilità}{50}{section.alph1.Alph4.1}%
+\contentsline {section}{\numberline {D.2}Selezione, fingerprint e ciclo di congelamento}{51}{section.alph1.Alph4.2}%
+\contentsline {section}{\numberline {D.3}Verifica Popeye e chiavi accettate}{52}{section.alph1.Alph4.3}%
+\contentsline {section}{\numberline {D.4}Risultati della valutazione sulle composizioni classiche}{52}{section.alph1.Alph4.4}%
+\contentsline {chapter}{\numberline {E}Protocollo di valutazione dei modelli linguistici}{54}{appendix.alph1.Alph5}%
+\contentsline {section}{\numberline {E.1}Identità del runtime e prompt}{54}{section.alph1.Alph5.1}%
+\contentsline {section}{\numberline {E.2}Parser rigoroso e tassonomia degli esiti}{55}{section.alph1.Alph5.2}%
+\contentsline {section}{\numberline {E.3}Parser rilassato diagnostico}{55}{section.alph1.Alph5.3}%
+\contentsline {section}{\numberline {E.4}Valutazione sulle composizioni classiche e reference-line}{56}{section.alph1.Alph5.4}%
+\contentsline {section}{\numberline {E.5}Validità delle esecuzioni ed esclusioni}{56}{section.alph1.Alph5.5}%
+\contentsline {chapter}{\numberline {F}Riproducibilità e inventario degli artefatti}{57}{appendix.alph1.Alph6}%
+\contentsline {section}{\numberline {F.1}Classi di artefatti}{57}{section.alph1.Alph6.1}%
+\contentsline {section}{\numberline {F.2}Tre casi d'uso per la riproduzione}{58}{section.alph1.Alph6.2}%
+\contentsline {section}{\numberline {F.3}Interfaccia ufficiale di addestramento}{59}{section.alph1.Alph6.3}%
+\contentsline {section}{\numberline {F.4}Riproduzione di checkpoint e valutazioni}{59}{section.alph1.Alph6.4}%
+\contentsline {section}{\numberline {F.5}Ambiente e limiti di un clone fresco}{59}{section.alph1.Alph6.5}%

@@ -1,0 +1,15 @@
+\begin{table}[H]
+    \centering
+    \scriptsize
+    \caption{Esiti rigorosi del task next-move Lichess per i modelli Qwen su 8,610 grafi di test generati.}
+    \label{tab:llm-failure-breakdown}
+    
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}Xrrrrr}
+        \toprule
+        Modello & Corrette & Legali errate & Illegali & Parsing & Esecuzione \\
+        \midrule
+        Qwen 3.5 4B & 6 (0.0697\%) & 130 (1.510\%) & 5,894 (68.455\%) & 2,580 (29.965\%) & 0 \\
+        Qwen 3.5 9B & 10 (0.116\%) & 413 (4.797\%) & 2,899 (33.670\%) & 5,288 (61.417\%) & 0 \\
+        \bottomrule
+    \end{tabularx}
+\end{table}

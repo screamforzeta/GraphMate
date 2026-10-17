@@ -1,0 +1,247 @@
+\documentclass[12pt,a4paper]{report}
+
+% =========================================================
+% PACCHETTI BASE
+% =========================================================
+\usepackage[T1]{fontenc}
+\usepackage[italian]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{xurl}
+
+
+\usepackage[toc,page,title]{appendix}
+\renewcommand{\appendixtocname}{Appendici}
+\renewcommand{\appendixpagename}{Appendici}
+
+
+
+
+
+% Margini
+\usepackage[
+    top=2.5cm,
+    bottom=2.5cm,
+    left=3cm,
+    right=3cm
+]{geometry}
+
+% Interlinea
+\usepackage{setspace}
+\onehalfspacing
+
+% =========================================================
+% MATEMATICA
+% =========================================================
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+
+% =========================================================
+% FIGURE E TABELLE
+% =========================================================
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{longtable}
+
+% Percorso immagini
+\graphicspath{{images/}}
+
+% =========================================================
+% CODICE
+% =========================================================
+\usepackage{xcolor}
+\usepackage{listings}
+
+\definecolor{codegray}{RGB}{245,245,245}
+\definecolor{codegreen}{RGB}{0,120,60}
+\definecolor{codeblue}{RGB}{0,70,160}
+\definecolor{codepurple}{RGB}{140,40,140}
+
+\lstset{
+    backgroundcolor=\color{codegray},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{codeblue}\bfseries,
+    commentstyle=\color{codegreen},
+    stringstyle=\color{codepurple},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=10pt,
+    frame=single,
+    rulecolor=\color{gray!30},
+    breaklines=true,
+    showstringspaces=false,
+    tabsize=4,
+    captionpos=b
+}
+
+% =========================================================
+% LINK
+% =========================================================
+% =========================================================
+% HEADER E FOOTER
+% =========================================================
+\usepackage{fancyhdr}
+
+\pagestyle{fancy}
+\fancyhf{}
+
+\fancyhead[L]{GraphMate}
+\makeatletter
+\renewcommand{\chaptermark}[1]{\markboth{\@chapapp~\thechapter}{}}
+\makeatother
+\fancyhead[R]{\nouppercase{\leftmark}}
+\fancyfoot[C]{\thepage}
+
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+\setlength{\headheight}{15pt}
+
+% =========================================================
+% DIDASCALIE
+% =========================================================
+\usepackage{caption}
+
+\captionsetup{
+    font=small,
+    labelfont=bf
+}
+
+% =========================================================
+% BIBLIOGRAFIA
+% =========================================================
+\usepackage{csquotes}
+\usepackage[
+    backend=bibtex,
+    style=numeric,
+    sorting=none
+]{biblatex}
+
+\addbibresource{bibliography.bib}
+
+\usepackage[
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=blue
+]{hyperref}
+
+\urlstyle{same}
+\setlength{\emergencystretch}{2em}
+\raggedbottom
+
+% =========================================================
+% INIZIO DOCUMENTO
+% =========================================================
+
+\begin{document}
+\hypersetup{pageanchor=false}
+
+% =========================================================
+% FRONTESPIZIO
+% =========================================================
+
+\begin{titlepage}
+    \centering
+
+    \vspace*{1cm}
+
+    {\Large \textbf{Università degli Studi di Milano}}\\[0.4cm]
+
+    {\large Corso di Laurea Magistrale in Sicurezza Informatica}
+
+    \vspace{2cm}
+
+    {\Large Relazione del corso di}\\[0.3cm]
+
+    {\Large \textbf{Sicurezza nelle architetture Data-Intensive}}
+
+    \vspace{1.5cm}
+
+    \rule{\textwidth}{0.5pt}
+
+    \vspace{0.5cm}
+
+    {\Huge \textbf{GraphMate}}
+
+    \vspace{0.3cm}
+
+    {\Large Graph Neural Networks per la predizione\\[0.15cm]
+    e il reranking di mosse scacchistiche}
+
+    \vspace{0.5cm}
+
+    \rule{\textwidth}{0.5pt}
+
+\vfill
+
+{\large\textbf{Studenti}}\\[0.5cm]
+
+\begin{tabular}{c}
+    Alessandro Zappavigna \\
+    Mattia Ippoliti \\
+    Samuele Alfrondi
+\end{tabular}
+
+\vfill
+
+    {\large Anno Accademico 2026/2027}
+
+\end{titlepage}
+
+% =========================================================
+% INDICE
+% =========================================================
+
+\tableofcontents
+\clearpage
+
+
+\input{chapters/0. abstract}
+\hypersetup{pageanchor=true}
+
+\chapter{Introduzione}
+\input{chapters/01_introduction}
+
+\chapter{Background e lavori correlati}
+\input{chapters/02_background}
+
+\chapter{Dataset e preparazione dei dati}
+\input{chapters/03_data}
+
+\chapter{Rappresentazione a grafo}
+\input{chapters/04_graph_representation}
+
+\chapter{Architetture dei modelli}
+\input{chapters/05_models}
+
+\chapter{Metodologia sperimentale}
+\input{chapters/06_methodology} 
+
+\chapter{Risultati}
+\input{chapters/07_results}
+
+\chapter{Discussione}
+\input{chapters/08_discussion}
+
+\chapter{Conclusioni}
+\input{chapters/09_conclusions}
+
+\printbibliography[heading=bibintoc,title={Bibliografia}]
+
+%Appendici
+\begin{appendices}
+\input{appendices/appendix_A_hyperparameters}
+\input{appendices/appendix_B_graph_features}
+\input{appendices/appendix_C_data_pipeline}
+\input{appendices/appendix_D_classic_benchmark}
+\input{appendices/appendix_E_llm_protocol}
+\input{appendices/appendix_F_reproducibility}
+\let\cleardoublepage\clearpage
+\end{appendices}
+
+
+\end{document}

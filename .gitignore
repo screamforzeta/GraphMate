@@ -17,3 +17,6 @@ artifacts/
 __MACOSX/
 
 generic_info/
+.agents/
+.codex/
+.vscode/

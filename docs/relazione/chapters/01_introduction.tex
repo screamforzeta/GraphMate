@@ -1,0 +1,57 @@
+\label{chap:introduction}
+
+\section{Contesto e motivazione}
+
+La scelta di una mossa scacchistica dipende da relazioni che non sono puramente
+geometriche: mobilità, attacchi, difese, inchiodature e vincoli di legalità
+collegano case anche lontane sulla scacchiera. GraphMate studia se una
+rappresentazione esplicita di queste relazioni, elaborata mediante reti neurali a
+grafo (\textit{Graph Neural Networks}, GNN), possa sostenere la predizione della
+prima mossa risolutiva di un problema tattico di matto.
+
+I puzzle scacchistici costituiscono un caso di studio utile perché associano a una
+posizione una soluzione verificabile e impongono regole formali sullo spazio delle
+azioni. Il progetto confronta progressivamente una classificazione su un
+vocabolario globale di mosse, l'applicazione di vincoli di legalità, lo scoring
+diretto delle mosse legali e il reranking basato sulla posizione successiva alla
+mossa. In parallelo, valuta una variante che integra un segnale temporale
+sintetico, con l'obiettivo di verificare se la specifica informazione di timing
+implementata migliori la scelta della mossa.
+
+Come termine di confronto esterno alla famiglia GNN, GraphMate include due modelli
+linguistici locali sottoposti a un protocollo controllato di generazione di una
+singola mossa UCI. Il confronto non intende misurare ogni possibile capacità
+scacchistica dei modelli linguistici: valuta sistemi completi nel compito e nel
+formato fissati dal protocollo. La generalizzazione dei modelli viene inoltre
+esaminata su composizioni classiche YACPDB, distinte dalla distribuzione dei puzzle
+Lichess usata per lo sviluppo principale.
+
+\section{Obiettivi e domande di ricerca}
+
+L'obiettivo generale è costruire e valutare una pipeline riproducibile che trasformi
+posizioni scacchistiche in grafi, apprenda a ordinare mosse candidate e renda
+tracciabile il passaggio dai dati ai risultati congelati. Gli esperimenti rispondono
+a due domande di ricerca:
+
+\begin{description}
+    \item[RQ1.] Per quali profondità di matto il modello GNN con timing fornisce
+    indicazioni di mossa migliori delle baseline linguistiche selezionate?
+    \item[RQ2.] Nell'esperimento controllato, l'integrazione del timing sintetico
+    migliora la prestazione rispetto al modello GNN equivalente senza timing?
+\end{description}
+
+La prima domanda confronta il Modello B con Qwen 3.5 4B e 9B sul benchmark Lichess,
+l'unico per il quale sono disponibili gli ingressi temporali previsti. La seconda
+isola invece il contributo del timing attraverso il confronto appaiato tra il
+Modello B e A3. Il ruolo dei modelli A, A1, A2 e A4 è ampliare l'analisi delle scelte
+architetturali, in particolare dei vincoli di legalità e della valutazione
+post-mossa.
+
+\section{Organizzazione della relazione}
+
+Il Capitolo~2 introduce le nozioni scacchistiche e neurali necessarie. I
+Capitoli~3 e~4 descrivono rispettivamente i dati e la rappresentazione a grafo; il
+Capitolo~5 presenta la famiglia di modelli. Il Capitolo~6 definisce il disegno
+sperimentale, mentre il Capitolo~7 riporta le misure. I Capitoli~8 e~9 ne discutono
+il significato e formulano le conclusioni. Le appendici raccolgono specifiche
+implementative, protocolli, iperparametri e informazioni di riproducibilità.

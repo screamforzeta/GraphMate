@@ -1,0 +1,17 @@
+\begin{table}[H]
+\centering
+\small
+\caption{Sintesi di compatibilità delle configurazioni congelate dei modelli GraphMate.  Il testo principale dell'appendice usa le Tabelle~\ref{tab:shared-training-settings}, \ref{tab:model-architecture-summary} e \ref{tab:checkpoint-inventory}, più dettagliate.}
+\label{tab:appendix-model-training-summary}
+\begin{tabularx}{\textwidth}{l>{\raggedright\arraybackslash}p{0.24\textwidth}rrr>{\raggedright\arraybackslash}X}
+\toprule
+Modello & Classe & Batch & LR & Dropout & Base del conteggio parametri \\
+\midrule
+A & ChessGATNoTiming & 128 & 0.0005 & 0.30 & Non affermato \\
+A2 & ChessGATNoTiming & 128 & 0.0005 & 0.30 & Non affermato \\
+A3 & ChessGATLegalMoveScorer & 128 & 0.0005 & 0.30 & 71,593 addestrabili verificati \\
+B & ChessGATTimingLegalMoveScorer & 128 & 0.0005 & 0.30 & 73,705 addestrabili verificati \\
+A4 & ChessA4PostMoveReranker & 128 & 0.0005 & 0.30 & 88,705 addestrabili; 160,298 totali in inferenza \\
+\bottomrule
+\end{tabularx}
+\end{table}

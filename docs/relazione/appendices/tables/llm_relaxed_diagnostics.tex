@@ -1,0 +1,15 @@
+\begin{table}[H]
+    \centering
+    \small
+    \caption{Diagnostiche del parser rilassato sul task next-move Lichess. Sono diagnostiche post-hoc, non punteggi del benchmark principale.}
+    \label{tab:llm-relaxed-diagnostics}
+    
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}Xrrrrr}
+        \toprule
+        Modello & Corrette & Legali errate & Illegali & Parsing & \(\Delta\) Top-1 \\
+        \midrule
+        Qwen 3.5 4B & 10 (0.116\%) & 446 & 5,894 & 2,260 & +0.046 pp \\
+        Qwen 3.5 9B & 17 (0.197\%) & 1,023 & 2,899 & 4,671 & +0.081 pp \\
+        \bottomrule
+    \end{tabularx}
+\end{table}

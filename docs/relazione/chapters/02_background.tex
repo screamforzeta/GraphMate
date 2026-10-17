@@ -1,0 +1,65 @@
+\label{chap:background}
+
+\section{Posizioni, mosse e problemi di matto}
+
+Una posizione scacchistica è descritta nel progetto mediante la notazione FEN
+(\textit{Forsyth--Edwards Notation}), che codifica disposizione dei pezzi, lato al
+tratto, diritti di arrocco, eventuale casa en passant e contatori di mossa. Le mosse
+sono espresse in formato UCI: la stringa identifica casa di origine, casa di
+destinazione ed eventuale promozione, per esempio \texttt{e2e4} o
+\texttt{e7e8q}. Il formato è compatto e può essere verificato automaticamente
+rispetto alle regole della posizione.
+
+Un problema \textit{mate-in-N} richiede una prima mossa che garantisca il matto
+entro il numero dichiarato di mosse del solutore, contro ogni difesa ammessa. Nel
+dataset Lichess la FEN precede una mossa di preparazione dell'avversario: la
+posizione mostrata al solutore si ottiene applicando la prima mossa della sequenza,
+mentre la seconda è la prima mossa della soluzione
+\cite{lichessOpenDatabase}. GraphMate apprende questa singola mossa target; non
+genera autonomamente l'intera variante fino al matto.
+
+\section{Reti neurali su grafi e attenzione}
+
+Una rete neurale a grafo aggiorna la rappresentazione di ciascun nodo aggregando
+informazioni provenienti dai nodi collegati. Ripetendo l'operazione su più strati,
+ogni nodo incorpora un contesto strutturale progressivamente più ampio. Il
+\textit{pooling} riassume poi le rappresentazioni locali in un vettore del grafo,
+utilizzabile per una decisione relativa all'intera posizione. Questa impostazione
+generalizza l'idea delle convoluzioni su grafi introdotta, tra gli altri, da
+Kipf e Welling \cite{kipf2017semi}.
+
+Le \textit{Graph Attention Networks} (GAT) assegnano pesi appresi ai vicini invece
+di combinarli tutti nello stesso modo \cite{velickovic2018graph}. Intuitivamente,
+quando il modello aggiorna la rappresentazione di una casa, può attribuire maggiore
+rilevanza alle relazioni più informative per quella posizione. L'attenzione è
+calcolata separatamente da più teste e i risultati vengono combinati; ciò consente
+di apprendere prospettive differenti sulle stesse relazioni. In GraphMate gli archi
+portano inoltre attributi scacchistici, cosicche il messaggio dipende sia dai nodi
+coinvolti sia dal tipo di relazione. Il Capitolo~4 specifica le feature effettive e
+il Capitolo~5 descrive l'encoder adottato.
+
+\section{Informazione temporale e rapporto con TimeGNN}
+
+Le reti temporali su grafi introducono variabili di tempo nella costruzione o
+nell'elaborazione delle relazioni. TimeGNN, per esempio, studia rappresentazioni
+temporali dinamiche per serie multivariate \cite{xu2023timegnn}. La libreria
+TimeGNN presente nel progetto ha fornito riferimenti architetturali e tecniche di
+implementazione basate su PyTorch Geometric, come layer di attenzione, gestione
+degli attributi degli archi e organizzazione dell'addestramento.
+
+GraphMate non esegue però il framework TimeGNN completo e non tratta la scacchiera
+come un event log dinamico. I suoi grafi rappresentano singole posizioni; nel
+Modello B il timing sintetico è codificato da un piccolo encoder e concatenato al
+contesto globale usato per valutare le mosse candidate. Si tratta quindi di un
+adattamento di idee e tecniche, progettato per un compito graph-level differente.
+
+\section{Modelli linguistici come baseline}
+
+Un modello linguistico può ricevere la FEN in un prompt e generare testo contenente
+una mossa. Diversamente dai modelli GraphMate, non riceve in ingresso il grafo
+scacchistico costruito dal progetto e non applica internamente il generatore di
+mosse legali della pipeline GNN. Per ottenere un confronto verificabile, il
+protocollo congela prompt, parametri di generazione e parser e richiede una singola
+mossa UCI. La valutazione separa output non interpretabili, mosse illegali, mosse
+legali errate e risposte corrette; i dettagli sono riportati nel Capitolo~6 e
+nell'Appendice~\ref{app:llm-protocol}.

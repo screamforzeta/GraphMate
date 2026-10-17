@@ -1,0 +1,53 @@
+\chapter{Configurazioni ufficiali, iperparametri e protocollo di addestramento}
+\label{app:hyperparameters}
+
+Questa appendice riporta le configurazioni ufficiali dei modelli usate per i risultati sperimentali di GraphMate.  Il suo scopo è distinguere tre oggetti che possono essere facilmente confusi: una \emph{configurazione ufficiale}, che specifica architettura, sorgente dei dati, ottimizzatore e politica di addestramento; un \emph{checkpoint congelato}, che contiene i pesi addestrati selezionati tramite criteri di validazione; e un \emph{artefatto di valutazione}, che registra le metriche prodotte da un checkpoint con un valutatore fissato.  L'Appendice~\ref{app:graph-features} descrive la rappresentazione a grafo, l'Appendice~\ref{app:data-pipeline} descrive la costruzione dei dataset e l'Appendice~\ref{app:reproducibility} documenta i workflow di riproducibilità a livello di repository.
+
+Model A, Model A2, Model A3, Model B e Model A4 sono modelli addestrati con configurazioni JSON ufficiali e hash dei checkpoint.  A1 non è un modello addestrato separatamente.  È una variante solo di inferenza di Model A che applica una maschera sulle mosse legali al momento della predizione; di conseguenza non possiede una configurazione, uno stato dell'ottimizzatore o un checkpoint indipendente.
+
+\section{Politica di addestramento comune}
+\label{app:hyperparameters:shared}
+
+I modelli neurali addestrati usano una struttura comune di addestramento, salvo dove indicato diversamente nella Tabella~\ref{tab:shared-training-settings}.  Le configurazioni ufficiali fissano il seed casuale a 42, usano Adam con learning rate \(5\times 10^{-4}\), weight decay \(10^{-4}\), batch size 128, dropout 0.30 e addestramento mixed precision.  L'early stopping usa solo la prestazione di validazione; l'insieme di test mantenuto separato non è usato per la selezione del modello.  Model A4 è l'unica eccezione nell'obiettivo dello scheduler: monitora la Top-1 end-to-end di validazione per il reranking e quindi usa uno scheduler di massimizzazione, mentre gli altri modelli addestrati monitorano la loss di validazione e usano una minimizzazione.
+
+\input{appendices/tables/shared_training_settings}
+
+\section{Sintesi delle architetture dei modelli}
+\label{app:hyperparameters:models}
+
+La Tabella~\ref{tab:model-architecture-summary} sintetizza le differenze architetturali.  Model A e Model A2 sono classificatori a vocabolario globale sulle 1,786 mosse target presenti nel vocabolario di addestramento.  Model A2 aggiunge una maschera sulle mosse legali durante lo scoring.  Model A3 sostituisce lo spazio di uscita globale con le mosse candidate legali disponibili nella posizione corrente.  Model B mantiene lo scorer delle mosse candidate legali, ma arricchisce il contesto del grafo con feature di timing sintetico provenienti dal dataset di timing descritto nell'Appendice~\ref{app:data-pipeline}.  Model A4 congela Model A3, recupera le sue Top-5 mosse candidate legali, applica ciascuna mossa candidata, codifica la posizione risultante con una GNN separata sui grafi successivi alla mossa e addestra solo il reranker.
+
+\input{appendices/tables/model_architecture_summary}
+
+Le dimensioni nella Tabella~\ref{tab:model-architecture-summary} derivano direttamente dall'implementazione.  L'encoder del grafo produce \(32\times4=128\) canali nascosti per nodo.  Il global mean pooling produce un embedding del grafo a 128 dimensioni, concatenato con quattro feature globali per formare un contesto del grafo a 132 dimensioni.  Model A3 rappresenta quindi ciascuna mossa candidata con embedding del nodo sorgente, embedding del nodo destinazione, contesto del grafo ed embedding della promozione:
+\[
+128 + 128 + 132 + 8 = 396.
+\]
+Model B aggiunge un embedding di timing a 16 dimensioni al contesto del grafo:
+\[
+128 + 128 + (132 + 16) + 8 = 412.
+\]
+Model A4 riusa la rappresentazione candidata congelata di A3 a 396 dimensioni e aggiunge un contesto post-mossa a 132 dimensioni e due feature scalari dello score A3:
+\[
+396 + 132 + 2 = 530.
+\]
+
+\section{Inventario dei checkpoint congelati}
+\label{app:hyperparameters:checkpoints}
+
+L'inventario ufficiale dei checkpoint è riportato nella Tabella~\ref{tab:checkpoint-inventory}.  La tabella riporta solo gli hash disponibili dalla configurazione del repository e dal manifesto dei checkpoint.  I conteggi dei parametri sono indicati solo quando verificati da artefatti finali di addestramento: Model A3, Model B e Model A4.  Questa appendice non afferma conteggi dei parametri per Model A o Model A2 perché la provenienza disponibile in questo passaggio non fornisce un conteggio finale verificato per quei due checkpoint.
+
+\input{appendices/tables/checkpoint_inventory}
+
+\section{Note per modello}
+\label{app:hyperparameters:notes}
+
+Model A è la baseline senza timing a vocabolario globale.  Il suo classificatore mappa il contesto del grafo a 132 dimensioni su 1,786 classi di uscita.  L'esecuzione ufficiale è stata proseguita da un budget iniziale di 150 epoche fino a un massimo di 300 epoche perché l'andamento di validazione giustificava la prosecuzione; l'insieme di test è rimasto escluso dalla decisione di selezione.
+
+Model A2 conserva l'architettura e la politica di addestramento di Model A, ma valuta le mosse tramite una maschera legale.  Costituisce quindi un confronto controllato con la baseline a vocabolario globale non mascherata, mantenendo la stessa rappresentazione dei dati e lo stesso vocabolario target.
+
+Model A3 è lo scorer principale delle mosse candidate legali senza timing.  Assegna uno score alle mosse legali generate dallo stato della scacchiera invece che all'intero vocabolario di addestramento.  Il suo conteggio verificato di parametri addestrabili è 71,593, e il checkpoint selezionato tramite validazione è il riferimento senza timing usato da Model A4.
+
+Model B è lo scorer delle mosse candidate legali con timing.  Richiede il dataset PyG con timing e non effettua fallback silenzioso al dataset a grafo senza timing.  L'encoder del timing mappa tre input di timing in un embedding a 16 dimensioni prima della concatenazione con il contesto del grafo.  Il suo conteggio verificato di parametri addestrabili è 73,705.
+
+Model A4 è un reranker GNN sui grafi successivi alla mossa applicato alle Top-5 candidate del Model A3 congelato.  Il checkpoint congelato di A3 è una dipendenza di inferenza, non una componente addestrabile di A4.  Lo scheduler di A4 monitora la Top-1 end-to-end di validazione, quindi ReduceLROnPlateau usa la modalità ``max''.  L'artefatto finale riporta 88,705 parametri addestrabili di A4 e 160,298 parametri totali in inferenza quando si include la dipendenza A3 congelata.

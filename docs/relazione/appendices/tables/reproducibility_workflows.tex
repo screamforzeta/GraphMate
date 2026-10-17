@@ -1,0 +1,15 @@
+\begin{table}[H]
+\centering
+\small
+\caption{Tre casi d'uso distinti per la riproduzione.}
+\label{tab:reproducibility-workflows}
+\begin{tabular}{p{0.20\linewidth}p{0.34\linewidth}p{0.32\linewidth}}
+\toprule
+Caso d'uso & Artefatti richiesti & Dichiarazione attesa \\
+\midrule
+Ispezionare i risultati pubblicati & File di analisi finale, report, manifesti & Ricostruire tabelle e provenienza dei risultati riportati. \\
+Valutare modelli congelati & Checkpoint, dataset a grafo, manifesti dei benchmark, valutatori & Ricalcolare le metriche per pesi addestrati fissati. \\
+Riaddestrare configurazioni ufficiali & Codice sorgente, configurazioni, dati, ambiente di addestramento & Riprodurre la procedura prevista di addestramento, senza garanzia di pesi byte-identici. \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,26 @@
+\begin{table}[H]
+\centering
+\small
+\caption{Impostazioni ufficiali comuni di addestramento.  I valori si applicano a Model A, Model A2, Model A3, Model B e Model A4 salvo diversa indicazione nella colonna delle note.}
+\label{tab:shared-training-settings}
+\begin{tabular}{p{0.28\linewidth}p{0.24\linewidth}p{0.38\linewidth}}
+\toprule
+Impostazione & Valore & Note \\
+\midrule
+Seed & 42 & Usato dalle configurazioni ufficiali. \\
+Ottimizzatore & Adam & Stessa famiglia di ottimizzatori per i modelli addestrati. \\
+Learning rate & \(5\times10^{-4}\) & Learning rate iniziale dell'ottimizzatore. \\
+Weight decay & \(1\times10^{-4}\) & Weight decay di Adam. \\
+Batch size & 128 & Batch size ufficiale di addestramento. \\
+Epoche massime & 300 & L'early stopping può fermare prima l'addestramento. \\
+Pazienza early stopping & 12 & Solo metrica di validazione; test escluso dalla selezione. \\
+Min delta early stopping & 0 & Non è richiesto un margine positivo di miglioramento. \\
+Dropout & 0.30 & Probabilità di dropout dell'architettura. \\
+Scheduler & ReduceLROnPlateau & Factor 0.5, patience 3, learning rate minimo \(10^{-6}\). \\
+Modalità scheduler & min tranne A4 max & A/A2/A3/B monitorano la loss di validazione; A4 monitora la Top-1 end-to-end di validazione. \\
+AMP & abilitato & Mixed precision nell'addestramento ufficiale. \\
+Worker & 0 & \texttt{num\_workers=0}; worker persistenti disabilitati. \\
+Pinned memory & abilitata & Trasferimenti non bloccanti abilitati. \\
+\bottomrule
+\end{tabular}
+\end{table}

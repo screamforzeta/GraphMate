@@ -1,0 +1,16 @@
+\begin{table}[H]
+\centering
+\small
+\caption{Ordine delle feature globali del grafo.}
+\label{tab:global-features}
+\begin{tabular}{p{0.12\linewidth}p{0.28\linewidth}p{0.48\linewidth}}
+\toprule
+Indice & Feature & Codifica \\
+\midrule
+0 & Lato al tratto & 1 per Bianco al tratto, 0 per Nero al tratto. \\
+1 & Sotto scacco & 1 se il lato al tratto è sotto scacco; altrimenti 0. \\
+2 & Fullmove & \(\min(\text{fullmove},200)/200\). \\
+3 & Halfmove & \(\min(\text{halfmove},100)/100\). \\
+\bottomrule
+\end{tabular}
+\end{table}

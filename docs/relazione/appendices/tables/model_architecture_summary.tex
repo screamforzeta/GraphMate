@@ -1,0 +1,18 @@
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Sintesi delle architetture ufficiali dei modelli.  I conteggi dei parametri sono mostrati solo dove verificati da artefatti finali.}
+\label{tab:model-architecture-summary}
+\begin{tabular}{p{0.10\linewidth}p{0.22\linewidth}p{0.16\linewidth}p{0.19\linewidth}p{0.18\linewidth}}
+\toprule
+Modello & Ruolo & Spazio di uscita & Dimensioni principali & Parametri verificati \\
+\midrule
+A & Baseline senza timing a vocabolario globale & 1,786 classi & nodo 15, arco 5, globale 4, nascosto 128, classifier nascosto 128 & Non affermato \\
+A1 & Variante inference-only con maschera legale di A & Checkpoint A con filtro legale & Nessuna configurazione di addestramento separata & Nessun checkpoint \\
+A2 & Modello a vocabolario globale mascherato & 1,786 classi con maschera legale & Stesse dimensioni di base di A & Non affermato \\
+A3 & Scorer delle mosse candidate legali & Candidate legali variabili & candidato \(128+128+132+8=396\) & 71,593 \\
+B & Scorer delle mosse candidate legali con timing & Candidate legali variabili & ingresso timing 3, nascosto timing 16, candidato 412 & 73,705 \\
+A4 & Reranker GNN sui grafi successivi alla mossa & Top-5 candidate del Model A3 congelato & contesto post-mossa 132, feature score 2, candidato 530 & 88,705 addestrabili; 160,298 totali in inferenza \\
+\bottomrule
+\end{tabular}
+\end{table}

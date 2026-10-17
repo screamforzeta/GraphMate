@@ -1,0 +1,81 @@
+\label{chap:discussion}
+
+\section{Vincoli scacchistici e spazio decisionale}
+
+La progressione da A ad A3 mostra che la rappresentazione della decisione è
+importante almeno quanto l'encoder condiviso. Il Modello A può assegnare probabilità
+a classi incompatibili con la posizione corrente; A1 e A2 riducono questo problema
+filtrando o mascherando le mosse illegali, mentre A3 costruisce direttamente il
+confronto tra le sole mosse legali disponibili. Sul test Lichess, il passaggio dal
+39,62\% di A al 49,81\% di A1 isola il beneficio del vincolo in inferenza senza
+introdurre un nuovo checkpoint. A3 raggiunge il 67,56\%, suggerendo che formulare
+l'apprendimento come ranking contestuale delle candidate sia più efficace del solo
+filtro applicato a un vocabolario globale.
+
+Questa evidenza non implica che la legalità esaurisca la difficoltà scacchistica.
+Il generatore di mosse elimina azioni impossibili, ma il modello deve ancora
+distinguere la continuazione tatticamente corretta dalle alternative legali. Il
+risultato indica piuttosto che incorporare un vincolo certo del dominio riduce uno
+spazio decisionale inutilmente ampio e allinea meglio l'obiettivo di addestramento
+con quello di valutazione.
+
+\section{Reranking post-mossa e limite di recupero}
+
+A4 aggiunge una seconda prospettiva: non valuta soltanto la posizione corrente e
+la coppia origine--destinazione, ma costruisce il grafo ottenuto dopo ogni candidata
+e ne usa il contesto per il reranking. L'aumento della Top-1 dal 67,56\% di A3
+all'85,41\% su Lichess è coerente con l'utilità di osservare le conseguenze
+immediate della mossa. Sul benchmark classico il vantaggio descrittivo è più
+contenuto, dall'11,0\% al 15,5\%, e il test appaiato non raggiunge la soglia
+convenzionale del 5\% (\(p\approx0{,}0931\)); il campione di 200 problemi limita la
+precisione della stima.
+
+Il risultato di A4 è condizionato dallo stadio di recupero. Il reranker riceve solo
+le cinque migliori candidate di A3: se la mossa accettata non compare in questo
+insieme, A4 non può selezionarla. La Top-5 di A3 costituisce quindi un tetto di
+recupero end-to-end; su YACPDB essa è pari al 34,5\%. A4 migliora l'ordinamento
+all'interno dell'insieme disponibile, ma non risolve gli errori di recupero a monte.
+Questa distinzione evita di attribuire al solo encoder post-mossa l'intera
+prestazione della pipeline a due stadi.
+
+\section{Timing e confronto con i modelli linguistici}
+
+Nel confronto controllato il Modello B perde 1,58 punti percentuali di Top-1
+rispetto ad A3; i casi discordanti e il test esatto di McNemar indicano che la
+differenza non è spiegata soltanto da oscillazioni casuali nel campione valutato.
+Le ablazioni neutralizzate restano inferiori ad A3. L'evidenza supporta quindi una
+conclusione circoscritta: la codifica temporale sintetica implementata non migliora
+lo scorer di mosse legali.
+
+Non segue che il tempo di riflessione sia irrilevante in generale. I valori usati
+sono generati deterministicamente e condizionati dal rating; non misurano il tempo
+impiegato da una persona per risolvere quello specifico puzzle. È plausibile, ma non
+dimostrato dagli esperimenti, che il segnale non aggiunga informazione indipendente
+o che l'encoder non ne sfrutti la forma. Verificare queste ipotesi richiederebbe
+tempi reali allineati ai puzzle o un diverso disegno sperimentale.
+
+Nel protocollo rigoroso UCI, entrambi i modelli Qwen ottengono accuratezze molto
+inferiori ai modelli a grafo a ogni profondità Lichess; RQ1 riceve dunque una
+risposta uniforme nei cinque gruppi disponibili. Il risultato dimostra l'efficacia
+dei sistemi completi sotto il protocollo congelato, non una superiorita generale
+delle GNN su ogni uso possibile dei modelli linguistici. Prompt singolo, generazione
+di una sola mossa, assenza di strumenti scacchistici e parser rigoroso delimitano il
+confronto. L'elevata quota di output non interpretabili o illegali è parte della
+prestazione end-to-end misurata, ma non equivale da sola a una misura pura del
+ragionamento scacchistico interno.
+
+\section{Generalizzazione e limiti sperimentali}
+
+Il calo di A3 e A4 da Lichess a YACPDB segnala un cambio di distribuzione: le
+composizioni classiche differiscono dai puzzle estratti da partite per provenienza,
+costruzione e profondità. I dati non provano che YACPDB sia intrinsecamente più
+difficile; mostrano invece che le prestazioni sulla distribuzione principale non si
+trasferiscono integralmente. Il campione di 200 problemi, 20 per profondità, rende
+inoltre instabili i confronti fini tra categorie.
+
+La portata del lavoro è circoscritta da ulteriori limiti. GraphMate predice la
+prima mossa risolutiva, non l'intera variante. Il timing sintetico manca in YACPDB,
+quindi RQ2 resta limitata a Lichess; A4 dipende dal recupero Top-5 di A3. Le
+baseline linguistiche coprono un protocollo locale, non ogni modello, prompt o
+integrazione con motori. Checkpoint e budget sono quelli delle configurazioni
+ufficiali: i risultati descrivono esecuzioni congelate, non limiti teorici.

@@ -1,0 +1,15 @@
+\begin{table}[H]
+\centering
+\small
+\caption{Dimensioni dei vettori candidati per i modelli a mosse legali e di reranking.}
+\label{tab:candidate-dimensions}
+\begin{tabular}{p{0.14\linewidth}p{0.58\linewidth}p{0.14\linewidth}}
+\toprule
+Modello & Componenti & Dimensione \\
+\midrule
+A3 & nodo sorgente 128 + nodo destinazione 128 + contesto grafo 132 + embedding promozione 8 & 396 \\
+B & nodo sorgente 128 + nodo destinazione 128 + contesto grafo con timing \(132+16\) + embedding promozione 8 & 412 \\
+A4 & candidato A3 congelato 396 + contesto post-mossa 132 + feature score A3 2 & 530 \\
+\bottomrule
+\end{tabular}
+\end{table}

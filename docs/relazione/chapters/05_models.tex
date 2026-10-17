@@ -1,0 +1,178 @@
+\label{chap:models}
+
+\section{Panoramica della famiglia di modelli}
+
+I capitoli precedenti hanno definito il percorso che porta dai puzzle originali alla costruzione di esempi supervisionati e, successivamente, alla loro rappresentazione come grafi scacchistici. Il Capitolo 5 descrive i modelli che consumano tale rappresentazione e producono una predizione sulla mossa da giocare. Tutte le varianti considerate condividono la stessa impostazione generale del problema: a partire da una posizione, rappresentata come grafo, il modello deve assegnare un punteggio alla mossa corretta. Cambia invece il modo in cui lo spazio delle possibili mosse viene rappresentato e vincolato.
+
+La famiglia di modelli segue una progressione architetturale abbastanza naturale. Il Modello A costituisce la baseline iniziale: la predizione della mossa viene trattata come un problema di classificazione su un vocabolario globale di mosse UCI. Il Modello A2 mantiene la stessa architettura, ma introduce un vincolo di legalit\`a applicato ai logits prodotti dal classificatore. Il Modello A3 modifica invece il paradigma di output: invece di produrre un vettore su tutte le classi del vocabolario, assegna direttamente uno score a ciascuna mossa legale disponibile nella posizione corrente. Il Modello B estende A3 aggiungendo informazione temporale a livello di grafo. Infine, il Modello A4 usa A3 come primo stadio congelato e rivaluta un sottoinsieme di candidate considerando anche la posizione risultante dopo l'applicazione della mossa.
+
+Si distinguono quindi due paradigmi principali. Nel primo, adottato da A e A2, lo spazio di output \`e fisso: ogni classe corrisponde a una mossa del vocabolario globale, indipendentemente dalla posizione corrente. Nel secondo, adottato da A3, B e A4, l'output \`e definito rispetto a un insieme variabile di candidate legali. Questa differenza \`e strutturale: nei modelli a vocabolario fisso la legalit\`a della mossa deve essere gestita separatamente, mentre nei modelli candidate-based essa entra direttamente nella definizione dello spazio di decisione.
+
+La denominazione A1, presente nella documentazione storica del progetto, non corrisponde a un'architettura autonoma: indica una modalit\`a di inferenza basata sulla selezione della migliore mossa legale a partire dai logits del Modello A. Per questo motivo non viene trattata come modello separato nel seguito del capitolo.
+
+\section{Encoder Graph Attention condiviso}
+
+Le varianti principali condividono un encoder Graph Attention che opera sulla rappresentazione a grafo introdotta nel Capitolo 4. L'input \`e quindi costituito dalle feature dei nodi, dagli archi diretti, dagli attributi degli archi e dalle feature globali della posizione. Il capitolo precedente ha descritto nel dettaglio il significato scacchistico di tali componenti; qui interessa invece il modo in cui esse vengono trasformate in embedding utilizzabili dai moduli di predizione.
+
+Il primo layer dell'encoder \`e una convoluzione Graph Attention configurata come
+\[
+    \mathrm{GATConv}(15, 32, \mathrm{heads}=4, \mathrm{concat}=\mathrm{True}, \mathrm{edge\_dim}=5).
+\]
+Il valore 15 corrisponde alla dimensione delle feature di ciascun nodo, mentre \(\mathrm{edge\_dim}=5\) indica che gli attributi degli archi vengono effettivamente usati dal layer di attenzione. Poich\'e le quattro teste vengono concatenate, l'uscita del primo layer ha dimensione \(32 \times 4 = 128\) per nodo. A questa trasformazione seguono una non linearit\`a ELU e un dropout.
+
+Il secondo layer mantiene la stessa dimensione finale degli embedding:
+\[
+    \mathrm{GATConv}(128, 32, \mathrm{heads}=4, \mathrm{concat}=\mathrm{True}, \mathrm{edge\_dim}=5),
+\]
+seguito nuovamente da ELU. Al termine dell'encoder, ogni casa della scacchiera \`e quindi rappresentata da un embedding di dimensione 128. Tali embedding vengono aggregati tramite global mean pooling, producendo per ciascun grafo un vettore di dimensione 128. Il vettore pooled viene infine concatenato con le quattro feature globali della posizione, ottenendo un contesto complessivo di dimensione
+\[
+    128 + 4 = 132.
+\]
+
+\begin{figure}[htbp]
+    \centering
+    \fbox{
+    \begin{minipage}{0.92\textwidth}
+        \centering
+        \texttt{Grafo}
+        \(\rightarrow\)
+        \texttt{GATConv 15$\rightarrow$128}
+        \(\rightarrow\)
+        \texttt{GATConv 128$\rightarrow$128}
+        \(\rightarrow\)
+        \texttt{Global Mean Pooling}
+        \(\rightarrow\)
+        \texttt{concat global features}
+        \(\rightarrow\)
+        \texttt{contesto 132}
+    \end{minipage}
+    }
+    \caption{Schema dell'encoder Graph Attention condiviso dalle principali varianti architetturali.}
+    \label{fig:shared-gat-encoder}
+\end{figure}
+
+Questo blocco viene usato direttamente nei modelli A, A2 e A3 sulla posizione originale. Il Modello B eredita lo stesso encoder e concatena al contesto della posizione un ulteriore vettore temporale. Il Modello A4, invece, utilizza un encoder analogo per rappresentare le posizioni risultanti dopo l'applicazione delle mosse candidate.
+
+\section{Modelli a vocabolario fisso: A e A2}
+
+I primi due modelli trattano la predizione della mossa come classificazione su uno spazio fisso di classi. Ogni classe rappresenta una mossa UCI appartenente al vocabolario costruito a partire dai dati di training. In questo paradigma, la dimensione dell'output non dipende dalla posizione corrente: il modello produce sempre un vettore di logits con una componente per ciascuna mossa del vocabolario.
+
+\subsection{Modello A: classificatore sul vocabolario globale}
+
+Il Modello A \`e la baseline no-timing basata sull'encoder Graph Attention condiviso. Dopo i due layer GAT e il pooling globale, la posizione \`e rappresentata dal contesto di dimensione 132. Tale vettore viene passato a un classificatore multilayer composto da una trasformazione lineare verso 128 dimensioni, una non linearit\`a ELU, dropout e una trasformazione lineare finale verso lo spazio delle classi:
+\[
+    132 \rightarrow 128 \rightarrow \mathrm{num\_classes}.
+\]
+
+Nelle configurazioni ufficiali dei modelli e dei checkpoint, il valore di \(\mathrm{num\_classes}\) \`e pari a 1786. Questo numero va interpretato come la dimensione configurata dello spazio di output per gli artefatti ufficiali, non come valore universalmente coerente con ogni artefatto locale del dataset. Come discusso nel Capitolo 3, infatti, esiste una discrepanza tra alcune risorse versionate del vocabolario e gli split CSV locali; per questo motivo il valore 1786 viene usato qui esclusivamente per descrivere l'architettura ufficiale dei modelli a vocabolario fisso.
+
+L'output del Modello A ha forma \([B, \mathrm{num\_classes}]\), dove \(B\) \`e il numero di grafi nel batch. Ogni riga contiene i logits associati alle mosse del vocabolario. La propriet\`a strutturale pi\`u importante di questa formulazione \`e che lo spazio delle classi \`e globale: il modello non riceve in input l'insieme delle mosse legali della posizione e non incorpora nativamente il vincolo di legalit\`a. Di conseguenza, dal punto di vista architetturale, pu\`o assegnare punteggi elevati anche a mosse che non sono legali nella posizione corrente.
+
+Con le dimensioni ufficiali, il Modello A contiene 268.026 parametri addestrabili.
+
+\subsection{Modello A2: classificatore con mascheramento delle mosse illegali}
+
+Il Modello A2 non introduce una nuova Graph Neural Network. L'encoder, il pooling, il classificatore finale e il numero di parametri sono gli stessi del Modello A. La differenza riguarda il modo in cui vengono utilizzati i logits prodotti dal classificatore globale.
+
+Per ciascuna posizione vengono enumerate le mosse legali. Tali mosse sono quindi associate, quando presenti, alle rispettive classi nel vocabolario globale. I logits delle classi non corrispondenti a mosse legali vengono sostituiti con un valore fortemente negativo, pari a \(-10^4\) nell'implementazione. In questo modo, pur mantenendo un vettore di output definito sul vocabolario globale, la selezione della mossa viene confinata alle classi compatibili con la legalit\`a della posizione corrente.
+
+A2 va quindi interpretato come una variante legal-masked del classificatore A, non come un backbone architetturale indipendente. Il modello conserva lo stesso limite generale del vocabolario fisso, ma aggiunge un vincolo esplicito sulle classi ammissibili a valle della produzione dei logits. Anche in questo caso il numero di parametri addestrabili \`e 268.026.
+
+\section{Scoring delle mosse legali: Modello A3}
+
+Il Modello A3 introduce il cambiamento architetturale pi\`u rilevante rispetto ad A e A2. Invece di produrre un vettore di logits su un vocabolario globale, il modello riceve l'insieme delle mosse legali disponibili nella posizione corrente e assegna uno score scalare a ciascuna candidata. Lo spazio di output diventa quindi variabile e dipende direttamente dalla posizione.
+
+La posizione viene codificata con lo stesso encoder Graph Attention descritto in precedenza. Il risultato \`e costituito dagli embedding dei nodi, ciascuno di dimensione 128, e dal contesto globale della posizione, di dimensione 132. Una mossa candidata viene rappresentata combinando quattro componenti: l'embedding del nodo sorgente, l'embedding del nodo destinazione, il contesto della posizione e un embedding della promozione.
+
+Formalmente, per una mossa candidata \(m\), il vettore usato dallo scorer pu\`o essere scritto come
+\[
+    h_m =
+    [h_{\mathrm{src}} \mid h_{\mathrm{dst}} \mid h_G \mid h_{\mathrm{promo}}],
+\]
+dove \(h_{\mathrm{src}}\) e \(h_{\mathrm{dst}}\) hanno dimensione 128, \(h_G\) ha dimensione 132 e \(h_{\mathrm{promo}}\) ha dimensione 8. La dimensione complessiva del vettore candidato \`e quindi
+\[
+    128 + 128 + 132 + 8 = 396.
+\]
+
+La componente di promozione distingue cinque casi: nessuna promozione, promozione a donna, promozione a torre, promozione ad alfiere e promozione a cavallo. Tali casi non sono codificati come scalari grezzi, ma tramite un embedding apprendibile di dimensione 8. In assenza di promozione viene usato un identificativo dedicato, cos\`i che anche le mosse ordinarie abbiano una rappresentazione omogenea.
+
+Il vettore \(h_m\) viene passato a uno scorer multilayer:
+\[
+    396 \rightarrow 128 \rightarrow 1,
+\]
+con ELU e dropout tra i due layer lineari. L'uscita \`e uno score scalare per la candidata. Nel batching, le candidate di pi\`u posizioni vengono concatenate in una lista piatta; un vettore di puntatori, comunemente indicato come \texttt{candidate\_ptr}, consente di ricostruire quali score appartengano alla stessa posizione. Questo dettaglio \`e necessario perch\'e il numero di mosse legali varia da un grafo all'altro.
+
+La conseguenza principale del paradigma A3 \`e che la legalit\`a non viene applicata come correzione esterna a un vocabolario globale, ma entra nella definizione stessa delle candidate valutate. Il modello non produce logits per mosse non legali nella posizione corrente. Con le dimensioni ufficiali, A3 contiene 71.593 parametri addestrabili.
+
+\section{Modello B e informazione temporale}
+
+Il Modello B estende A3 aggiungendo informazione temporale a livello di grafo. Mantiene quindi lo stesso paradigma candidate-based: la posizione viene codificata con l'encoder Graph Attention, le mosse legali vengono rappresentate tramite nodo sorgente, nodo destinazione e promozione, e lo scorer finale produce uno score per ciascuna candidata.
+
+La differenza \`e l'aggiunta di tre feature temporali associate al grafo: il tempo della mossa precedente, il tempo della decisione corrente e un indicatore binario che segnala la natura sintetica del tempo. Queste quantit\`a sono trattate come feature globali aggiuntive, non come attributi di nodo o di arco. La loro generazione e normalizzazione appartengono al Capitolo 3; qui interessa solo il modo in cui vengono integrate nell'architettura.
+
+Le tre feature temporali vengono elaborate da un piccolo encoder:
+\[
+    3 \rightarrow 16,
+\]
+realizzato tramite un layer lineare, ELU e dropout. Il vettore risultante, di dimensione 16, viene concatenato al contesto della posizione prodotto da A3. Il contesto globale passa quindi da 132 a
+\[
+    132 + 16 = 148
+\]
+dimensioni.
+
+Di conseguenza, anche il vettore candidato viene ampliato. Rimangono invariati l'embedding del nodo sorgente, l'embedding del nodo destinazione e l'embedding della promozione, ma il contesto della posizione include ora anche la componente temporale:
+\[
+    128 + 128 + 148 + 8 = 412.
+\]
+Lo scorer finale ha quindi struttura
+\[
+    412 \rightarrow 128 \rightarrow 1,
+\]
+con ELU e dropout tra le trasformazioni lineari.
+
+L'output di B mantiene lo stesso formato concettuale di A3: uno score scalare per ciascuna mossa candidata legale. Il modello deve quindi essere letto come estensione locale di A3 con un encoder temporale compatto, non come implementazione diretta della libreria esterna TimeGNN. Con le dimensioni ufficiali, B contiene 73.705 parametri addestrabili.
+
+\section{Reranking delle posizioni post-mossa: Modello A4}
+
+Il Modello A4 introduce una struttura a due stadi. Nel primo stadio, A3 viene utilizzato come modello congelato per assegnare uno score alle mosse legali della posizione originale. Da questi score vengono selezionate le Top-5 candidate. Questa selezione non \`e un risultato sperimentale, ma una scelta architetturale e configurativa: A4 non rivaluta tutte le mosse legali, bens\`i un sottoinsieme ristretto proposto da A3.
+
+Nel secondo stadio, ciascuna candidata selezionata viene applicata alla posizione corrente. Si ottiene cos\`i una nuova posizione, corrispondente allo stato della scacchiera dopo la mossa. Tale posizione post-mossa viene rappresentata nuovamente come grafo e codificata da un encoder GAT dedicato. L'encoder post-move segue la stessa struttura generale del backbone: due layer GAT con attributi degli archi, ELU, dropout, global mean pooling e concatenazione con le feature globali della posizione risultante. Il contesto post-move prodotto ha dimensione 132.
+
+La rappresentazione usata dal reranker combina tre gruppi di feature. Il primo \`e il vettore candidato prodotto nello stile di A3 prima dello scorer, di dimensione 396. Il secondo \`e il contesto del grafo post-mossa, di dimensione 132. Il terzo \`e composto da due feature scalari derivate dagli score di A3: lo score grezzo della candidata e lo score centrato rispetto al gruppo Top-5. La dimensione complessiva del vettore elaborato da A4 \`e quindi
+\[
+    396 + 132 + 2 = 530.
+\]
+
+Il reranker finale \`e uno scorer multilayer:
+\[
+    530 \rightarrow 128 \rightarrow 1,
+\]
+con ELU e dropout tra i due layer lineari. L'uscita \`e uno score scalare per ciascuna delle candidate Top-5. A differenza di A3, che valuta la mossa guardando la posizione originale e la coppia sorgente-destinazione, A4 dispone anche di informazione esplicita sulla posizione che risulterebbe dopo l'applicazione della candidata.
+
+Dal punto di vista parametrico, A4 contiene 88.705 parametri addestrabili. Questo valore include l'encoder post-move e lo scorer del reranker, ma non i parametri di A3, che rimangono congelati. In inferenza, tuttavia, il sistema coinvolge anche A3 come stadio di retrieval; considerando A3 congelato, il totale dei parametri utilizzati \`e 160.298, di cui 71.593 appartengono al modello A3.
+
+\section{Confronto architetturale}
+
+La Tabella~\ref{tab:model-architecture-comparison} riassume le differenze strutturali tra le varianti. La tabella ha funzione descrittiva: non confronta prestazioni, ma mette in evidenza il diverso modo in cui ciascun modello definisce lo spazio di decisione e incorpora vincoli o informazioni aggiuntive.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \begin{tabularx}{\textwidth}{l>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{0.22\textwidth}ccr}
+        \hline
+        Modello & Paradigma di output & Legalit\`a & Timing & Post-move & Parametri \\
+        \hline
+        A & vocabolario globale & non nativa & no & no & 268.026 \\
+        A2 & vocabolario globale & maschera sui logits & no & no & 268.026 \\
+        A3 & candidate legali & nativa & no & no & 71.593 \\
+        B & candidate legali & nativa & s\`i & no & 73.705 \\
+        A4 & Top-5 candidate A3 & vincolata da A3 & no & s\`i & 88.705 \\
+        \hline
+    \end{tabularx}
+    \caption{Confronto architetturale tra le varianti della famiglia di modelli.}
+    \label{tab:model-architecture-comparison}
+\end{table}
+
+Nel caso di A4, il numero riportato indica i parametri addestrabili del reranker. Il modello utilizza anche A3 come componente congelata per produrre le candidate iniziali, ma tali parametri non vengono ottimizzati insieme al secondo stadio.
+
+La progressione va dal vincolo di legalit\`a di A2 allo scoring delle mosse legali di A3. Il Modello B aggiunge il timing, mentre A4 valuta le posizioni successive alle candidate. Il capitolo seguente definisce il confronto sperimentale.

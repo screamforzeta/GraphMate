@@ -1,0 +1,18 @@
+\begin{table}[H]
+    \centering
+    \small
+    \caption{Stato della verifica Popeye per il benchmark congelato di composizioni classiche. Timeout significa verifica indipendente non risolta, non etichetta di composizione errata.}
+    \label{tab:popeye-verification}
+
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.38\textwidth}r>{\raggedright\arraybackslash}X}
+        \toprule
+        Stato & Conteggio & Note \\
+        \midrule
+        Chiave iniziale unica verificata & 188 & Una chiave accettata. \\
+        Chiavi iniziali multiple verificate & 5 & Più chiavi accettate secondo la politica congelata. \\
+        Timeout non risolto & 7 & Conservato con categoria della chiave sorgente YACPDB. \\
+        \midrule
+        Totale & 200 & Dimensione del benchmark congelato. \\
+        \bottomrule
+    \end{tabularx}
+\end{table}

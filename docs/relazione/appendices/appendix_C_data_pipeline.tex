@@ -1,0 +1,51 @@
+\chapter{Pipeline dei dati, suddivisioni e timing sintetico}
+\label{app:data-pipeline}
+
+Questa appendice specifica la pipeline di trattamento dei dati usata per gli esperimenti finali di GraphMate.  Il repository contiene materiale esplorativo aggiuntivo, incluso lavoro sul timing derivato da partite Lichess, ma gli esperimenti finali di Model A3, Model B e Model A4 si basano sulla pipeline dei puzzle Lichess descritta qui.  Model B usa campi di timing sintetico associati a quei grafi di puzzle; non è addestrato su osservazioni reali dell'orologio di gioco.
+
+\input{appendices/figures/data_pipeline}
+
+\section{Semantica dei puzzle Lichess}
+\label{app:data-pipeline:lichess}
+
+Il file sorgente pulito per il task finale sui puzzle è \\
+\texttt{data/processed/puzzles/mate\_puzzles\_clean.csv}.  Nel formato dei puzzle Lichess, il campo grezzo \texttt{FEN} indica la posizione prima della mossa di preparazione dell'avversario.  La fase di preprocessing registra quindi questa posizione come \texttt{OriginalFEN}, applica \texttt{Moves[0]} come mossa UCI legale di preparazione e usa la scacchiera risultante come FEN del solutore.  L'etichetta target è \texttt{Moves[1]}, cioè la prima mossa attesa dal solutore nella posizione trasformata.  Le righe sono scartate se la FEN originale non è valida, se la mossa di preparazione è malformata o illegale, oppure se la mossa target è malformata o illegale nella posizione del solutore.
+
+Dopo correzione semantica e validazione, la pipeline conserva identificatore del puzzle, FEN originale, FEN del solutore, stringa completa delle mosse, mossa target, rating, temi e profondità di matto.  Il costruttore degli split finali bilancia il dataset per profondità di matto con al massimo 20,000 esempi per profondità, quindi costruisce gli insiemi di addestramento, validazione e test con rapporti 0.80, 0.10 e 0.10 usando random state 42 e stratificazione per profondità di matto.
+
+\section{Vocabolario delle mosse e conteggi dei grafi}
+\label{app:data-pipeline:vocab}
+
+Il vocabolario delle mosse è costruito solo dall'insieme di addestramento.  Contiene 1,786 mosse target uniche su 68,958 esempi di addestramento.  I target di validazione e test assenti dal vocabolario di addestramento sono trattati come fuori vocabolario (OOV) per il dataset a vocabolario globale e vengono saltati durante la generazione dei grafi PyG.  La Tabella~\ref{tab:dataset-splits} riporta sia il numero di righe CSV sia il numero di grafi generati, in modo che la distinzione tra dimensione dello split e numero di grafi utilizzabili sia esplicita.
+
+\input{appendices/tables/dataset_splits}
+
+Il dataset PyG generato usa lo schema di grafo dell'Appendice~\ref{app:graph-features}.  I grafi sono scritti in shard da 1,000 esempi per impostazione predefinita.  Il loader sharded usa una piccola cache LRU degli shard e un sampler consapevole degli shard, in modo che l'addestramento non richieda di caricare l'intero dataset in memoria.
+
+\section{Dataset di timing sintetico}
+\label{app:data-pipeline:timing}
+
+Model B usa un dataset PyG arricchito con timing, con la stessa appartenenza agli split e gli stessi conteggi di grafi del dataset PyG senza timing.  Il timing è deterministico e sintetico.  Per ciascun identificatore di puzzle e stream, una chiave stabile basata su \(\mathrm{blake2b}\) mappa la tupla \((\text{seed},\text{stream},\text{puzzle id})\) a un valore pseudo-casuale riproducibile; il seed globale è 42.  Sia
+\[
+d=\operatorname{clip}\left(\frac{\text{rating}-600}{2400-600},0,1\right)
+\]
+lo scalare di difficoltà dipendente dal rating.  La mediana del tempo della mossa corrente è
+\[
+m=12.0(1+0.55d).
+\]
+Con estrazioni normali standard \(z_c\) e \(z_p\) dal generatore stabile, i log-tempi della mossa corrente e della mossa precedente sono
+\[
+\ell_c=\log(m)+0.45z_c,
+\]
+\[
+\ell_p=0.70\ell_c+0.30\log(m)+0.35z_p.
+\]
+I secondi sono ottenuti per esponenziazione e limitati all'intervallo \([0.5,120.0]\).  La normalizzazione è stimata solo sull'insieme di addestramento:
+\[
+z(t)=\frac{\log(1+t)-\mu_{\mathrm{train}}}{\sigma_{\mathrm{train}}},
+\]
+dove il manifesto del repository registra \(\mu_{\mathrm{train}}=2.7518570738318733\) e \(\sigma_{\mathrm{train}}=0.4437502604800904\).  La Tabella~\ref{tab:timing-fields} elenca i campi di timing memorizzati con ciascun grafo.
+
+\input{appendices/tables/timing_fields}
+
+Il flag di timing vale sempre 1.0 per il dataset con timing sintetico e il manifesto registra zero esempi con timing reale.  I controlli contro la leakage sono quindi strutturali: il generatore sintetico è indicizzato dall'identificatore del puzzle invece che dall'uscita del modello, le statistiche di normalizzazione sono stimate solo sull'insieme di addestramento e le mosse target non sono usate per generare i valori di timing.

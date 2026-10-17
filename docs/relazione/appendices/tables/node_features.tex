@@ -1,0 +1,22 @@
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Ordine delle feature dei nodi per ciascuno dei 64 nodi-casa.}
+\label{tab:node-features}
+\begin{tabular}{p{0.10\linewidth}p{0.23\linewidth}p{0.55\linewidth}}
+\toprule
+Indice & Feature & Codifica \\
+\midrule
+0--5 & Tipo di pezzo & One-hot per pedone, cavallo, alfiere, torre, donna, re; tutti zero per case vuote. \\
+6 & Colore & 1 per pezzo bianco; 0 per pezzo nero o casa vuota. \\
+7 & Occupata & 1 se una casa contiene un pezzo; altrimenti 0. \\
+8 & Riga & \(\operatorname{rank}(s)/7\), con rank 0 sulla prima traversa. \\
+9 & Colonna & \(\operatorname{file}(s)/7\), con file 0 sulla colonna \(a\). \\
+10 & Attaccata dal Bianco & Conteggio degli attaccanti bianchi della casa nello stato corrente. \\
+11 & Attaccata dal Nero & Conteggio degli attaccanti neri della casa nello stato corrente. \\
+12 & Mobilità legale & Conteggio delle mosse legali originate dalla casa su stati copiati con tratto al Bianco e al Nero. \\
+13 & Pezzo inchiodato & 1 se il pezzo occupante è inchiodato al proprio re; 0 per pezzi non inchiodati o case vuote. \\
+14 & Valore del pezzo & Pedone 1, cavallo/alfiere 3, torre 5, donna 9, re 0, vuota 0. \\
+\bottomrule
+\end{tabular}
+\end{table}

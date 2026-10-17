@@ -1,0 +1,21 @@
+\begin{table}[H]
+    \centering
+    \small
+    \caption{Risultati principali sul benchmark di composizioni classiche secondo la politica congelata delle chiavi accettate. Le percentuali sono Top-1 salvo dove Top-3 o Top-5 è indicato esplicitamente.}
+    \label{tab:classic-results}
+
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}Xrrrrr}
+        \toprule
+        Sistema & ALL200 & Popeye193 & Top-3 & Top-5 & Corrette \\
+        \midrule
+        Model A3 & 11.0\% & 11.399\% & 23.5\% & 34.5\% & 22 \\
+        Model A4 & 15.5\% & 15.026\% & 29.5\% & 34.5\% & 31 \\
+        Qwen 3.5 4B rigoroso & 0.0\% & 0.0\% & -- & -- & 0 \\
+        Qwen 3.5 9B rigoroso & 0.5\% & 0.518\% & -- & -- & 1 \\
+        Model B & N/A & N/A & N/A & N/A & -- \\
+        \bottomrule
+    \end{tabularx}
+
+    \vspace{0.25em}
+    \footnotesize Model B: timing non disponibile. ALL200 e Popeye193 riportano la Top-1.
+\end{table}

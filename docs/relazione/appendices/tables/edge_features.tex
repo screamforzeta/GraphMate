@@ -1,0 +1,17 @@
+\begin{table}[H]
+\centering
+\small
+\caption{Canali delle feature degli archi diretti.  Relazioni multiple sulla stessa coppia diretta sono combinate tramite massimo componente per componente.}
+\label{tab:edge-features}
+\begin{tabular}{p{0.12\linewidth}p{0.22\linewidth}p{0.52\linewidth}}
+\toprule
+Indice & Canale & Semantica \\
+\midrule
+0 & Mossa legale & Arco origine-destinazione per ciascuna mossa legale nella posizione. \\
+1 & Attacco & La sorgente occupata attacca un bersaglio occupato di colore opposto. \\
+2 & Difesa & La sorgente occupata attacca un bersaglio occupato dello stesso colore. \\
+3 & Inchiodatura & Pezzo scorrevole attaccante verso pezzo inchiodato lungo la linea del re. \\
+4 & Linea di scacco & Attaccante che dà scacco verso re quando il lato al tratto è sotto scacco. \\
+\bottomrule
+\end{tabular}
+\end{table}

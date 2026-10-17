@@ -1,0 +1,15 @@
+\begin{table}[H]
+\centering
+\scriptsize
+\caption{Statistiche finali degli split dei puzzle Lichess.  Le righe CSV sono quelle dei file di split; i grafi PyG escludono le mosse target fuori dal vocabolario costruito solo sull'addestramento.}
+\label{tab:dataset-splits}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}Xrrrr>{\raggedright\arraybackslash}p{0.23\textwidth}}
+\toprule
+Split & Righe CSV & Grafi PyG & OOV saltati & Shard & Note \\
+\midrule
+Addestramento & 68,958 & 68,958 & 0 & 69 & Sorgente del vocabolario \\
+Validazione & 8,620 & 8,612 & 8 & 9 & 0.0928\% OOV \\
+Test & 8,620 & 8,610 & 10 & 9 & 0.1160\% OOV \\
+\bottomrule
+\end{tabularx}
+\end{table}

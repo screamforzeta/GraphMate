@@ -1,0 +1,50 @@
+\chapter{Rappresentazione a grafo e schema delle feature}
+\label{app:graph-features}
+
+Questa appendice specifica la rappresentazione da scacchiera a grafo usata dai modelli neurali di GraphMate.  È una specifica implementativa, non una spiegazione generale delle reti neurali su grafi.  L'Appendice~\ref{app:hyperparameters} indica quali modelli consumano ciascuna rappresentazione, mentre l'Appendice~\ref{app:data-pipeline} descrive come i file di grafo sono prodotti a partire dai dati sorgente.
+
+\section{Indicizzazione delle case e layout dei tensori}
+\label{app:graph-features:indexing}
+
+Ogni posizione è rappresentata come un grafo PyTorch Geometric con un nodo per ciascuna casa della scacchiera.  I nodi sono ordinati secondo l'indice di casa di python-chess, da \(a1=0\) fino a \(h8=63\).  La coordinata di riga è l'indice di traversa diviso per 7 e la coordinata di colonna è l'indice di colonna diviso per 7:
+\[
+r(s)=\frac{\operatorname{rank}(s)}{7}, \qquad c(s)=\frac{\operatorname{file}(s)}{7}.
+\]
+Pertanto la prima traversa ha coordinata di riga 0, l'ottava traversa ha coordinata di riga 1, la colonna \(a\) ha coordinata di colonna 0 e la colonna \(h\) ha coordinata di colonna 1.  L'oggetto dati del grafo contiene la matrice dei nodi \(x\in\mathbb{R}^{64\times15}\), l'indice degli archi sparse COO \(\texttt{edge\_index}\in\mathbb{N}^{2\times E}\), la matrice degli archi \(\texttt{edge\_attr}\in\mathbb{R}^{E\times5}\) e le feature globali \(\texttt{global\_features}\in\mathbb{R}^{4}\).  Il dataset conserva inoltre campi di metadati, tra cui FEN, mossa target, identificatore del puzzle, rating, profondità di matto e indice della riga sorgente.
+
+\input{appendices/figures/graph_pipeline}
+
+\section{Feature dei nodi}
+\label{app:graph-features:nodes}
+
+La Tabella~\ref{tab:node-features} riporta l'ordine esatto delle 15 dimensioni dei nodi.  Le case vuote ricevono indicatori di tipo pezzo pari a zero, colore 0, occupazione 0, pin 0 e valore del pezzo 0, mantenendo però le coordinate normalizzate e le feature di conteggio degli attacchi.  Il campo colore vale 1 per un pezzo bianco e 0 per un pezzo nero o per una casa vuota.  La feature di mobilità legale conta le mosse legali che hanno origine dalla casa dopo aver valutato copie della scacchiera con il tratto impostato prima al Bianco e poi al Nero; è quindi un conteggio di mobilità per casa di origine, non un'etichetta di mossa legale per il target di addestramento.  La feature di pezzo inchiodato è locale a un nodo occupato e non deve essere confusa con l'indicatore globale di scacco nella Tabella~\ref{tab:global-features}.
+
+\input{appendices/tables/node_features}
+
+\section{Feature degli archi}
+\label{app:graph-features:edges}
+
+Gli archi sono diretti e multi-etichetta.  Se più relazioni si applicano alla stessa coppia ordinata di case, i cinque canali dell'arco sono aggregati tramite massimo componente per componente.  La lista risultante degli archi è memorizzata in formato sparse COO.  Gli archi di mossa legale puntano dall'origine alla destinazione per ogni mossa legale nella posizione.  Gli archi di attacco e difesa puntano da una casa sorgente occupata a una casa bersaglio occupata attaccata dal pezzo sorgente; il canale è attacco per colori opposti e difesa per lo stesso colore.  Gli archi di inchiodatura sono generati lungo le linee del re dal pezzo scorrevole attaccante al pezzo inchiodato.  Gli archi di linea di scacco sono generati solo quando il lato al tratto è sotto scacco e collegano l'attaccante che dà scacco al re; non enumerano tutte le case sulla linea geometrica.
+
+\input{appendices/tables/edge_features}
+
+\section{Feature globali}
+\label{app:graph-features:globals}
+
+Le quattro feature globali nella Tabella~\ref{tab:global-features} codificano lato al tratto, stato di scacco e contatori di mossa con clipping.  Le normalizzazioni dei contatori sono
+\[
+\text{fullmove\_norm}=\frac{\min(\text{fullmove},200)}{200}, \qquad
+\text{halfmove\_norm}=\frac{\min(\text{halfmove},100)}{100}.
+\]
+Queste feature sono concatenate all'embedding del grafo ottenuto con pooling e sono conservate anche nei grafi successivi alla mossa usati da Model A4.
+
+\input{appendices/tables/global_features}
+
+\section{Rappresentazioni delle mosse candidate}
+\label{app:graph-features:candidates}
+
+I modelli basati su mosse candidate legali costruiscono un vettore candidato per ciascuna mossa legale.  Il raggruppamento delle candidate è memorizzato con un vettore di puntatori, così che la loss sia calcolata sulle mosse legali appartenenti alla stessa posizione.  Le promozioni usano un identificatore a cinque valori, con nessuna promozione mappata a 0 e donna, torre, alfiere e cavallo mappati rispettivamente a 1--4 prima dell'applicazione di un embedding di promozione a 8 dimensioni.
+
+Model A3 concatena embedding della casa sorgente, embedding della casa destinazione, contesto del grafo ed embedding della promozione.  Model B aggiunge un embedding di timing al contesto del grafo.  Model A4 chiede prima al Model A3 congelato le Top-5 candidate, poi applica ciascuna candidata per produrre un grafo della posizione risultante, codifica tale grafo e concatena il contesto successivo alla mossa con la rappresentazione candidata congelata di A3 e due feature dello score A3.  La Tabella~\ref{tab:candidate-dimensions} riporta l'aritmetica verificata delle dimensioni.
+
+\input{appendices/tables/candidate_dimensions}

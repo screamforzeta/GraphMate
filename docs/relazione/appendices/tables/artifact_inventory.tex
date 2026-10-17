@@ -1,0 +1,18 @@
+\begin{table}[H]
+\centering
+\small
+\caption{Classi di artefatti del repository rilevanti per la riproducibilità.}
+\label{tab:artifact-inventory}
+\begin{tabular}{p{0.22\linewidth}p{0.30\linewidth}p{0.34\linewidth}}
+\toprule
+Classe di artefatto & Esempi & Ruolo nella riproducibilità \\
+\midrule
+Configurazioni ufficiali & \path{configs/model_*.json} & Architettura, root dei dati, ottimizzatore, scheduler e politica di addestramento. \\
+Checkpoint congelati & \path{checkpoints/model_*/best.pt} & Pesi pretrained identificati da SHA-256. \\
+Risorse & JSON del move encoder & Mappature ausiliarie stabili, come il vocabolario delle mosse costruito sull'addestramento. \\
+Dataset generati & \path{data/pyg}, \path{data/pyg_puzzles_timing} & Ingressi a grafo e ingressi a grafo arricchiti con timing. \\
+Artefatti di valutazione & report finali, JSON classici, uscite LLM & Uscite metriche e metadati delle esecuzioni. \\
+Analisi finale & \path{generic_info/final_analysis} & Tabelle aggregate destinate al report e inventario. \\
+\bottomrule
+\end{tabular}
+\end{table}

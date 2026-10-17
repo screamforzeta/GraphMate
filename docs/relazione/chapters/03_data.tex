@@ -1,0 +1,119 @@
+\label{chap:data}
+
+\section{Sorgenti dei dati}
+
+\subsection{Puzzle Lichess}
+
+La sorgente principale è il database pubblico dei puzzle Lichess, distribuito come
+CSV compresso con Zstandard. Ogni record contiene, tra gli altri campi,
+l'identificativo del puzzle, una posizione FEN, una sequenza di mosse UCI, il rating
+e i temi assegnati. Lichess documenta inoltre una semantica importante: la FEN
+precede la mossa dell'avversario che avvia il puzzle, mentre la soluzione del
+giocatore comincia dalla seconda mossa della sequenza
+\cite{lichessOpenDatabase}.
+
+GraphMate seleziona i temi \texttt{mateIn1}, \texttt{mateIn2},
+\texttt{mateIn3}, \texttt{mateIn4} e \texttt{mateIn5}. La pipeline ufficiale
+registra 1.937.001 righe dopo il filtraggio tematico e 1.931.434 dopo la pulizia.
+Questi valori provengono dai file e dal log della pipeline finale; sostituiscono i
+conteggi di una precedente esecuzione esplorativa, non usata per gli split
+congelati.
+
+\subsection{Partite ausiliarie e benchmark esterno}
+
+Il progetto include anche un campione di partite Lichess in formato PGN, usato
+nella fase esplorativa per studiare i clock e i metadati di gioco. Questi dati non
+sono allineati uno-a-uno ai puzzle e non forniscono i tempi usati dal Modello B:
+gli esperimenti finali impiegano timing sintetico associato ai puzzle, come
+descritto nella Sezione~\ref{sec:synthetic-timing}.
+
+La valutazione esterna usa invece \texttt{yacpdb\_classic\_v1}, un insieme
+congelato di 200 composizioni di matto diretto provenienti da YACPDB, con 20
+problemi per profondità da \(\#1\) a \(\#10\). Il benchmark è escluso da
+addestramento, selezione degli iperparametri e scelta dei checkpoint. La sua
+costruzione, la verifica indipendente con Popeye e la politica delle chiavi
+accettate sono documentate nell'Appendice~\ref{app:classic-benchmark}.
+
+\section{Pulizia e costruzione del task supervisionato}
+
+La pulizia valida le FEN, richiede rating nell'intervallo 400--3500, profondità
+supportata e sequenza non vuota, quindi rimuove i duplicati individuati dalla coppia
+FEN--sequenza di mosse. Per costruire l'esempio supervisionato, la pipeline:
+
+\begin{enumerate}
+    \item conserva la FEN grezza come \texttt{OriginalFEN};
+    \item applica \texttt{Moves[0]} come mossa di preparazione legale;
+    \item salva la posizione risultante come FEN del solutore;
+    \item usa \texttt{Moves[1]} come \texttt{TargetMove}.
+\end{enumerate}
+
+Sono scartati i record con meno di due mosse, FEN non valida, mossa di preparazione
+malformata o illegale e target malformato o illegale nella posizione del solutore.
+Il compito consiste dunque nel predire la prima mossa risolutiva a partire dalla
+posizione effettivamente presentata al giocatore, non nel generare l'intera linea
+di matto.
+
+\section{Bilanciamento e suddivisione}
+
+Per limitare lo sbilanciamento della sorgente, vengono campionati al massimo 20.000
+esempi per profondità. Le classi mate-in-1--mate-in-4 raggiungono tale soglia,
+mentre per mate-in-5 sono disponibili 6.198 esempi. Il dataset bilanciato contiene
+quindi 86.198 record.
+
+La suddivisione 80/10/10 usa random state 42 ed è stratificata per profondità. La
+Tabella~\ref{tab:main-dataset-splits} distingue le righe CSV dai grafi
+effettivamente generati.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Split finali e campioni utilizzabili dai modelli a grafo.}
+    \label{tab:main-dataset-splits}
+    \begin{tabular}{lrrr}
+        \toprule
+        Split & Righe CSV & Grafi PyG & Target OOV esclusi \\
+        \midrule
+        Addestramento & 68.958 & 68.958 & 0 \\
+        Validazione   & 8.620  & 8.612  & 8 \\
+        Test          & 8.620  & 8.610  & 10 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+I primi quattro livelli rappresentano ciascuno circa il 23,20\% di ogni split;
+mate-in-5 rappresenta circa il 7,19\%. I rating medi sono rispettivamente
+1.338,84, 1.337,61 e 1.338,05 per addestramento, validazione e test. La vicinanza
+di queste statistiche è coerente con la suddivisione stratificata, ma non elimina
+altre possibili differenze tra esempi.
+
+\section{Codifica della mossa e generazione dei grafi}
+
+Il target resta una stringa UCI fino alla codifica numerica. Il vocabolario è
+costruito esclusivamente sull'insieme di addestramento e contiene 1.786 mosse
+distinte. Questa scelta evita di usare validazione o test per definire le classi,
+ma produce 8 target fuori vocabolario in validazione e 10 nel test. Tali record
+rimangono nei CSV e vengono esclusi dalla generazione PyG; per questo le
+valutazioni congelate usano 8.610 grafi di test.
+
+Ogni record utilizzabile viene trasformato nel grafo descritto nel
+Capitolo~\ref{chap:graph-representation}. I grafi sono salvati in shard da 1.000
+elementi e accompagnati da un manifesto che registra schema, conteggi, file e
+anomalie. I conteggi dettagliati e il funzionamento del loader sharded sono
+riportati nell'Appendice~\ref{app:data-pipeline}.
+
+\section{Variante con timing sintetico}
+\label{sec:synthetic-timing}
+
+Il Modello B usa gli stessi esempi e la stessa appartenenza agli split, arricchiti
+con il tempo sintetico della mossa precedente, il tempo sintetico della decisione
+corrente e un indicatore che ne dichiara la natura sintetica. La generazione è
+deterministica rispetto a seed 42, identificativo del puzzle e stream casuale; la
+distribuzione è condizionata dal rating e i secondi sono limitati all'intervallo
+\([0{,}5,120]\).
+
+La normalizzazione applica uno z-score a \(\log(1+t)\), con media e deviazione
+standard stimate sul solo insieme di addestramento. Nessun esempio finale contiene
+un tempo umano reale. Questa distinzione è essenziale: l'esperimento misura
+l'effetto della specifica codifica sintetica implementata, non l'utilità generale
+del tempo di riflessione. Equazioni, parametri e campi persistiti sono riportati
+nell'Appendice~\ref{app:data-pipeline}.

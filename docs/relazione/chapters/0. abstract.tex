@@ -1,0 +1,47 @@
+\begin{abstract}
+Questo lavoro presenta \textit{GraphMate}, un sistema per la predizione di mosse
+tattiche negli scacchi basato su \textit{Graph Neural Networks} (GNN). L'obiettivo
+del progetto è studiare l'efficacia di una rappresentazione strutturata della
+scacchiera, nella quale una posizione non viene trattata come una semplice matrice
+di celle, ma come un grafo capace di descrivere esplicitamente le relazioni
+scacchistiche tra le case e i pezzi.
+
+Il dataset principale è costruito a partire dai puzzle pubblici di Lichess,
+selezionando problemi di matto forzato da \textit{mate-in-1} a
+\textit{mate-in-5}. Dopo le operazioni di filtraggio, validazione,
+deduplicazione e bilanciamento, ciascun problema viene formulato come un task
+supervisionato di predizione della prima mossa risolutiva. Ogni posizione viene
+quindi trasformata in un grafo diretto composto da 64 nodi, corrispondenti alle
+case della scacchiera, e da archi che rappresentano relazioni quali mosse legali,
+attacchi, difese, inchiodature e scacchi. Ai nodi e agli archi sono associate
+feature locali, integrate da feature globali che descrivono lo stato complessivo
+della posizione.
+
+Su questa rappresentazione viene sviluppata e confrontata una famiglia di modelli
+basati su un encoder \textit{Graph Attention Network}. La baseline formula il
+problema come classificazione su un vocabolario globale di mosse UCI; successive
+varianti introducono il mascheramento delle mosse illegali e, soprattutto, uno
+scoring diretto delle sole mosse legali disponibili nella posizione. Vengono
+inoltre analizzate due estensioni: l'integrazione di informazioni temporali
+sintetiche e un'architettura di \textit{reranking} a due stadi, nella quale le
+migliori candidate proposte dal modello vengono rivalutate considerando
+esplicitamente la posizione risultante dopo la loro applicazione.
+
+La valutazione comprende sia dati derivati dalla distribuzione Lichess sia un
+benchmark esterno di composizioni scacchistiche classiche, utilizzato per
+analizzare la capacità di generalizzazione dei modelli. Su quest'ultimo benchmark,
+il modello con reranking post-mossa raggiunge un'accuratezza Top-1 del 15,5\%,
+rispetto all'11,0\% del modello candidate-based di base, mostrando il beneficio
+dell'analisi esplicita dello stato risultante dalla mossa. Come ulteriore termine
+di confronto vengono valutati modelli linguistici locali mediante un protocollo
+rigoroso di generazione di una singola mossa UCI; in tale configurazione le
+prestazioni risultano nettamente inferiori a quelle dei modelli specializzati.
+
+I risultati evidenziano come l'integrazione della struttura del dominio nello
+spazio decisionale, attraverso la rappresentazione a grafo, il vincolo esplicito
+di legalità e l'analisi delle posizioni successive alla mossa, costituisca un
+approccio promettente per la modellazione neurale di problemi tattici negli
+scacchi. Il progetto fornisce inoltre una pipeline riproducibile che comprende
+preprocessing dei dati, costruzione dei grafi, addestramento, gestione dei
+checkpoint e protocolli di valutazione.
+\end{abstract}

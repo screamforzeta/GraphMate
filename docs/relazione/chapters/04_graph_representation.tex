@@ -1,0 +1,194 @@
+\label{chap:graph-representation}
+
+\section{Dalla scacchiera al grafo}
+
+Il Capitolo 3 ha descritto la costruzione del dataset supervisionato fino alla disponibilit\`a, per ogni esempio, di una posizione in formato FEN, di una mossa target in formato UCI e dei metadati associati al puzzle. Il passo successivo consiste nel trasformare tale posizione in una struttura dati adatta a modelli basati su grafi. In questa rappresentazione, una posizione scacchistica viene modellata come un grafo diretto
+\[
+    G = (V, E),
+\]
+dove l'insieme dei nodi \(V\) corrisponde alle case della scacchiera e l'insieme degli archi \(E\) codifica relazioni scacchistiche calcolate sulla posizione.
+
+La scelta fondamentale della rappresentazione \`e associare un nodo a ciascuna delle 64 case della scacchiera. Di conseguenza, il numero di nodi \`e fisso e non dipende dal numero di pezzi presenti nella posizione. Anche le case vuote sono quindi rappresentate esplicitamente: esse non contengono un pezzo, ma mantengono coordinate, informazioni sugli attacchi ricevuti e possono essere destinazioni di mosse legali. Questo aspetto \`e importante perch\'e, negli scacchi, molte relazioni rilevanti non riguardano soltanto le case occupate.
+
+Gli archi non rappresentano semplicemente l'adiacenza geometrica tra case vicine. Al contrario, essi descrivono relazioni scacchistiche dirette, come mosse legali, attacchi, difese, inchiodature e scacchi al re. La direzione dell'arco ha quindi un significato: per esempio, una mossa legale viene rappresentata dalla casa di partenza alla casa di arrivo, mentre una relazione di attacco va dal pezzo attaccante al pezzo avversario attaccato. Poich\'e pi\`u relazioni possono valere per la stessa coppia ordinata di case, gli archi sono rappresentati tramite vettori multi-label: invece di creare pi\`u archi duplicati, la stessa coppia di nodi pu\`o avere pi\`u componenti attive nel proprio vettore di attributi.
+
+Il flusso concettuale della trasformazione \`e riassunto nella Figura~\ref{fig:fen-to-graph}. La FEN viene interpretata come posizione scacchistica, da cui vengono estratte feature dei nodi, feature degli archi e feature globali. In parallelo, la mossa target viene codificata come label numerica. Il risultato finale \`e un oggetto compatibile con PyTorch Geometric, che aggrega struttura del grafo, feature, label e metadati.
+
+\begin{figure}[htbp]
+    \centering
+    \fbox{
+    \begin{minipage}{0.92\textwidth}
+        \centering
+        \texttt{FEN + TargetMove}
+        \(\rightarrow\)
+        \texttt{chess.Board}
+        \(\rightarrow\)
+        \texttt{Node / Edge / Global Features}
+        \(\rightarrow\)
+        \texttt{Target Encoding}
+        \(\rightarrow\)
+        \texttt{PyG Data}
+    \end{minipage}
+    }
+    \caption{Pipeline concettuale dalla posizione FEN alla rappresentazione a grafo.}
+    \label{fig:fen-to-graph}
+\end{figure}
+
+\section{Rappresentazione dei nodi}
+
+Ogni nodo rappresenta una casa della scacchiera ed \`e descritto da un vettore di 15 feature numeriche. La rappresentazione combina informazione statica, come tipo di pezzo e coordinate, con informazione tattica calcolata sulla posizione, come attacchi, mobilit\`a legale e stato di inchiodatura. La Tabella~\ref{tab:main-node-features} riporta il layout completo.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \renewcommand{\arraystretch}{1.15}
+    \setlength{\tabcolsep}{5pt}
+
+    \begin{tabularx}{\textwidth}{
+        >{\centering\arraybackslash}p{1.2cm}
+        >{\raggedright\arraybackslash}p{3.6cm}
+        >{\raggedright\arraybackslash}X
+        >{\raggedright\arraybackslash}X
+    }
+        \hline
+        \textbf{Indice} & \textbf{Feature} & \textbf{Significato} & \textbf{Codifica / normalizzazione} \\
+        \hline
+        0 & pawn & pezzo pedone & one-hot, 1.0 se pedone \\
+        1 & knight & pezzo cavallo & one-hot, 1.0 se cavallo \\
+        2 & bishop & pezzo alfiere & one-hot, 1.0 se alfiere \\
+        3 & rook & pezzo torre & one-hot, 1.0 se torre \\
+        4 & queen & pezzo donna & one-hot, 1.0 se donna \\
+        5 & king & pezzo re & one-hot, 1.0 se re \\
+        6 & color & colore del pezzo & 1.0 bianco, 0.0 nero o vuoto \\
+        7 & occupied & casa occupata & 1.0 se occupata, 0.0 se vuota \\
+        8 & row & rank della casa & $\mathrm{rank}/7$ \\
+        9 & column & file della casa & $\mathrm{file}/7$ \\
+        10 & attacked\_by\_white & attaccanti bianchi & conteggio grezzo \\
+        11 & attacked\_by\_black & attaccanti neri & conteggio grezzo \\
+        12 & legal\_mobility & mosse legali dalla casa & conteggio grezzo \\
+        13 & is\_pinned & pezzo inchiodato & 1.0 se pinned, altrimenti 0.0 \\
+        14 & piece\_value & valore materiale & pedone 1, cavallo/alfiere 3, torre 5, donna 9, re 0 \\
+        \hline
+    \end{tabularx}
+
+    \caption{Layout delle feature associate a ciascun nodo della scacchiera.}
+    \label{tab:main-node-features}
+\end{table}
+
+Le prime sei componenti codificano il tipo di pezzo tramite one-hot encoding. Una casa vuota ha quindi zeri in tutte queste posizioni. La feature di colore usa il valore 1.0 per un pezzo bianco e 0.0 per un pezzo nero; anche una casa vuota ha valore 0.0. Per distinguere una casa vuota da una casa occupata da un pezzo nero, la rappresentazione include esplicitamente la feature \texttt{occupied}. Una casa vuota ha dunque one-hot nullo, colore 0.0, occupazione 0.0 e valore materiale 0.0, ma conserva comunque coordinate e informazioni sugli attacchi ricevuti.
+
+Le coordinate della casa sono rappresentate tramite rank e file normalizzati nell'intervallo \([0,1]\), dividendo il valore discreto per 7. Questa normalizzazione mantiene l'informazione geometrica della casa senza introdurre una codifica categorica separata per riga e colonna.
+
+Le feature \texttt{attacked\_by\_white} e \texttt{attacked\_by\_black} contano il numero di pezzi bianchi o neri che attaccano la casa. Si tratta di conteggi grezzi, non normalizzati, e vengono calcolati per tutte le case, indipendentemente dal fatto che siano occupate. In questo modo una casa vuota ma tatticamente rilevante, per esempio una casa di destinazione sotto controllo, pu\`o comunque ricevere informazione strutturale.
+
+La feature \texttt{legal\_mobility} richiede una precisazione. Non indica semplicemente la mobilit\`a del pezzo del lato al tratto nella posizione corrente. La procedura calcola, per ogni colore, le mosse legali ottenute impostando temporaneamente quel colore come lato al tratto su una copia della posizione. Per ciascuna mossa legale incrementa il conteggio della casa di partenza. La mobilit\`a finale di una casa \`e quindi la somma dei conteggi ottenuti considerando entrambi i colori. Questa scelta produce una misura locale della potenziale attivit\`a della casa, separata dal solo turno corrente.
+
+Infine, \texttt{is\_pinned} indica se il pezzo presente sulla casa \`e inchiodato secondo la logica scacchistica della posizione. Per le case vuote il valore \`e sempre 0.0. Il valore materiale usa la scala classica pedone 1, cavallo e alfiere 3, torre 5, donna 9 e re 0; anche le case vuote hanno valore 0.
+
+Il tensore delle feature dei nodi ha quindi forma \([64,15]\): 64 nodi, uno per casa, e 15 feature per nodo.
+
+\section{Rappresentazione degli archi}
+
+Gli archi del grafo sono diretti e vengono creati quando tra due case della scacchiera esiste almeno una relazione scacchistica fra quelle implementate. Ogni arco possiede un vettore di attributi di dimensione 5, riportato nella Tabella~\ref{tab:main-edge-features}. Le componenti del vettore sono multi-label: pi\`u valori possono essere attivi simultaneamente per lo stesso arco.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \begin{tabularx}{\textwidth}{r>{\raggedright\arraybackslash}p{0.20\textwidth}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{0.27\textwidth}}
+        \hline
+        Indice & Relazione & Significato & Direzione dell'arco \\
+        \hline
+        0 & legal\_move & mossa legale del lato al tratto & partenza \(\rightarrow\) arrivo \\
+        1 & attack & attacco a un pezzo avversario & attaccante \(\rightarrow\) pezzo avversario \\
+        2 & defend & difesa di un pezzo alleato & difendente \(\rightarrow\) pezzo alleato \\
+        3 & pin & relazione di inchiodatura & slider inchiodante \(\rightarrow\) pezzo inchiodato \\
+        4 & check\_line & scacco al re del lato al tratto & checker \(\rightarrow\) re \\
+        \hline
+    \end{tabularx}
+    \caption{Layout delle feature associate agli archi diretti del grafo.}
+    \label{tab:main-edge-features}
+\end{table}
+
+La relazione \texttt{legal\_move} viene creata per ogni mossa legale del lato al tratto nella posizione corrente. L'arco \`e diretto dalla casa di partenza alla casa di arrivo. Le relazioni \texttt{attack} e \texttt{defend} derivano invece dagli attacchi dei pezzi: se un pezzo attacca una casa occupata da un pezzo avversario, viene creato un arco di attacco; se la casa attaccata contiene un pezzo dello stesso colore, viene creato un arco di difesa. Le case vuote attaccate non generano archi di questo tipo, anche se possono essere coinvolte in archi di mossa legale.
+
+La semantica della relazione \texttt{pin} \`e implementativa e va intesa con precisione. Il codice esplora le otto direzioni principali a partire da ciascun re. Se lungo una direzione incontra prima un pezzo dello stesso colore del re e successivamente un pezzo avversario compatibile con quella linea, cio\`e una torre o donna su rank/file oppure un alfiere o donna su diagonale, crea un arco dal pezzo slider avversario al pezzo potenzialmente inchiodato. La relazione non enumera le case intermedie e non viene rappresentata come una sequenza di archi lungo l'intera linea: \`e una relazione diretta tra il pezzo che causa il pin e il pezzo inchiodato.
+
+Anche \texttt{check\_line} va letto secondo la semantica effettivamente implementata. Quando il lato al tratto \`e sotto scacco, vengono individuati gli attaccanti del suo re e viene creato un arco da ciascun checker alla casa del re. In caso di doppio scacco, possono quindi essere creati pi\`u archi con questa componente attiva. Il nome della feature non implica che tutte le case geometriche della linea di scacco siano esplicitamente rappresentate: la rappresentazione codifica il rapporto checker--king.
+
+Se la stessa coppia ordinata di case soddisfa pi\`u relazioni, il grafo mantiene un unico arco e fonde le componenti tramite massimo elemento per elemento. Per esempio, una mossa legale che cattura un pezzo avversario pu\`o avere vettore
+\[
+    [1, 1, 0, 0, 0],
+\]
+come nel caso concettuale \(D2 \rightarrow E3\), dove l'arco rappresenta sia una mossa legale sia un attacco. Questa scelta evita duplicati strutturali e rende ogni arco una relazione multi-label tra due case.
+
+Dopo la costruzione, gli archi vengono ordinati deterministicamente rispetto alla coppia sorgente-destinazione. La struttura finale \texttt{edge\_index} ha forma \([2,E]\), dove \(E\) \`e il numero di archi della posizione, mentre \texttt{edge\_attr} ha forma \([E,5]\). Il valore di \(E\) non \`e fisso: dipende dalla posizione, dal numero di mosse legali e dalle relazioni tattiche presenti.
+
+\section{Feature globali del grafo}
+
+Oltre alle feature locali di nodi e archi, la rappresentazione include un vettore di feature globali che descrive lo stato complessivo della posizione. Tali feature non sono associate a una singola casa o a una singola relazione, ma alla board nel suo insieme. Il layout \`e riportato nella Tabella~\ref{tab:main-global-features}.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{rll}
+        \hline
+        Indice & Feature & Formula / codifica \\
+        \hline
+        0 & side\_to\_move & 1.0 se muove il Bianco, 0.0 se muove il Nero \\
+        1 & is\_check & 1.0 se il lato al tratto \`e sotto scacco, altrimenti 0.0 \\
+        2 & fullmove\_number & \(\min(\mathrm{fullmove}, 200) / 200\) \\
+        3 & halfmove\_clock & \(\min(\mathrm{halfmove}, 100) / 100\) \\
+        \hline
+    \end{tabular}
+    \caption{Feature globali associate alla posizione scacchistica.}
+    \label{tab:main-global-features}
+\end{table}
+
+La prima feature codifica il lato al tratto; la seconda indica se il lato al tratto \`e attualmente sotto scacco. Le ultime due normalizzano i contatori FEN: il numero di mossa viene troncato superiormente a 200 e diviso per 200, mentre l'halfmove clock viene troncato a 100 e diviso per 100. In questo modo i contatori rimangono in un intervallo controllato.
+
+Le feature globali descrivono solo la posizione. Non includono il rating del puzzle, la profondit\`a Mate-in-N, l'identificativo del puzzle, i temi Lichess, la mossa target, la soluzione o eventuali informazioni temporali. Questi elementi appartengono alla label o ai metadati, non al vettore globale della posizione.
+
+Nel codice corrente il vettore globale viene costruito come tensore di forma \([1,4]\), in modo che il batching produca una matrice \([B,4]\) per batch di \(B\) grafi.
+
+\section{PyTorch Geometric Data Object}
+
+Le componenti descritte nelle sezioni precedenti vengono aggregate in un oggetto \texttt{torch\_geometric.data.Data}. Tale oggetto contiene sia la struttura del grafo sia le feature necessarie alla rappresentazione della posizione. La Tabella~\ref{tab:pyg-data-fields} distingue tra feature di input, struttura del grafo, label e metadati.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.23\textwidth}>{\raggedright\arraybackslash}p{0.16\textwidth}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{0.16\textwidth}}
+        \hline
+        Campo & Shape / tipo & Ruolo & Categoria \\
+        \hline
+        \texttt{x} & \([64,15]\) float & feature dei nodi & input \\
+        \texttt{edge\_index} & \([2,E]\) long & archi diretti & struttura \\
+        \texttt{edge\_attr} & \([E,5]\) float & feature degli archi & input \\
+        \texttt{global\_features} & \([1,4]\) float & stato globale della posizione & input \\
+        \texttt{y} & scalare long & indice della mossa target & label \\
+        \texttt{fen} & stringa & posizione rappresentata & metadato \\
+        \texttt{target\_move} & stringa UCI & mossa target originale & metadato / label testuale \\
+        \texttt{puzzle\_id} & stringa & identificativo del puzzle & metadato \\
+        \texttt{rating} & scalare float & rating del puzzle & metadato \\
+        \texttt{mate\_depth} & scalare long & profondit\`a Mate-in-N & metadato \\
+        \texttt{source\_row\_index} & scalare long & riga sorgente nello split & metadato \\
+        \hline
+    \end{tabularx}
+    \caption{Campi principali dell'oggetto PyTorch Geometric usato per rappresentare una posizione.}
+    \label{tab:pyg-data-fields}
+\end{table}
+
+Le feature di input vere e proprie sono \texttt{x}, \texttt{edge\_attr} e \texttt{global\_features}, insieme alla struttura definita da \texttt{edge\_index}. La label numerica \texttt{y} \`e ottenuta codificando la \texttt{TargetMove} tramite il vocabolario delle mosse discusso nel Capitolo 3. Se la mossa target non \`e presente nel vocabolario, non \`e possibile produrre una label numerica valida per i modelli a vocabolario fisso.
+
+I campi \texttt{fen} e \texttt{target\_move} mantengono rispettivamente la posizione e la mossa target nel loro formato testuale originale. Gli altri campi, come \texttt{puzzle\_id}, \texttt{rating} e \texttt{mate\_depth}, permettono di conservare il collegamento con il record di origine e con i metadati descrittivi del puzzle. Nella pipeline corrente di generazione dei grafi viene inoltre aggiunto \texttt{source\_row\_index}, utile per ricondurre il grafo alla riga dello split tabellare da cui proviene.
+
+La quantit\`a \(E\) di archi varia con la posizione: ogni grafo ha sempre 64 nodi, ma il numero di relazioni scacchistiche rappresentate dipende da mosse legali, attacchi, difese, pin e stato di scacco. Questa variabilit\`a \`e gestita naturalmente dal formato sparso di PyTorch Geometric tramite \texttt{edge\_index}.
+
+\section{Generazione e persistenza del dataset a grafo}
+
+La trasformazione descritta nelle sezioni precedenti viene applicata sistematicamente alle righe degli split introdotti nel Capitolo 3. Per ciascun record, la FEN viene validata come posizione scacchistica, la mossa target viene verificata rispetto al vocabolario disponibile e viene costruito il grafo corrispondente. Una volta creato l'oggetto \texttt{Data}, vengono associati i metadati del puzzle, come identificativo, rating, profondit\`a e indice della riga sorgente.
+
+La gestione delle mosse fuori vocabolario \`e parte della generazione del dataset grafico. Se una \texttt{TargetMove} non \`e presente nel dizionario di codifica, il campione non pu\`o ricevere una label numerica coerente e viene conteggiato come OOV. Nella configurazione corrente questi esempi vengono saltati durante la generazione dei grafi. Errori di FEN o altre anomalie di conversione sono conteggiati separatamente, in modo da rendere tracciabile la differenza tra righe CSV e grafi effettivamente generati.
+
+Il formato corrente previsto per la persistenza \`e sharded: i grafi vengono salvati in shard, ciascuno contenente un numero limitato di esempi, e un manifest descrive il dataset generato. Il manifest riporta lo schema delle feature, con dimensione 15 per i nodi, 5 per gli archi e 4 per le feature globali, oltre alle statistiche di generazione dei singoli split. Questo formato consente di rappresentare dataset di dimensione elevata senza dover caricare tutti i grafi in un unico oggetto monolitico.
+
+La pipeline mantiene anche compatibilit\`a con un formato legacy basato su file monolitici per ciascuno split. Tale supporto \`e rilevante perch\'e nella working copy locale sono presenti artefatti legacy, mentre il formato sharded con manifest rappresenta la forma corrente prevista dalla pipeline. Questa differenza riguarda la persistenza e il caricamento dei grafi, non il layout concettuale della rappresentazione a grafo descritto nelle sezioni precedenti.

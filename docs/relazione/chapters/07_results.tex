@@ -1,0 +1,218 @@
+
+\label{chap:results}
+
+\section{Panoramica delle valutazioni}
+
+Questa sezione presenta i risultati degli esperimenti documentati nella repository GraphMate, utilizzando gli artefatti ufficiali già disponibili. L'analisi comprende il benchmark Lichess, il confronto controllato tra il modello senza timing A3 e la variante temporale B, la valutazione del reranking post-mossa introdotto da A4, il confronto con i modelli linguistici Qwen 3.5 4B e Qwen 3.5 9B e, infine, la valutazione su composizioni scacchistiche classiche provenienti da YACPDB.
+
+Le tabelle riportano le metriche registrate negli artefatti dell'analisi finale. Per il benchmark Lichess, i risultati principali si riferiscono a 8\,610 esempi effettivamente valutati. Per il benchmark classico, il campione comprende 200 composizioni. È importante distinguere questi due contesti: Lichess costituisce il benchmark principale, mentre YACPDB viene utilizzato per osservare il comportamento dei modelli su una distribuzione esterna.
+
+L'analisi finale include 12 esperimenti ufficiali e mantiene separati i risultati primari dagli artefatti diagnostici o non validi. In particolare, i risultati dei modelli linguistici sono valutati secondo il protocollo strict UCI; i tentativi falliti per problemi infrastrutturali e i risultati ottenuti con il parser relaxed non vengono utilizzati per sostituire le misure principali.
+
+\section{Risultati sul benchmark Lichess}
+
+La Tabella~\ref{tab:lichess-main-results} riassume le prestazioni dei modelli sul test set Lichess. L'accuratezza Top-1 indica la percentuale di esempi nei quali la mossa corretta è classificata al primo posto; Top-3 e Top-5 indicano invece la percentuale di esempi in cui la soluzione compare rispettivamente tra le prime tre o cinque alternative.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Risultati principali sul benchmark Lichess (\(N=8\,610\)).}
+    \label{tab:lichess-main-results}
+    \begin{tabular}{lrrrr}
+        \toprule
+        Modello & Top-1 (\%) & Top-3 (\%) & Top-5 (\%) & Rango medio \\
+        \midrule
+        A   & 39,62 & 55,81 & 62,75 & 4,0115 \\
+        A1  & 49,81 & 70,50 & 79,56 & -- \\
+        A2  & 49,26 & 71,50 & 81,17 & 3,7220 \\
+        A3  & 67,56 & 85,66 & 91,86 & 2,2243 \\
+        B   & 65,98 & 84,84 & 91,37 & 2,3029 \\
+        A4  & 85,41 & -- & -- & -- \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+I risultati mostrano un miglioramento progressivo passando dalla classificazione globale delle mosse del modello A alle configurazioni che considerano esplicitamente la legalità delle mosse. Il modello A raggiunge un'accuratezza Top-1 del 39,62\%, mentre la modalità inferenziale A1, che applica un filtro per selezionare la migliore mossa legale, raggiunge il 49,81\%. Il modello A2, che introduce una maschera di legalità nella classificazione, ottiene il 49,26\% di Top-1 e il valore Top-5 più elevato tra A, A1 e A2, pari all'81,17\%.
+
+Il modello A3, che assegna punteggi alle mosse legali candidate, ottiene un'accuratezza Top-1 del 67,56\%, con Top-3 pari all'85,66\% e Top-5 pari al 91,86\%. Rispetto al modello A, il miglioramento assoluto di Top-1 è pari a circa 27,94 punti percentuali. Il risultato indica che, nel benchmark considerato, la formulazione basata sullo scoring delle mosse legali è più efficace delle configurazioni precedenti basate sul vocabolario globale.
+
+Il modello A4 raggiunge il valore Top-1 più alto tra i modelli a grafo riportati nella tabella, pari all'85,41\%. Questo risultato va interpretato tenendo conto della sua struttura: A4 riordina le prime cinque mosse recuperate da A3 utilizzando una valutazione GNN delle posizioni successive alle mosse candidate. La metrica Top-1 di A4 è quindi il risultato di una pipeline di recupero e reranking e non di una classificazione indipendente su tutte le mosse legali. Nell'artefatto riepilogativo finale sono riportati per A4 soltanto i valori Top-1; per questo motivo le altre metriche non vengono indicate.
+
+A1, inoltre, è una modalità inferenziale applicata al modello A e non dispone di un checkpoint autonomo. Il suo risultato è pertanto utile per misurare l'effetto del filtro di legalità in inferenza, ma non deve essere interpretato come il risultato di un'architettura addestrata separatamente.
+
+\section{Contributo delle informazioni temporali}
+
+L'esperimento relativo al timing confronta il modello A3, privo di feature temporali, con il modello B, che utilizza informazioni temporali sintetiche. Per mantenere il confronto controllato, entrambe le configurazioni sono valutate sugli stessi 8\,610 esempi.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Confronto tra A3 e le configurazioni di ablazione del timing su Lichess.}
+    \label{tab:timing-ablation-results}
+    \begin{tabular}{lrrrr}
+        \toprule
+        Configurazione & Top-1 (\%) & Top-3 (\%) & Top-5 (\%) & \(\Delta\) Top-1 (p.p.) \\
+        \midrule
+        A3, senza timing & 67,56 & 85,66 & 91,86 & 0,00 \\
+        B, timing sintetico & 65,98 & 84,84 & 91,37 & -1,58 \\
+        B, timing neutralizzato & 66,10 & 84,84 & 91,37 & -1,46 \\
+        B, timing e flag azzerati & 66,10 & 84,85 & 91,37 & -1,46 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Il modello B raggiunge una Top-1 del 65,98\%, inferiore di 1,58 punti percentuali rispetto al 67,56\% ottenuto da A3. La differenza è coerente anche con le metriche Top-3 e Top-5, che diminuiscono rispettivamente di circa 0,81 e 0,49 punti percentuali. Il rango medio della mossa corretta passa da 2,2243 per A3 a 2,3029 per B, indicando un peggioramento anche nell'ordinamento medio delle mosse target.
+
+Le configurazioni di ablazione confermano che la presenza delle feature temporali sintetiche non produce un miglioramento rispetto alla baseline senza timing. Con il timing neutralizzato o con i valori temporali e il relativo flag azzerati, la Top-1 si attesta al 66,10\%, ancora inferiore a quella di A3.
+
+Il confronto appaiato tra A3 e B viene valutato mediante il test esatto bilaterale di McNemar. Tra i casi discordanti, B corregge 321 esempi nei quali A3 era errato, mentre A3 è corretto e B errato in 457 esempi. Il test restituisce \(p \approx 1{,}22 \times 10^{-6}\), indicando una differenza statisticamente significativa tra le predizioni appaiate, nella direzione sfavorevole a B. L'effetto osservato è pari a \(-1{,}58\) punti percentuali di Top-1.
+
+La conclusione deve rimanere circoscritta all'esperimento implementato: il segnale temporale sintetico utilizzato in GraphMate non migliora le prestazioni predittive rispetto alla baseline A3. Poiché i tempi sono sintetici e condizionati dal rating, questo risultato non dimostra che informazioni temporali reali siano inutili; indica soltanto che la codifica temporale valutata non apporta un beneficio misurabile in questo protocollo.
+
+\section{Prestazioni in funzione della profondità del matto}
+
+Per approfondire i risultati Lichess, le prestazioni Top-1 sono state analizzate separatamente per profondità del problema. La Tabella~\ref{tab:lichess-depth-results} riporta i valori di A3, B, A4 e delle due baseline LLM.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Accuratezza Top-1 per profondità del matto sul benchmark Lichess.}
+    \label{tab:lichess-depth-results}
+    \begin{tabular}{lrrrrr}
+        \toprule
+        Profondità & \(N\) & A3 (\%) & B (\%) & A4 (\%) & Qwen 4B / 9B (\%) \\
+        \midrule
+        Mate-in-1 & 1\,995 & 79,55 & 78,15 & 93,93 & 0,10 / 0,10 \\
+        Mate-in-2 & 1\,999 & 69,78 & 68,33 & 88,19 & 0,05 / 0,05 \\
+        Mate-in-3 & 1\,999 & 66,73 & 65,48 & 84,59 & 0,15 / 0,10 \\
+        Mate-in-4 & 1\,999 & 58,73 & 56,73 & 78,39 & 0,00 / 0,20 \\
+        Mate-in-5 & 618   & 52,91 & 50,65 & 74,27 & 0,00 / 0,16 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Per A3, B e A4 si osserva una diminuzione dell'accuratezza al crescere della profondità del matto. A3 passa dal 79,55\% nei problemi mate-in-1 al 52,91\% nei mate-in-5; B passa dal 78,15\% al 50,65\%, mentre A4 passa dal 93,93\% al 74,27\%. La tendenza è coerente con una maggiore difficoltà di previsione al crescere della profondità della soluzione, pur senza costituire da sola una misura universale della difficoltà scacchistica.
+
+In tutte le cinque categorie, B presenta una Top-1 inferiore a quella di A3. Anche A4 mantiene la Top-1 più elevata tra i modelli a grafo riportati. Le accuratezze delle baseline Qwen restano invece molto basse secondo il protocollo strict UCI, con valori compresi tra lo 0\% e lo 0,20\% nelle singole categorie.
+
+I gruppi mate-in-1 fino a mate-in-4 contengono circa 2\,000 esempi ciascuno, mentre mate-in-5 ne contiene 618. Il confronto tra profondità deve quindi tenere conto della diversa numerosità dei gruppi, soprattutto per l'ultima categoria.
+
+\section{Analisi per fascia di rating}
+
+La repository riporta anche un'analisi delle prestazioni di A3 e A4 suddivisa per fasce di rating associate ai problemi. I risultati sono riportati nella Tabella~\ref{tab:rating-results}.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Accuratezza Top-1 per fascia di rating sul benchmark Lichess.}
+    \label{tab:rating-results}
+    \begin{tabular}{lrrr}
+        \toprule
+        Fascia di rating & \(N\) & A3 (\%) & A4 (\%) \\
+        \midrule
+        \(<1200\)       & 3\,879 & 82,06 & 95,54 \\
+        1200--1599      & 2\,176 & 65,85 & 86,90 \\
+        1600--1999      & 1\,564 & 51,34 & 75,83 \\
+        2000--2399      & 811   & 43,16 & 60,42 \\
+        \(2400+\)       & 180   & 26,67 & 45,00 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Per entrambi i modelli, la Top-1 diminuisce all'aumentare della fascia di rating. A3 passa dall'82,06\% nella fascia inferiore a 1200 al 26,67\% nella fascia 2400+, mentre A4 passa dal 95,54\% al 45,00\%. A4 mantiene prestazioni superiori ad A3 in tutte le fasce considerate.
+
+Questa analisi descrive un'associazione tra la fascia di rating dei problemi e la prestazione dei modelli; non consente, da sola, di attribuire causalmente il calo a una singola caratteristica delle posizioni. La fascia 2400+ comprende inoltre soltanto 180 esempi, per cui la relativa stima è basata su un campione sensibilmente più piccolo rispetto alle fasce inferiori.
+
+\section{Confronto con le baseline LLM su Lichess}
+
+Il confronto con i modelli Qwen 3.5 4B e Qwen 3.5 9B viene effettuato mediante generazione di una singola mossa e parsing strict in formato UCI. I risultati complessivi sono riportati nella Tabella~\ref{tab:llm-lichess-results}.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Confronto tra modelli a grafo e baseline LLM su Lichess (\(N=8\,610\)).}
+    \label{tab:llm-lichess-results}
+    \begin{tabular}{lrr}
+        \toprule
+        Modello & Top-1 (\%) & Intervallo di confidenza Wilson al 95\% \\
+        \midrule
+        A3 & 67,5610 & [66,5645; 68,5418] \\
+        B & 65,9814 & [64,9738; 66,9748] \\
+        A4 & 85,4123 & [84,6509; 86,1421] \\
+        Qwen 3.5 4B strict & 0,0697 & [0,0319; 0,1520] \\
+        Qwen 3.5 9B strict & 0,1161 & [0,0631; 0,2137] \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Nel benchmark considerato, i modelli a grafo ottengono accuratezze Top-1 nettamente superiori alle due baseline Qwen secondo il protocollo di valutazione adottato. Il risultato deve tuttavia essere letto alla luce della composizione degli errori dei modelli linguistici: la valutazione strict richiede che la singola mossa generata sia interpretabile nel formato previsto e corrisponda a una mossa corretta.
+
+Per Qwen 3.5 4B, soltanto 6 esempi su 8\,610 risultano corretti. La repository registra 130 mosse legali ma errate, 5\,894 mosse illegali e 2\,580 fallimenti di parsing. Per Qwen 3.5 9B, gli esempi corretti sono 10, a fronte di 413 mosse legali ma errate, 2\,899 mosse illegali e 5\,288 fallimenti di parsing. Per entrambi i modelli non vengono registrati errori di esecuzione nel riepilogo ufficiale.
+
+Questa distribuzione mostra che le prestazioni strict delle baseline LLM sono influenzate in misura rilevante dalla produzione di output non conformi e di mosse illegali. Non è quindi corretto interpretare la sola Top-1 come una misura completa delle capacità di ragionamento scacchistico dei modelli linguistici: essa misura il successo complessivo nel compito specifico, che include sia la generazione di un output interpretabile sia la correttezza della mossa.
+
+L'analisi primaria non sostituisce questi risultati con quelli ottenuti tramite parsing relaxed, che restano esclusivamente diagnostici. Anche i tentativi sperimentali GPT-OSS sono esclusi dal confronto principale, poiché la repository li conserva come evidenza di problemi di protocollo e generazione, non come risultati comparabili validi.
+
+\section{Risultati sul benchmark esterno YACPDB}
+
+Il benchmark YACPDB comprende 200 composizioni classiche, con 20 problemi per ciascuna profondità di matto da uno a dieci. La Tabella~\ref{tab:main-classic-results} riporta le prestazioni complessive dei modelli valutati.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Risultati sul benchmark esterno YACPDB (\(N=200\)).}
+    \label{tab:main-classic-results}
+    \begin{tabular}{lrrrr}
+        \toprule
+        Modello & Top-1 (\%) & Top-3 (\%) & Top-5 (\%) & Soluzioni Top-1 \\
+        \midrule
+        A3 & 11,0 & 23,5 & 34,5 & 22 \\
+        A4 & 15,5 & 29,5 & 34,5 & 31 \\
+        Qwen 3.5 4B strict & 0,0 & -- & -- & 0 \\
+        Qwen 3.5 9B strict & 0,5 & -- & -- & 1 \\
+        B & -- & -- & -- & -- \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Sul benchmark esterno, A4 raggiunge una Top-1 del 15,5\%, rispetto all'11,0\% di A3. Anche Top-3 aumenta dal 23,5\% al 29,5\%, mentre Top-5 rimane invariata al 34,5\%. In termini assoluti, A4 identifica correttamente la mossa accettata in 31 composizioni, contro le 22 di A3.
+
+Il confronto appaiato A3--A4, effettuato con il test esatto bilaterale di McNemar, considera 23 casi discordanti: in 16 casi A4 è corretto e A3 errato, mentre in 7 casi accade il contrario. Il valore \(p \approx 0{,}0931\) non raggiunge la soglia convenzionale di significatività del 5\%. Il miglioramento descrittivo di A4 è quindi evidente nelle metriche osservate, ma il test appaiato non fornisce evidenza sufficiente per dichiarare statisticamente significativa la differenza al livello del 5\%.
+
+Per il benchmark classico, Qwen 3.5 4B non individua alcuna mossa accettata, mentre Qwen 3.5 9B ne individua una su 200. Anche in questo caso, i conteggi degli errori mostrano una quota elevata di output non conformi o illegali. Il modello B non viene valutato su YACPDB, poiché il benchmark non contiene gli input temporali richiesti dalla sua configurazione; il risultato è pertanto indicato come non disponibile e non viene sostituito con valori sintetici.
+
+I risultati per singola profondità devono essere interpretati con cautela, perché ciascun gruppo contiene soltanto 20 composizioni. In queste condizioni, ogni singolo problema corrisponde a cinque punti percentuali di Top-1 e gli intervalli di confidenza sono ampi. Le differenze tra profondità non costituiscono quindi stime precise del comportamento generale dei modelli a ciascun livello di matto.
+
+\section{Generalizzazione tra Lichess e YACPDB}
+
+Il confronto tra il benchmark principale e quello esterno permette di osservare la variazione delle prestazioni quando i modelli vengono applicati a composizioni provenienti da una distribuzione differente. La Tabella~\ref{tab:generalization-results} riassume la Top-1 nei due benchmark.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \caption{Confronto della Top-1 tra Lichess e YACPDB.}
+    \label{tab:generalization-results}
+    \begin{tabular}{lrrr}
+        \toprule
+        Modello & Lichess (\%) & YACPDB (\%) & Differenza (p.p.) \\
+        \midrule
+        A3 & 67,56 & 11,00 & -56,56 \\
+        A4 & 85,41 & 15,50 & -69,91 \\
+        Qwen 3.5 4B strict & 0,0697 & 0,0000 & -0,0697 \\
+        Qwen 3.5 9B strict & 0,1161 & 0,5000 & +0,3839 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Per i modelli a grafo, il passaggio da Lichess a YACPDB è associato a una riduzione marcata della Top-1: da 67,56\% a 11,0\% per A3 e da 85,41\% a 15,5\% per A4. Questo risultato evidenzia una difficoltà nel trasferire le prestazioni ottenute sul dataset principale alle composizioni classiche esterne.
+
+La differenza non deve essere interpretata come una prova che YACPDB sia semplicemente più difficile in senso assoluto. I due benchmark differiscono per provenienza, costruzione e distribuzione dei problemi; i risultati indicano pertanto un effetto di generalizzazione esterna e un possibile cambiamento di distribuzione (\textit{distribution shift}). Per le baseline Qwen, le percentuali sono prossime allo zero in entrambi i benchmark e la variazione assoluta osservata non consente di trarre conclusioni generali sulla capacità di generalizzazione dei modelli linguistici.
+
+\section{Sintesi delle misure}
+
+Le misure principali fissano tre osservazioni per la discussione successiva. Su
+Lichess A3 supera i modelli a vocabolario globale, mentre A4 ottiene la Top-1 più
+alta. Nel confronto controllato, B rimane al di sotto di A3. Sul benchmark esterno,
+A4 mantiene un vantaggio descrittivo su A3, ma entrambi mostrano valori molto
+inferiori a quelli Lichess. Il Capitolo~\ref{chap:discussion} interpreta questi
+risultati, ne distingue evidenze e ipotesi e ne discute i limiti.

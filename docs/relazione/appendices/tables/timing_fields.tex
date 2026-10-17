@@ -1,0 +1,17 @@
+\begin{table}[H]
+\centering
+\small
+\caption{Campi di timing associati al dataset PyG di Model B.  I valori normalizzati usano parametri log1p z-score stimati solo sull'addestramento.}
+\label{tab:timing-fields}
+\begin{tabular}{p{0.28\linewidth}p{0.58\linewidth}}
+\toprule
+Campo & Significato \\
+\midrule
+\path{previous_move_time} & Tempo sintetico normalizzato della mossa precedente. \\
+\path{original_move_time} & Tempo sintetico normalizzato della mossa corrente/originale. \\
+\path{time_is_synthetic} & Indicatore pari a 1.0 per tutti gli esempi finali con timing. \\
+\path{previous_move_time_seconds} & Tempo grezzo della mossa precedente in secondi, dopo clipping. \\
+\path{original_move_time_seconds} & Tempo grezzo della mossa corrente/originale in secondi, dopo clipping. \\
+\bottomrule
+\end{tabular}
+\end{table}

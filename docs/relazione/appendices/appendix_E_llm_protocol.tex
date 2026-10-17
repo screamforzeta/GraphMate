@@ -1,0 +1,51 @@
+\chapter{Protocollo di valutazione dei modelli linguistici}
+\label{app:llm-protocol}
+
+Questa appendice specifica il protocollo congelato di valutazione dei large language model usato in GraphMate.  Il protocollo è volutamente ristretto: ciascun modello riceve una FEN e deve restituire una sola mossa legale in notazione UCI.  Non è un benchmark di agente scacchistico interattivo e non fornisce nel prompt mosse legali, profondità di matto, rating del puzzle, temi, mosse target, linee del motore o predizioni di GraphMate.
+
+\input{appendices/figures/llm_pipeline}
+
+\section{Identità del runtime e prompt}
+\label{app:llm-protocol:prompt}
+
+I modelli locali principali sono Qwen 3.5 4B e Qwen 3.5 9B serviti tramite Ollama.  Il registro congelato riporta tag e digest esatti: Qwen 3.5 4B usa il tag \texttt{qwen3.5:4b} con digest \nolinkurl{2a654d98e6fba55d452b7043684e9b57a947e393bbffa62485a7aac05ee4eefd}; Qwen 3.5 9B usa il tag \texttt{qwen3.5:9b} con digest \nolinkurl{6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7}.  Entrambe le esecuzioni principali usano temperatura 0, \texttt{num\_predict=16} e modalità thinking disabilitata quando supportata dalla configurazione del runtime.
+
+La versione del prompt è \texttt{llm\_chess\_uci\_v1}.  Il prompt seguente è riprodotto verbatim perché costituisce il prompt congelato esatto usato negli esperimenti.  Il system prompt congelato è:
+\begin{quote}
+\small\ttfamily
+You are solving a chess position.\textbackslash nReturn exactly one legal chess move for the side to move.\textbackslash nDo not provide explanation or analysis.
+\end{quote}
+Lo user prompt congelato è:
+\begin{quote}
+\small\ttfamily
+FEN:\textbackslash n\{fen\}\textbackslash n\textbackslash nReturn your move in UCI notation only.
+\end{quote}
+L'hash del prompt registrato nell'audit delle appendici è \nolinkurl{52d7d99ae114c426c41cf49b22b16e6038f2b4188e7ca81386783a3d51e52adc}.
+
+\section{Parser rigoroso e tassonomia degli esiti}
+\label{app:llm-protocol:strict}
+
+Il parser principale è \texttt{strict\_uci\_v1}.  Rimuove spazi iniziali e finali dall'uscita del modello, richiede un singolo token che corrisponda a \nolinkurl{[a-h][1-8][a-h][1-8][qrbn]?} e controlla la legalità con python-chess nella posizione fornita dal prompt.  Una risposta che non rispetta la regola del token è un errore di parsing.  Un token in forma UCI che non è legale nella posizione è una mossa illegale.  Una mossa legale è considerata corretta solo se coincide con la mossa target congelata per il task next-move o con la mossa attesa del solutore per il passo corrente del task reference-line.  Le altre mosse legali sono mosse legali errate.
+
+La popolazione principale Lichess è costituita dagli 8,610 grafi di test generati dal manifesto PyG dei puzzle.  Gli esiti rigorosi nella Tabella~\ref{tab:llm-failure-breakdown} sono quindi percentuali su 8,610 esempi, non sulle 8,620 righe CSV originali.
+
+\input{appendices/tables/llm_failure_breakdown}
+
+\section{Parser rilassato diagnostico}
+\label{app:llm-protocol:relaxed}
+
+Il parser rilassato è un artefatto diagnostico post-hoc, non un benchmark principale alternativo.  Misura se alcuni fallimenti del contratto rigoroso di uscita contengano una mossa legale recuperabile in un'altra notazione comune o in forma testuale inglobata.  Le affermazioni principali del report continuano a usare il parser rigoroso.  La Tabella~\ref{tab:llm-relaxed-diagnostics} riporta i risultati diagnostici Lichess e il miglioramento rispetto alla Top-1 rigorosa in punti percentuali.
+
+\input{appendices/tables/llm_relaxed_diagnostics}
+
+\section{Valutazione sulle composizioni classiche e reference-line}
+\label{app:llm-protocol:classic}
+
+Lo stesso prompt, parser rigoroso e tassonomia di legalità sono usati per il benchmark di composizioni classiche nell'Appendice~\ref{app:classic-benchmark}.  Qwen 3.5 4B ottiene 0 mosse corrette su ALL200 sotto il parser rigoroso.  Qwen 3.5 9B ottiene 1 mossa corretta su ALL200, pari allo 0.5 percento su ALL200 e a circa 0.518 percento sul sottoinsieme Popeye193.  Il benchmark registra separatamente mosse legali errate, mosse illegali, errori di parsing ed errori di esecuzione, così che i fallimenti del formato di uscita non siano confusi con i fallimenti di legalità scacchistica.
+
+Per le diagnostiche reference-line a più semimosse, ogni mossa del solutore è richiesta indipendentemente dalla FEN corrente.  Se il modello restituisce la mossa attesa del solutore, il valutatore applica quella mossa e poi applica la risposta attesa dell'avversario dalla linea di riferimento congelata.  Se il modello sbaglia, produce una mossa illegale o non analizzabile, la linea termina.  Questo protocollo impedisce ai prompt successivi di rivelare mosse future della soluzione.
+
+\section{Validità delle esecuzioni ed esclusioni}
+\label{app:llm-protocol:validity}
+
+Le esecuzioni ufficiali eseguono controlli preliminari su raggiungibilità del runtime, digest esatto del modello, comportamento del parser, fingerprint del dataset, versione del prompt, versione del parser e assenza di leakage del target.  Un tentativo di esecuzione fallito non è automaticamente un risultato scientifico.  I fallimenti infrastrutturali sono marcati con metadati di esecuzione non valida ed esclusi dai riepiloghi di accuratezza.  GPT-OSS 20B compare nell'inventario degli esperimenti come esecuzione diagnostica con fallimento di protocollo ed è escluso dal confronto principale di GraphMate.  Questa gestione distingue identità del modello, tentativo di esecuzione del runtime e risultato valido del benchmark.

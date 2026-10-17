@@ -1,0 +1,119 @@
+\label{chap:methodology}
+
+\section{Disegno sperimentale}
+
+Gli esperimenti valutano la predizione della prima mossa risolutiva a partire dal
+grafo della posizione del solutore. Dati, rappresentazione e architetture sono
+definiti rispettivamente nei Capitoli~\ref{chap:data},
+\ref{chap:graph-representation} e~\ref{chap:models}; questo capitolo descrive come
+i sistemi vengono confrontati. Le configurazioni ufficiali, gli iperparametri e i
+checkpoint sono riportati nell'Appendice~\ref{app:hyperparameters}.
+
+Le domande di ricerca richiedono due confronti principali. Per RQ1 il Modello B con
+timing è confrontato con Qwen 3.5 4B e 9B, separatamente per profondità di matto sul
+test Lichess. YACPDB non rientra in RQ1 perché non possiede gli ingressi temporali
+richiesti da B. Per RQ2 si confrontano A3 e B sugli stessi 8.610 grafi Lichess: i
+due modelli condividono lo scoring delle mosse legali e differiscono per
+l'integrazione del timing sintetico.
+
+Gli altri confronti chiariscono il contributo delle scelte architetturali. A, A1 e
+A2 isolano gli effetti della classificazione globale e della legalità; A3 introduce
+lo scoring contestuale delle mosse legali; A4 misura l'effetto del reranking
+post-mossa sulle Top-5 candidate recuperate da A3. A1 è esclusivamente una modalità
+inferenziale del checkpoint A e non viene trattato come modello addestrato
+separatamente.
+
+\section{Addestramento e selezione dei checkpoint}
+
+Addestramento, validazione e test restano separati. Le configurazioni ufficiali
+fissano seed 42, ottimizzatore Adam, learning rate \(5\times10^{-4}\), weight decay
+\(10^{-4}\), batch size 128, dropout 0,30 e mixed precision. L'early stopping usa
+solo la validazione; il test non partecipa alla selezione. A4 monitora la Top-1
+end-to-end di validazione, mentre gli altri modelli monitorano la loss di
+validazione.
+
+Le analisi finali usano checkpoint congelati e identificati nel manifesto del
+progetto. Nuovi addestramenti sono separati dagli artefatti ufficiali e non
+sostituiscono implicitamente i pesi di riferimento. A4 dipende dal checkpoint A3
+congelato: A3 recupera le candidate, mentre vengono addestrati soltanto l'encoder
+post-mossa e lo scorer del reranker.
+
+\section{Protocollo di valutazione Lichess}
+
+La valutazione neurale principale usa i 8.610 grafi generati dal CSV di test dopo
+l'esclusione dei 10 target fuori vocabolario. Per ogni esempio, i sistemi producono
+un ordinamento delle mosse nel proprio spazio di uscita. A e A2 lavorano sul
+vocabolario globale, A1 filtra le predizioni di A, mentre A3 e B ordinano le mosse
+legali della posizione. A4 riceve soltanto le Top-5 candidate di A3 e ne modifica
+l'ordine; la sua Top-1 end-to-end include quindi sia il recupero sia il reranking.
+
+L'ablazione del timing valuta B nella configurazione ufficiale, con timing
+neutralizzato e con valori temporali e indicatore azzerati. Tutte le configurazioni
+sono confrontate con A3 sugli stessi esempi. Il disegno consente di attribuire le
+differenze alla variante implementata, senza estenderle a forme di timing non
+osservate.
+
+\section{Protocollo dei modelli linguistici}
+
+Qwen 3.5 4B e Qwen 3.5 9B sono eseguiti localmente con prompt, parametri di
+generazione e parser congelati. Ogni richiesta contiene la FEN e richiede una sola
+mossa UCI. Il parser rigoroso \texttt{strict\_uci\_v1} accetta soltanto l'output
+previsto dal protocollo; la classificazione finale distingue risposta corretta,
+mossa legale errata, mossa illegale, fallimento di parsing ed errore di esecuzione.
+
+Il parser rilassato è una diagnostica post-hoc e non sostituisce i risultati
+primari. Anche le prove GPT-OSS con problemi di protocollo sono escluse dal
+confronto ufficiale. Il prompt esatto e i dettagli operativi sono conservati
+nell'Appendice~\ref{app:llm-protocol}; questa scelta permette di interpretare il
+risultato come prestazione del sistema completo nel protocollo fissato.
+
+\section{Benchmark esterno}
+
+Il benchmark \texttt{yacpdb\_classic\_v1} contiene 200 composizioni, 20 per
+profondità da \(\#1\) a \(\#10\), ed è separato dai dati Lichess. La valutazione
+usa la politica congelata delle chiavi accettate. Popeye verifica indipendentemente
+193 posizioni: 188 hanno una chiave unica e 5 chiavi multiple; 7 verifiche terminano
+per timeout e mantengono la chiave sorgente YACPDB. Un timeout non equivale a una
+composizione errata.
+
+Sul benchmark vengono valutati A3, A4 e i due modelli Qwen. B è indicato come non
+disponibile perché i dati non contengono il timing richiesto; non vengono generati
+valori sintetici ad hoc. Il benchmark è usato per studiare il trasferimento a una
+distribuzione esterna, non per selezionare modelli o iperparametri. L'intera
+procedura è specificata nell'Appendice~\ref{app:classic-benchmark}.
+
+\section{Metriche e analisi statistica}
+
+L'accuratezza Top-\(k\) è la percentuale di esempi nei quali il target compare tra
+le prime \(k\) predizioni. Se \(r_i\) è il rango del target per l'esempio \(i\),
+
+\begin{equation}
+    \operatorname{Top\text{-}k}
+    = \frac{100}{N}\sum_{i=1}^{N}\mathbb{I}(r_i\leq k).
+    \label{eq:topk-accuracy}
+\end{equation}
+
+Quando disponibile, il rango medio descrive anche la qualità dell'ordinamento oltre
+la soglia Top-\(k\). Gli intervalli dell'accuratezza Top-1 sono calcolati con il
+metodo di Wilson al 95\%. Per A3--B e A3--A4, quando le predizioni sono allineate
+per esempio, si usa il test esatto bilaterale di McNemar, formulato come test
+binomiale sui casi discordanti. L'effetto del timing è espresso anche come
+
+\begin{equation}
+    \Delta_{\mathrm{Top1}}=\mathrm{Top1}_{B}-\mathrm{Top1}_{A3}.
+    \label{eq:top1-difference}
+\end{equation}
+
+Le analisi selezionano esplicitamente gli artefatti ufficiali validi e separano
+risultati primari, diagnostiche, smoke test ed esecuzioni infrastrutturali non
+valide. Questa provenienza è riepilogata nell'Appendice~\ref{app:reproducibility}.
+
+\section{Limiti del protocollo}
+
+Il compito valuta una sola mossa e non la soluzione autonoma completa del puzzle.
+Il timing è sintetico, condizionato dal rating e disponibile soltanto su Lichess.
+A4 non può recuperare target assenti dalle Top-5 di A3. Il protocollo LLM misura
+una specifica combinazione di modelli, prompt e parser. Infine, i gruppi YACPDB
+contengono solo 20 esempi per profondità: le stime per singola categoria hanno
+intervalli ampi e non sostengono confronti fini. Questi limiti sono ripresi nel
+Capitolo~\ref{chap:discussion} durante l'interpretazione dei risultati.

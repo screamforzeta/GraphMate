@@ -1,0 +1,49 @@
+\chapter{Costruzione e verifica del benchmark di composizioni classiche}
+\label{app:classic-benchmark}
+
+Il benchmark di composizioni classiche valuta GraphMate sotto un cambio di distribuzione esterno: problemi di matto diretto composti provenienti da YACPDB invece di puzzle tattici Lichess.  Il benchmark non è usato per addestramento, selezione dei checkpoint, selezione delle candidate o progettazione dei prompt.  Il suo scopo è verificare se sistemi addestrati o valutati su puzzle di matto in stile Lichess si trasferiscono a posizioni di composizione curate, con provenienza e struttura differenti.
+
+\input{appendices/figures/classic_pipeline}
+
+\section{Acquisizione ed eleggibilità}
+\label{app:classic-benchmark:acquisition}
+
+Le posizioni YACPDB sono state acquisite tramite l'endpoint gateway pubblico ma non documentato \texttt{https://yacpdb.org/gateway/ql}.  Le query di acquisizione hanno usato \texttt{Stip("\^{}\#1\$")} fino a \texttt{Stip("\^{}\#10\$")} con richieste paginate.  La dimensione osservata delle pagine era 100 e la scansione di disponibilità ha ispezionato fino a 200 record per profondità di matto.  Poiché l'endpoint è pubblico ma non documentato, la riproducibilità si basa sulle risposte in cache, sui manifesti e sui fingerprint memorizzati con il benchmark, non sull'assunzione che il servizio rimanga stabile.
+
+L'eleggibilità è intenzionalmente conservativa.  L'importer conserva problemi ortodossi di matto diretto \(\#1\)--\(\#10\) con pezzi supportati, posizioni strutturalmente identificabili e chiave iniziale legale.  Scarta automatti, aiutomatti, stipulazioni di serie, condizioni fairy, gemelli, posizioni malformate, notazione della chiave non supportata, chiavi illegali, incompatibilità nei marcatori di cattura e chiavi iniziali ambigue o mancanti.  La normalizzazione della posizione converte liste algebriche di pezzi supportate in FEN, normalizza i matti diretti con il Bianco al tratto e non inventa diritti di arrocco o en-passant.  L'estrattore della chiave iniziale ignora gioco apparente, tentativi, confutazioni e semimosse successive della soluzione; il target del benchmark è la prima mossa risolutiva.
+
+\input{appendices/tables/yacpdb_availability}
+
+\section{Selezione, fingerprint e ciclo di congelamento}
+\label{app:classic-benchmark:selection}
+
+Dopo il filtraggio di eleggibilità, il pool candidato contiene 1,540 posizioni pulite sulle profondità \(\#1\)--\(\#10\).  La selezione ordina i candidati puliti per identificatore numerico del problema sorgente YACPDB, campiona 20 posizioni per profondità di matto con Python \texttt{random.Random(42)} e scrive le righe selezionate ordinate per profondità e identificatore numerico.  Il benchmark risultante contiene 200 posizioni.  I controlli di duplicazione riportano zero identificatori sorgente duplicati, zero duplicati FEN esatti e zero duplicati di posizione normalizzata.  L'audit di contaminazione riporta zero sovrapposizioni con i dati dei puzzle Lichess usati per lo sviluppo dei modelli GraphMate.
+
+Sono rilevanti due fingerprint.  Il fingerprint del dataset candidato selezionato è:
+\begin{quote}
+\small\nolinkurl{bb1b2d7c3858e3b2ffad58fd561534acf1e29bb2321b4af52a57256398ec9a5a}
+\end{quote}
+Il fingerprint del ciclo di vita del benchmark congelato è:
+\begin{quote}
+\small\nolinkurl{57ff2b7c725a4ef802817581fac9430f8c6416a6de54dafcb1deb7b471716b60}
+\end{quote}
+Il valutatore verifica il fingerprint del congelamento, non soltanto il fingerprint candidato, prima di accettare un'esecuzione ufficiale.  Questa distinzione evita che un dataset selezionato sia trattato come congelato prima che la politica di verifica e i metadati delle chiavi accettate siano fissati.
+
+\section{Verifica Popeye e chiavi accettate}
+\label{app:classic-benchmark:popeye}
+
+Popeye è usato come verificatore indipendente di composizioni, non come modello, target di addestramento o baseline motore scacchistico.  Il verificatore ufficiale è Popeye v4.103.  Il primo passaggio ha usato un timeout di 300 secondi per posizione e ha verificato 183 delle 200 posizioni selezionate.  Il secondo passaggio ha rieseguito i 17 timeout con un timeout di 1,200 secondi e ha verificato ulteriori 10 posizioni.  Il benchmark consolidato ha quindi 193 posizioni verificate da Popeye: 188 con una chiave iniziale accettata unica e 5 con più chiavi iniziali accettate.  Sette posizioni restano non risolte da Popeye per timeout.  Questi sette casi non sono etichettati come composizioni errate; sono conservati in una categoria separata di timeout non verificato dalla sorgente per evitare di sostituire posizioni difficili dopo aver osservato informazioni sul tempo di risoluzione.
+
+\input{appendices/tables/popeye_verification}
+
+Lo scoring ufficiale accetta una predizione se appartiene all'insieme congelato delle chiavi accettate per la posizione.  Per le posizioni con più chiavi verificate da Popeye, qualunque chiave iniziale accettata è corretta.  Per le posizioni non risolte per timeout, la chiave sorgente YACPDB mantenuta è usata nella categoria timeout.  Model B non è applicabile a questo benchmark perché le posizioni esterne di composizione non dispongono dei metadati di timing sintetico richiesti dal contratto di ingresso di Model B.
+
+\section{Risultati della valutazione sulle composizioni classiche}
+\label{app:classic-benchmark:results}
+
+La Tabella~\ref{tab:classic-results} riporta i risultati principali sul benchmark di composizioni classiche.  ALL200 indica l'intero benchmark congelato.  Popeye193 indica le 193 posizioni verificate indipendentemente da Popeye.  La distinzione è metodologica, non un filtro prestazionale post-hoc, perché tutte le 200 posizioni rimangono parte del benchmark congelato e le sette posizioni non risolte hanno una categoria di scoring esplicita.
+
+\input{appendices/tables/classic_results}
+\input{appendices/tables/classic_by_verification}
+
+I risultati sulle composizioni classiche vanno interpretati come evidenza su una distribuzione esterna, non come sostituzione dell'insieme di test Lichess mantenuto separato.  Model A4 migliora rispetto a Model A3 su ALL200, mentre le baseline Qwen con prompt rigoroso restano vicine a zero sotto il parser congelato descritto nell'Appendice~\ref{app:llm-protocol}.

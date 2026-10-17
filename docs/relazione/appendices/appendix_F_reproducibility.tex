@@ -1,0 +1,39 @@
+\chapter{Riproducibilità e inventario degli artefatti}
+\label{app:reproducibility}
+
+Questa appendice descrive come il repository GraphMate supporta la riproducibilità scientifica.  Evita deliberatamente di ripetere ogni iperparametro, feature del grafo e regola di benchmark.  Tali dettagli appartengono alle Appendici~\ref{app:hyperparameters}--\ref{app:llm-protocol}.  L'enfasi qui è posta sui confini degli artefatti, sui file destinati alla distribuzione pubblica e sulla differenza tra ispezione, valutazione di checkpoint congelati e riaddestramento.
+
+\section{Classi di artefatti}
+\label{app:reproducibility:artifacts}
+
+GraphMate separa configurazioni, checkpoint, risorse, dataset generati e uscite di analisi.  Le configurazioni ufficiali definiscono architettura prevista e politica di addestramento.  I checkpoint congelati memorizzano i pesi addestrati selezionati e sono identificati da hash SHA-256.  Le risorse includono file ausiliari stabili, come il vocabolario delle mosse.  Gli artefatti contengono report di addestramento, uscite di valutazione e riepiloghi dell'analisi finale.  La Tabella~\ref{tab:artifact-inventory} sintetizza le principali classi di artefatti destinate alla riproducibilità.
+
+\input{appendices/tables/artifact_inventory}
+
+\section{Tre casi d'uso per la riproduzione}
+\label{app:reproducibility:workflows}
+
+Il repository supporta tre diversi obiettivi di riproduzione, mostrati nella Tabella~\ref{tab:reproducibility-workflows}.  L'ispezione dei risultati pubblicati richiede soltanto gli artefatti e i manifesti usati dal report.  La valutazione dei modelli pretrained congelati richiede i file dei checkpoint, gli hash esatti, i dataset a grafo e gli entry point di valutazione.  Il riaddestramento usa le configurazioni ufficiali tramite \texttt{train\_official}; è una riesecuzione scientifica con la stessa configurazione prevista, non una garanzia di uguaglianza bit-per-bit tra hardware, CUDA, PyTorch o versioni di PyTorch Geometric.
+
+\input{appendices/tables/reproducibility_workflows}
+
+\section{Interfaccia ufficiale di addestramento}
+\label{app:reproducibility:training}
+
+L'entry point ufficiale di addestramento è \texttt{src/cli/training/train\_official.py}.  Accetta \texttt{--model a}, \texttt{a2}, \texttt{a3}, \texttt{b} o \texttt{a4}, oppure un percorso esplicito di configurazione.  La modalità \texttt{--dry-run} ispeziona e valida la configurazione selezionata senza avviare l'addestramento.  Le uscite di riaddestramento sono indirizzate a \texttt{artifacts/retraining/<model>/<timestamp>/}; l'interfaccia rifiuta di scrivere nelle directory canoniche dei checkpoint.  Questa regola di sicurezza protegge l'inventario dei checkpoint congelati da sovrascritture accidentali.
+
+Le dipendenze dati specifiche per modello sono applicate dai loader.  Model B richiede la root PyG con timing invece della root dei grafi senza timing.  Model A4 richiede il checkpoint congelato di Model A3 e la cache delle candidate post-mossa di A4.  Questi requisiti fanno parte della definizione del modello, non sono semplici comodità opzionali.
+
+\section{Riproduzione di checkpoint e valutazioni}
+\label{app:reproducibility:evaluation}
+
+Gli hash dei checkpoint congelati sono elencati nell'Appendice~\ref{app:hyperparameters}.  Gli script di valutazione devono verificare fingerprint di dataset e benchmark dove i protocolli ufficiali lo richiedono.  Il valutatore delle composizioni classiche controlla il fingerprint di congelamento \nolinkurl{57ff2b7c725a4ef802817581fac9430f8c6416a6de54dafcb1deb7b471716b60}; il benchmark LLM controlla prompt, parser, digest del modello e identità del dataset prima di accettare un'esecuzione.  Questi controlli rendono l'identità dell'esecuzione più precisa di una sola invocazione da riga di comando.
+
+Gli artefatti di analisi finale aggregano valutazioni completate in tabelle destinate al report.  Sono utili per ispezionare i numeri pubblicati, ma non sostituiscono i file dei checkpoint congelati o i manifesti dei benchmark quando si riproducono le valutazioni sottostanti.
+
+\section{Ambiente e limiti di un clone fresco}
+\label{app:reproducibility:environment}
+
+\enlargethispage{2\baselineskip}
+
+Il repository fissa seed, configurazioni ufficiali, manifesti degli split, hash dei checkpoint e fingerprint dei benchmark.  Non garantisce un riaddestramento byte-identico in tutti gli ambienti.  Kernel GPU, versioni delle librerie, comportamento mixed precision, scheduling dei data loader e dettagli implementativi di PyTorch/PyTorch Geometric possono influenzare le traiettorie esatte di ottimizzazione.  Un clone fresco può inoltre richiedere artefatti grandi forniti esternamente o rigenerati, a seconda di quali dataset generati e checkpoint siano inclusi nella distribuzione pubblica.  La dichiarazione di riproducibilità è quindi più forte per l'ispezione degli artefatti e la valutazione dei checkpoint congelati, e più debole per l'equivalenza byte-per-byte del riaddestramento.

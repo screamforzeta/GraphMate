@@ -1,0 +1,35 @@
+\label{chap:conclusions}
+
+GraphMate ha sviluppato una pipeline riproducibile per rappresentare posizioni di
+matto come grafi scacchistici e predire la prima mossa risolutiva. La progressione
+dei modelli mostra che l'integrazione dei vincoli del dominio produce i miglioramenti
+più rilevanti: il filtro di legalità migliora la baseline a vocabolario globale, lo
+scoring contestuale delle mosse legali porta A3 al 67,56\% di Top-1 su Lichess e il
+reranking delle posizioni successive alla mossa porta A4 all'85,41\% nel medesimo
+benchmark.
+
+\textbf{Risposta a RQ1.} Sul benchmark Lichess, il Modello B con timing supera
+entrambe le baseline Qwen sottoposte al protocollo rigoroso UCI in tutte le
+profondità disponibili, da mate-in-1 a mate-in-5. La conclusione riguarda il
+confronto end-to-end congelato; non estende automaticamente il risultato ad altri
+modelli linguistici, prompt o protocolli assistiti da strumenti.
+
+\textbf{Risposta a RQ2.} Il timing sintetico implementato non migliora la
+prestazione rispetto alla baseline A3 senza timing. La Top-1 di B è pari al
+65,98\%, contro il 67,56\% di A3, con una differenza di (-1{,}58) punti
+percentuali confermata dal confronto appaiato. Il risultato non dimostra che tempi
+reali e allineati ai puzzle siano inutili; delimita l'esito alla codifica sintetica
+valutata.
+
+La valutazione esterna completa il quadro: A4 conserva un vantaggio descrittivo su
+A3 nelle composizioni YACPDB, ma le accuratezze scendono sensibilmente rispetto a
+Lichess e la differenza appaiata non è statisticamente significativa al 5\%. Il
+cambio di distribuzione, la dimensione ridotta del benchmark, il limite Top-5 del
+reranker, il timing sintetico e la predizione di una sola mossa sono i principali
+vincoli interpretativi.
+
+Nel complesso, gli esperimenti sostengono una conclusione precisa: per il compito e
+i dati considerati, esplicitare legalità, candidate e conseguenze immediate delle
+mosse è più utile dell'aggiunta del segnale temporale sintetico adottato. Allo
+stesso tempo, il divario sul benchmark esterno mostra che accuratezza interna e
+generalizzazione non coincidono e devono essere valutate separatamente.

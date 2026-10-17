@@ -1,0 +1,153 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.2 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated as
+% required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+\datalist[entry]{none/global//global/global}
+  \entry{lichessOpenDatabase}{online}{}
+    \name{author}{1}{}{%
+      {{hash=L}{%
+         family={{Lichess}},
+         familyi={L\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{L1}
+    \strng{fullhash}{L1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{title}{lichess.org open database}
+    \verb{url}
+    \verb https://database.lichess.org/
+    \endverb
+    \field{urlday}{15}
+    \field{urlmonth}{10}
+    \field{urlyear}{2026}
+  \endentry
+
+  \entry{kipf2017semi}{inproceedings}{}
+    \name{author}{2}{}{%
+      {{hash=KTN}{%
+         family={Kipf},
+         familyi={K\bibinitperiod},
+         given={Thomas\bibnamedelima N.},
+         giveni={T\bibinitperiod\bibinitdelim N\bibinitperiod},
+      }}%
+      {{hash=WM}{%
+         family={Welling},
+         familyi={W\bibinitperiod},
+         given={Max},
+         giveni={M\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{KTNWM1}
+    \strng{fullhash}{KTNWM1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{booktitle}{International Conference on Learning Representations}
+    \field{title}{Semi-Supervised Classification with Graph Convolutional
+  Networks}
+    \verb{url}
+    \verb https://arxiv.org/abs/1609.02907
+    \endverb
+    \field{year}{2017}
+  \endentry
+
+  \entry{velickovic2018graph}{inproceedings}{}
+    \name{author}{6}{}{%
+      {{hash=VP}{%
+         family={Veli\v{c}kovi\'c},
+         familyi={V\bibinitperiod},
+         given={Petar},
+         giveni={P\bibinitperiod},
+      }}%
+      {{hash=CG}{%
+         family={Cucurull},
+         familyi={C\bibinitperiod},
+         given={Guillem},
+         giveni={G\bibinitperiod},
+      }}%
+      {{hash=CA}{%
+         family={Casanova},
+         familyi={C\bibinitperiod},
+         given={Arantxa},
+         giveni={A\bibinitperiod},
+      }}%
+      {{hash=RA}{%
+         family={Romero},
+         familyi={R\bibinitperiod},
+         given={Adriana},
+         giveni={A\bibinitperiod},
+      }}%
+      {{hash=LP}{%
+         family={Li\`o},
+         familyi={L\bibinitperiod},
+         given={Pietro},
+         giveni={P\bibinitperiod},
+      }}%
+      {{hash=BY}{%
+         family={Bengio},
+         familyi={B\bibinitperiod},
+         given={Yoshua},
+         giveni={Y\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{VP+1}
+    \strng{fullhash}{VPCGCARALPBY1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{booktitle}{International Conference on Learning Representations}
+    \field{title}{Graph Attention Networks}
+    \verb{url}
+    \verb https://arxiv.org/abs/1710.10903
+    \endverb
+    \field{year}{2018}
+  \endentry
+
+  \entry{xu2023timegnn}{article}{}
+    \name{author}{3}{}{%
+      {{hash=XN}{%
+         family={Xu},
+         familyi={X\bibinitperiod},
+         given={Nancy},
+         giveni={N\bibinitperiod},
+      }}%
+      {{hash=KC}{%
+         family={Kosma},
+         familyi={K\bibinitperiod},
+         given={Chrysoula},
+         giveni={C\bibinitperiod},
+      }}%
+      {{hash=VM}{%
+         family={Vazirgiannis},
+         familyi={V\bibinitperiod},
+         given={Michalis},
+         giveni={M\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{XNKCVM1}
+    \strng{fullhash}{XNKCVM1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{title}{{TimeGNN}: Temporal Dynamic Graph Learning for Time Series
+  Forecasting}
+    \verb{url}
+    \verb https://arxiv.org/abs/2307.14680
+    \endverb
+    \field{journaltitle}{arXiv preprint arXiv:2307.14680}
+    \field{year}{2023}
+  \endentry
+\enddatalist
+\endinput
