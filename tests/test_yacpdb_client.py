@@ -60,7 +60,7 @@ def test_search_response_parsing_and_request_construction():
     assert "gateway/ql?" in request.full_url
     assert "q=Stip" in request.full_url
     assert "p=1" in request.full_url
-    assert request.headers["User-agent"].startswith("Progetto-Damiani")
+    assert request.headers["User-agent"].startswith("Graphmate")
     assert timeout == client.timeout
 
 

@@ -1,2 +1,2 @@
-"""Final experiment consolidation for Progetto-Damiani."""
+"""Final experiment consolidation for Graphmate."""
 

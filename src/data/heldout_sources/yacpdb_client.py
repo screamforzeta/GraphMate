@@ -20,7 +20,7 @@ from typing import Any
 
 
 DEFAULT_BASE_URL = "https://yacpdb.org"
-DEFAULT_USER_AGENT = "Progetto-Damiani-YACPDB-client/1.0 (+technical heldout acquisition)"
+DEFAULT_USER_AGENT = "Graphmate-YACPDB-client/1.0 (+technical heldout acquisition)"
 DEFAULT_TIMEOUT_SECONDS = 20.0
 DEFAULT_MAX_RECORDS = 3
 
